@@ -1,0 +1,133 @@
+# ============================================================
+# ai-coder — основной конфиг
+# ============================================================
+
+api:
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model: deepseek-flash
+  models:
+    - deepseek-flash
+    - deepseek-v4-pro
+  temperature: 0.3
+  max_output_tokens: 8000
+  timeout_sec: 120
+  retries: 3
+
+  # Цены в юанях за 1M токенов. peak = 2x от off_peak.
+  pricing:
+    deepseek-flash:
+      cache_hit_per_1m_cny:  { off_peak: 0.02, peak: 0.04 }
+      cache_miss_per_1m_cny: { off_peak: 1.0,  peak: 2.0 }
+      output_per_1m_cny:     { off_peak: 4.0,  peak: 8.0 }
+    deepseek-v4-pro:
+      cache_hit_per_1m_cny:  { off_peak: 0.15, peak: 0.30 }
+      cache_miss_per_1m_cny: { off_peak: 4.5,  peak: 9.0 }
+      output_per_1m_cny:     { off_peak: 13.5, peak: 27.0 }
+
+  peak_schedule:
+    timezone: "UTC"                 # окна задаются в UTC
+    weekdays_only: true
+    windows:
+      - { start: "01:00", end: "04:00" }
+      - { start: "06:00", end: "10:00" }
+    display_timezone: "Europe/Moscow"
+
+currency:
+  cny_to_rub:
+    fetch_online: true
+    source: cbr
+    fallback: 12.5
+    cache_hours: 24
+  usd_to_rub:
+    fetch_online: true
+    source: cbr
+    fallback: 92.0
+    cache_hours: 24
+
+scanning:
+  use_gitignore: true
+  extra_ignore:
+    - "*.lock"
+    - "*.min.js"
+    - "dist/**"
+    - "build/**"
+    - ".ai-out/**"
+    - "__pycache__/**"
+    - ".venv/**"
+    - "venv/**"
+    - "node_modules/**"
+    - ".git/**"
+  secret_ignore:
+    - "*.env"
+    - ".env*"
+    - "*secret*"
+    - "*credential*"
+    - "*password*"
+    - "*.pem"
+    - "*.key"
+  binary_extensions:
+    - .png
+    - .jpg
+    - .jpeg
+    - .gif
+    - .pdf
+    - .zip
+    - .tar
+    - .gz
+    - .exe
+    - .so
+    - .dll
+    - .woff
+    - .woff2
+    - .ttf
+  max_file_size_kb: 500
+  max_total_tokens: 60000
+  include_extensions: []            # пусто = все текстовые
+
+output:
+  dir: .ai-out
+  per_project_subdir: true
+  filename_pattern: "{action}-{timestamp}.md"
+  save_raw_response: true
+
+usage:
+  jsonl: .ai-out/usage.jsonl
+  summary: .ai-out/usage_summary.json
+  per_project: true
+
+# ============================================================
+# Действия
+# mode: read  — только отчёт
+# mode: write — предлагает изменения ТЕКСТОМ (в v1 не применяет)
+# ============================================================
+actions:
+  greet:
+    description: "Познакомиться с проектом"
+    prompt: greet
+    mode: read
+  inventory:
+    description: "Список функций, классов, переменных"
+    prompt: inventory
+    mode: read
+  suggest_improvements:
+    description: "Предложить варианты доработки"
+    prompt: suggest_improvements
+    mode: read
+
+  # --- v2: возвращают текст с предложениями, без применения ---
+  write_readme:
+    description: "Сгенерировать README.md"
+    prompt: write_readme
+    mode: write
+    enabled: false
+  add_docstrings:
+    description: "Дописать комментарии/докстринги к функциям"
+    prompt: add_docstrings
+    mode: write
+    enabled: false
+  refactor:
+    description: "Рефакторинг (предложения в виде diff)"
+    prompt: refactor
+    mode: write
+    enabled: false
