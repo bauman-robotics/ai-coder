@@ -42,20 +42,101 @@ def _load(config: Path, prompts: Path):
 def list_actions(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
+    path: Path = typer.Option(Path("."), "--path", help="Проект для оценки (только с --verbose)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель для оценки (с --verbose)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Показать оценку стоимости для текущего проекта"),
 ):
     """Показать доступные действия из конфига."""
-    cfg, _ = _load(config, prompts)
+    cfg, pr_cfg = _load(config, prompts)
 
-    table = Table(title="Доступные действия", show_lines=False)
+    if not verbose:
+        table = Table(title="Доступные действия", show_lines=False)
+        table.add_column("Имя", style="cyan")
+        table.add_column("Режим", style="magenta")
+        table.add_column("Промпт", style="green")
+        table.add_column("Описание")
+
+        for name, act in cfg.enabled_actions().items():
+            table.add_row(name, act.mode, act.prompt, act.description)
+
+        console.print(table)
+        console.print("\n[dim]Подсказка: `actions --verbose` покажет оценку стоимости на текущем проекте.[/dim]")
+        return
+
+    # --- verbose-режим ---
+    from .scanner import scan_project
+    from .prompts import render_prompt
+    from .pricing import is_peak_now, get_rate, calculate_cost
+
+    project_root = path.resolve()
+    if not project_root.is_dir():
+        console.print(f"[red]Не директория:[/red] {project_root}")
+        raise typer.Exit(1)
+
+    model_name = model or cfg.api.model
+
+    with console.status("[cyan]Сканирую проект..."):
+        scan = scan_project(project_root, cfg.scanning)
+
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    console.print(Panel.fit(
+        f"[bold]Проект:[/bold] {project_root}\n"
+        f"[bold]Файлов в контексте:[/bold] {len(scan.files)}\n"
+        f"[bold]Модель:[/bold] {model_name}\n"
+        f"[bold]Тариф:[/bold] {'peak (' + peak_window + ')' if is_peak else 'off-peak'}",
+        title="Оценка действий",
+    ))
+
+    table = Table(title="Действия и оценка стоимости", show_lines=False)
     table.add_column("Имя", style="cyan")
     table.add_column("Режим", style="magenta")
-    table.add_column("Промпт", style="green")
-    table.add_column("Описание")
+    table.add_column("Prompt", justify="right")
+    table.add_column("Completion", justify="right")
+    table.add_column("CNY", justify="right")
+    table.add_column("RUB", justify="right")
+    table.add_column("Описание", style="dim")
 
     for name, act in cfg.enabled_actions().items():
-        table.add_row(name, act.mode, act.prompt, act.description)
+        try:
+            prompt_entry = pr_cfg.get(act.prompt)
+            system, user = render_prompt(prompt_entry, depth="normal", scan=scan)
+            prompt_text = system + "\n" + user
+            est_prompt = max(1, len(prompt_text) // 3)
+        except Exception:
+            est_prompt = 0
+
+        est_completion = cfg.api.max_output_tokens // 2
+
+        cost = calculate_cost(
+            pricing=cfg.api.pricing_for(model_name),
+            is_peak=is_peak,
+            peak_window=peak_window,
+            prompt_hit_tokens=0,
+            prompt_miss_tokens=est_prompt,
+            completion_tokens=est_completion,
+            cny_to_rub=cny_to_rub,
+            usd_to_rub=usd_to_rub,
+        )
+
+        table.add_row(
+            name,
+            act.mode,
+            f"~{est_prompt}",
+            f"~{est_completion}",
+            f"{cost.cost_cny:.4f}",
+            f"{cost.cost_rub:.4f}",
+            act.description,
+        )
 
     console.print(table)
+    console.print(
+        "\n[dim]Оценка консервативная (весь prompt как miss, "
+        "completion ~ половина max_output_tokens). "
+        "Реальный cache hit может снизить стоимость в разы.[/dim]"
+    )
 
 @app.command("run")
 def run(
