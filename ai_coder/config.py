@@ -130,7 +130,8 @@ class WriteConfig(BaseModel):
     max_operations: int = 20
     blacklist_paths: list[str] = Field(default_factory=list)
     blacklist_files: list[str] = Field(default_factory=list)
-
+    verify_after_apply: bool = True
+    backup_dir_name: str = "backup"
 
 # ---------- actions ----------
 
@@ -147,6 +148,8 @@ class ActionConfig(BaseModel):
 # ---------- root ----------
 
 class AppConfig(BaseModel):
+    """Корневой конфиг приложения, объединяющий все секции config.yaml."""
+
     api: ApiConfig
     currency: CurrencyConfig
     scanning: ScanningConfig
@@ -178,6 +181,7 @@ class PromptsConfig(BaseModel):
 # ---------- загрузка ----------
 
 def _read_yaml(path: Path) -> dict[str, Any]:
+    """Читает YAML-файл и гарантирует, что результатом является словарь."""
     if not path.exists():
         raise FileNotFoundError(f"Конфиг не найден: {path}")
     with path.open("r", encoding="utf-8") as f:
@@ -188,6 +192,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_config(path: str | Path) -> AppConfig:
+    """Загружает и валидирует основной конфиг приложения (config.yaml)."""
     data = _read_yaml(Path(path))
     return AppConfig.model_validate(data)
 

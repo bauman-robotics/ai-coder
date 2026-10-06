@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import json
+import py_compile
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 import pathspec
-
+from datetime import datetime
 
 OperationType = Literal["edit_file", "create_file"]
 
 
 @dataclass
 class Operation:
+    """Одна операция записи: edit_file (замена old→new) или create_file (новый файл)."""
+
     type: OperationType
     path: str                       # POSIX-путь относительно project_root
     old: str | None = None          # для edit_file
@@ -22,6 +26,8 @@ class Operation:
 
 @dataclass
 class WritePlan:
+    """Разобранный план изменений от модели: операции, проблемы валидации и diff."""
+
     explanation: str = ""
     operations: list[Operation] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
@@ -287,3 +293,199 @@ def build_plan(content: str, project_root: Path, cfg) -> WritePlan:
     if plan.parse_error is None:
         plan.diff = render_diff(plan, project_root)
     return plan
+
+# ---------- применение ----------
+
+def _copy_to_backup(abs_path: Path, project_root: Path, backup_dir: Path) -> Path:
+    """
+    Копирует файл (если он есть) в backup_dir с сохранением относительного пути.
+    Возвращает путь в бэкапе.
+    """
+    rel = abs_path.relative_to(project_root)
+    dst = backup_dir / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if abs_path.exists():
+        shutil.copy2(abs_path, dst)
+    return dst
+
+def apply_plan(
+    plan: WritePlan,
+    project_root: Path,
+    backup_dir: Path,
+) -> tuple[list[str], list[str]]:
+    if plan.parse_error is not None:
+        return [], [f"План невалиден (parse_error): {plan.parse_error}"]
+    if plan.problems:
+        return [], [f"План невалиден: {len(plan.problems)} проблем"]
+
+    root = project_root.resolve()
+    backup_dir = backup_dir.resolve()
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    applied: list[str] = []
+    backed_up_paths: set[str] = set()           # rel-пути, уже забэкапленные
+    backups_made: list[tuple[Path, Path]] = []  # для отката при ошибке
+    created_files: list[Path] = []
+    operations_log: list[dict] = []
+
+    try:
+        for i, op in enumerate(plan.operations):
+            rel = Path(op.path).as_posix()
+            abs_path = (root / rel).resolve()
+
+            try:
+                abs_path.relative_to(root)
+            except ValueError:
+                raise RuntimeError(f"operations[{i}] ({rel}): путь вне проекта")
+
+            existed_before = abs_path.exists()
+
+            # --- бэкап ТОЛЬКО если файл ещё не бэкапили в этой сессии ---
+            if rel not in backed_up_paths:
+                backup_path = _copy_to_backup(abs_path, root, backup_dir)
+                if existed_before:
+                    backups_made.append((abs_path, backup_path))
+                backed_up_paths.add(rel)
+
+            if op.type == "create_file":
+                content = op.content or ""
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_path.write_text(content, encoding="utf-8")
+                created_files.append(abs_path)
+                applied.append(rel)
+                operations_log.append({"type": "create_file", "path": rel})
+            elif op.type == "edit_file":
+                text = abs_path.read_text(encoding="utf-8")
+                if text.count(op.old or "") != 1:
+                    raise RuntimeError(
+                        f"operations[{i}] ({rel}): old встречается не один раз"
+                    )
+                new_text = text.replace(op.old or "", op.new or "", 1)
+                abs_path.write_text(new_text, encoding="utf-8")
+                applied.append(rel)
+                operations_log.append({"type": "edit_file", "path": rel})
+            else:
+                raise RuntimeError(f"operations[{i}]: неизвестный тип {op.type}")
+
+        manifest = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "project_root": str(root),
+            "operations": operations_log,
+        }
+        (backup_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return applied, []
+
+    except Exception as e:
+        for abs_path, backup_path in backups_made:
+            try:
+                shutil.copy2(backup_path, abs_path)
+            except OSError:
+                pass
+        for abs_path in created_files:
+            try:
+                abs_path.unlink()
+            except OSError:
+                pass
+        return [], [f"Ошибка применения, выполнен откат: {e}"]
+def rollback(backup_dir: Path, project_root: Path) -> list[str]:
+    """
+    Восстанавливает проект из backup_dir.
+    Для create_file — удаляет файл.
+    Для edit_file — восстанавливает из копии.
+    Если манифеста нет (старый бэкап) — только восстанавливает копии.
+    Возвращает список изменённых путей (относительных).
+    """
+    backup_dir = backup_dir.resolve()
+    root = project_root.resolve()
+    if not backup_dir.is_dir():
+        raise NotADirectoryError(f"Бэкап не найден: {backup_dir}")
+
+    manifest_path = backup_dir / "manifest.json"
+    restored: list[str] = []
+
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        operations = manifest.get("operations", [])
+
+        for op in operations:
+            rel = Path(op.get("path", "")).as_posix()
+            if not rel:
+                continue
+            dst = root / rel
+            op_type = op.get("type")
+
+            if op_type == "create_file":
+                # удалить файл, если он есть
+                try:
+                    dst.unlink()
+                    restored.append(f"-{rel}")
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    pass
+            elif op_type == "edit_file":
+                # восстановить из копии
+                src = backup_dir / rel
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                    restored.append(f"~{rel}")
+
+        return restored
+
+    # фолбэк: старые бэкапы без манифеста
+    for src in sorted(backup_dir.rglob("*")):
+        if src.is_dir() or src.name == "manifest.json":
+            continue
+        rel = src.relative_to(backup_dir)
+        dst = root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        restored.append(f"~{rel.as_posix()}")
+    return restored
+
+def check_python_files(paths: list[str], project_root: Path) -> list[str]:
+    errors: list[str] = []
+    for rel in paths:
+        if not rel.endswith(".py"):
+            continue
+        abs_path = project_root / rel
+        try:
+            py_compile.compile(str(abs_path), doraise=True)
+        except py_compile.PyCompileError as e:
+            errors.append(f"{rel}: {e.msg}")
+        except OSError as e:
+            errors.append(f"{rel}: {e}")
+    return errors
+
+def list_backups(project_root: Path) -> list[dict]:
+    """
+    Возвращает список бэкапов проекта: путь, имя, кол-во файлов, кол-во операций.
+    """
+    root = project_root.resolve()
+    base = root / ".ai-out" / root.name
+    if not base.is_dir():
+        return []
+    out: list[dict] = []
+    for d in sorted(base.glob("backup-*"), reverse=True):
+        if not d.is_dir():
+            continue
+        files = [p for p in d.rglob("*") if p.is_file() and p.name != "manifest.json"]
+        ops = 0
+        manifest_path = d / "manifest.json"
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                ops = len(manifest.get("operations", []))
+            except (OSError, json.JSONDecodeError):
+                pass
+        out.append({
+            "dir": d,
+            "name": d.name,
+            "files": len(files),
+            "operations": ops,
+        })
+    return out

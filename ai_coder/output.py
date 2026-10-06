@@ -25,10 +25,13 @@ def _resolve_output_path(
     filename = filename_pattern.format(action=action, timestamp=timestamp)
     return base / filename
 
-def render_report(result: ActionResult) -> str:
+
+def render_report(result: ActionResult, applied_info: dict | None = None) -> str:
     """
     Формирует MD-отчёт с метаданными, телом ответа и приложениями.
     Для write-действий дополнительно выводит план изменений и diff.
+    applied_info — если план применялся: {'applied': N, 'errors': [...],
+    'rolled_back': bool, 'backup_dir': Path | None}.
     """
     scan = result.scan
     llm = result.llm
@@ -47,6 +50,28 @@ def render_report(result: ActionResult) -> str:
             f"{llm.prompt_cache_hit_tokens} hit / {llm.prompt_cache_miss_tokens} miss"
         )
 
+    # --- блок про применение (для write-действий) ---
+    apply_note = ""
+    if applied_info is not None:
+        n = applied_info.get("applied", 0)
+        rolled = applied_info.get("rolled_back", False)
+        backup_dir = applied_info.get("backup_dir")
+        errs = applied_info.get("errors", [])
+        if rolled:
+            apply_note = (
+                f"\n- **Применение:** ❌ откат (проверка не пройдена)\n"
+                f"- **Бэкап:** `{backup_dir}`\n"
+            )
+        elif n > 0:
+            apply_note = (
+                f"\n- **Применение:** ✅ применено операций: {n}\n"
+                f"- **Бэкап:** `{backup_dir}`\n"
+            )
+        else:
+            apply_note = f"\n- **Применение:** не выполнено\n"
+        if errs:
+            apply_note += f"- **Ошибки:** {len(errs)}\n"
+
     report = f"""# {result.action} — {scan.root.name}
 
 - **Модель:** {result.model}
@@ -58,7 +83,7 @@ def render_report(result: ActionResult) -> str:
 - **Начало (МСК):** {started_msk.isoformat(timespec="seconds")}
 - **Длительность:** {duration_s:.1f} c
 - **finish_reason:** {llm.finish_reason}
-
+{apply_note}
 ## Расход
 
 | Показатель | Токены |
@@ -177,6 +202,7 @@ def _render_write_section(plan) -> str:
     parts.append("\n---\n")
     return "".join(parts)
 
+
 def save_report(
     result: ActionResult,
     *,
@@ -184,6 +210,7 @@ def save_report(
     per_project_subdir: bool,
     filename_pattern: str,
     save_raw: bool,
+    applied_info: dict | None = None,
 ) -> Path:
     timestamp = result.started_at.strftime("%Y-%m-%dT%H-%M-%S")
     path = _resolve_output_path(
@@ -195,7 +222,7 @@ def save_report(
         timestamp=timestamp,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_report(result), encoding="utf-8")
+    path.write_text(render_report(result, applied_info=applied_info), encoding="utf-8")
 
     if save_raw:
         raw_path = path.with_suffix(path.suffix + ".raw.txt")

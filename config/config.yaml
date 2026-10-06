@@ -87,6 +87,8 @@ scanning:
 
 write:
   max_operations: 20
+  verify_after_apply: true
+  backup_dir_name: backup  
   blacklist_paths:
     - ".git/**"
     - ".ai-out/**"

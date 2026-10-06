@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -9,6 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .actions import run_action
+from .apply import apply_plan, check_python_files, list_backups, rollback as do_rollback
 from .config import load_config, load_prompts
 from .output import save_report
 
@@ -64,6 +66,9 @@ def run(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
     depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
     exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
+    apply: bool = typer.Option(False, "--apply", help="Применить план изменений (для write-действий)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Не спрашивать подтверждения при --apply"),
+    no_verify: bool = typer.Option(False, "--no-verify", help="Не запускать py_compile после применения"),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -96,28 +101,196 @@ def run(
         console.print(f"[red]Ошибка:[/red] {e}")
         raise typer.Exit(1)
 
-    # сохраняем отчёт
+    # ---------- применение (для write-действий) ----------
+    applied_info: dict | None = None
+    plan = result.write_plan
+
+    if plan is not None and apply:
+        if not plan.valid:
+            console.print("[red]План невалиден, применение отменено.[/red]")
+            if plan.parse_error:
+                console.print(f"  parse_error: {plan.parse_error}")
+            for p in plan.problems:
+                console.print(f"  - {p}")
+        else:
+            # показываем сводку
+            _print_plan_summary(plan)
+
+            # подтверждение
+            if not yes:
+                proceed = typer.confirm("Применить эти изменения?", default=False)
+                if not proceed:
+                    console.print("[yellow]Отменено пользователем.[/yellow]")
+                    apply = False
+
+            if apply:
+                ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+                backup_dir = project_root / cfg.output.dir / project_root.name / f"{cfg.write.backup_dir_name}-{ts}"
+
+                console.print(f"[cyan]Бэкап →[/cyan] {backup_dir}")
+                applied, errors = apply_plan(plan, project_root, backup_dir)
+
+                if errors:
+                    console.print("[red]Не удалось применить:[/red]")
+                    for e in errors:
+                        console.print(f"  - {e}")
+                else:
+                    console.print(f"[green]Применено операций:[/green] {len(applied)}")
+
+                    # верификация
+                    verify_errors: list[str] = []
+                    if cfg.write.verify_after_apply and not no_verify:
+                        verify_errors = check_python_files(applied, project_root)
+
+                    if verify_errors:
+                        console.print("[red]Проверка не пройдена — откат:[/red]")
+                        for e in verify_errors:
+                            console.print(f"  - {e}")
+                        restored = do_rollback(backup_dir, project_root)
+                        console.print(f"[yellow]Откат выполнен:[/yellow] восстановлено {len(restored)} файлов")
+                        applied_info = {"applied": 0, "errors": verify_errors, "rolled_back": True, "backup_dir": backup_dir}
+                    else:
+                        console.print("[green]Проверка пройдена.[/green]")
+                        applied_info = {"applied": len(applied), "errors": [], "rolled_back": False, "backup_dir": backup_dir}
+
+    # ---------- сохраняем отчёт ----------
     report_path = save_report(
         result,
         output_dir=cfg.output.dir,
         per_project_subdir=cfg.output.per_project_subdir,
         filename_pattern=cfg.output.filename_pattern,
         save_raw=cfg.output.save_raw_response,
+        applied_info=applied_info,
     )
 
-    # сводка
+    # ---------- сводка ----------
+    _print_result_summary(result, report_path)
+
+
+def _print_plan_summary(plan) -> None:
+    console.print()
+    console.print(Panel.fit(
+        f"[bold]Операций:[/bold] {len(plan.operations)}\n"
+        f"[bold]Файлов затронуто:[/bold] {len({op.path for op in plan.operations})}",
+        title="План изменений",
+    ))
+    files_table = Table(title="Файлы", show_header=True, box=None)
+    files_table.add_column("Тип", style="magenta")
+    files_table.add_column("Путь", style="cyan")
+    seen: set[tuple[str, str]] = set()
+    for op in plan.operations:
+        key = (op.type, op.path)
+        if key in seen:
+            continue
+        seen.add(key)
+        files_table.add_row(op.type, op.path)
+    console.print(files_table)
+
+
+def _print_result_summary(result, report_path: Path) -> None:
     llm = result.llm
     table = Table(title="Результат", show_header=False, box=None)
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Файлов:", str(len(result.scan.files)))
-    table.add_row("Токенов prompt:", f"{llm.prompt_tokens} (hit: {llm.prompt_cache_hit_tokens}, miss: {llm.prompt_cache_miss_tokens})")
+    table.add_row(
+        "Токенов prompt:",
+        f"{llm.prompt_tokens} (hit: {llm.prompt_cache_hit_tokens}, miss: {llm.prompt_cache_miss_tokens})",
+    )
     table.add_row("Токенов completion:", str(llm.completion_tokens))
     table.add_row("Всего токенов:", str(llm.total_tokens))
     table.add_row("Тариф:", "peak" if result.is_peak else "off-peak")
-    table.add_row("Стоимость:", f"{result.cost_cny:.6f} CNY / {result.cost_rub:.6f} RUB / {result.cost_usd:.6f} USD")
+    table.add_row(
+        "Стоимость:",
+        f"{result.cost_cny:.6f} CNY / {result.cost_rub:.6f} RUB / {result.cost_usd:.6f} USD",
+    )
     table.add_row("Длительность:", f"{llm.duration_ms / 1000:.1f} c")
-    table.add_row("Отчёт:", str(report_path.relative_to(Path.cwd()) if report_path.is_relative_to(Path.cwd()) else report_path))
+
+    try:
+        rel = report_path.relative_to(Path.cwd())
+        table.add_row("Отчёт:", str(rel))
+    except ValueError:
+        table.add_row("Отчёт:", str(report_path))
+
+    console.print(table)
+
+
+@app.command("rollback")
+def rollback_cmd(
+    backup_dir: Path = typer.Argument(..., help="Папка бэкапа (из .ai-out/<project>/backup-*)"),
+    path: Path = typer.Argument(Path("."), help="Путь к проекту"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Не спрашивать подтверждения"),
+):
+    """Откатить изменения проекта из указанного бэкапа."""
+    project_root = path.resolve()
+    backup_dir = backup_dir.resolve()
+
+    if not backup_dir.is_dir():
+        console.print(f"[red]Бэкап не найден:[/red] {backup_dir}")
+        raise typer.Exit(1)
+
+    # читаем манифест, если есть
+    manifest_path = backup_dir / "manifest.json"
+    ops_count = 0
+    if manifest_path.exists():
+        try:
+            import json as _json
+            manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+            ops_count = len(manifest.get("operations", []))
+        except Exception:
+            ops_count = 0
+
+    files = [p for p in backup_dir.rglob("*") if p.is_file() and p.name != "manifest.json"]
+    console.print(Panel.fit(
+        f"[bold]Бэкап:[/bold] {backup_dir}\n"
+        f"[bold]Файлов в бэкапе:[/bold] {len(files)}\n"
+        f"[bold]Операций в манифесте:[/bold] {ops_count}\n"
+        f"[bold]Проект:[/bold] {project_root}",
+        title="Откат",
+    ))
+
+    if not yes:
+        proceed = typer.confirm("Откатить изменения по этому бэкапу?", default=False)
+        if not proceed:
+            console.print("[yellow]Отменено.[/yellow]")
+            raise typer.Exit(0)
+
+    try:
+        changed = do_rollback(backup_dir, project_root)
+        console.print(f"[green]Изменено путей:[/green] {len(changed)}")
+        for r in changed:
+            # префиксы: '~' — восстановлено, '-' — удалено
+            console.print(f"  {r}")
+    except Exception as e:
+        console.print(f"[red]Ошибка отката:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command("backups")
+def backups_cmd(
+    path: Path = typer.Argument(Path("."), help="Путь к проекту"),
+):
+    """Список бэкапов проекта."""
+    project_root = path.resolve()
+    backups = list_backups(project_root)
+
+    if not backups:
+        console.print("[yellow]Бэкапов нет.[/yellow]")
+        raise typer.Exit(0)
+
+    table = Table(title=f"Бэкапы — {project_root.name}")
+    table.add_column("Имя", style="cyan")
+    table.add_column("Файлов", justify="right")
+    table.add_column("Операций", justify="right")
+    table.add_column("Путь", style="dim")
+
+    for b in backups:
+        table.add_row(
+            b["name"],
+            str(b["files"]),
+            str(b.get("operations", 0)),
+            str(b["dir"]),
+        )
     console.print(table)
 
 
