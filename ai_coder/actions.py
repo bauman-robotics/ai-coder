@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .apply import WritePlan, build_plan
 from .config import AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
@@ -30,6 +31,7 @@ class ActionResult:
     peak_window: str | None
     started_at: datetime
     finished_at: datetime
+    write_plan: WritePlan | None = None
 
 
 def run_action(
@@ -53,14 +55,14 @@ def run_action(
 
     model = model or cfg.api.model
 
-    # 1. сканируем проект
+    # 1. скан проекта
     scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
 
-    # 2. рендерим промпт
+    # 2. рендер промпта
     prompt_entry = prompts_cfg.get(action.prompt)
     system, user = render_prompt(prompt_entry, depth=depth, scan=scan)
 
-    # 3. определяем peak/off-peak и курсы — ДО запроса, чтобы зафиксировать время
+    # 3. peak/курсы — фиксируем до запроса
     started_at = datetime.now(ZoneInfo("UTC"))
     is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
 
@@ -69,11 +71,17 @@ def run_action(
 
     # 4. запрос к LLM
     client = LLMClient(cfg.api)
-    llm_resp = client.chat(system=system, user=user, model=model)
+    json_mode = action.mode == "write"
+    llm_resp = client.chat(system=system, user=user, model=model, json_mode=json_mode)
 
     finished_at = datetime.now(ZoneInfo("UTC"))
 
-    # 5. стоимость
+    # 5. разбор ответа для write-действий
+    write_plan: WritePlan | None = None
+    if action.mode == "write":
+        write_plan = build_plan(llm_resp.content, project_root, cfg)
+
+    # 6. стоимость
     cost = calculate_cost(
         pricing=cfg.api.pricing_for(model),
         is_peak=is_peak,
@@ -85,7 +93,7 @@ def run_action(
         usd_to_rub=usd_to_rub,
     )
 
-    # 6. учёт
+    # 7. учёт
     output_root = project_root / cfg.output.dir
     append_usage(
         project_root=project_root,
@@ -117,4 +125,5 @@ def run_action(
         peak_window=peak_window,
         started_at=started_at,
         finished_at=finished_at,
+        write_plan=write_plan,
     )

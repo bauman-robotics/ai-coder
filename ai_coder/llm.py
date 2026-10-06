@@ -36,6 +36,7 @@ class LLMClient:
         system: str,
         user: str,
         model: str | None = None,
+        json_mode: bool = False,
     ) -> LLMResponse:
         model = model or self.cfg.model
         started = time.monotonic()
@@ -43,7 +44,7 @@ class LLMClient:
         last_err: Exception | None = None
         for attempt in range(1, self.cfg.retries + 1):
             try:
-                resp = self._client.chat.completions.create(
+                kwargs = dict(
                     model=model,
                     messages=[
                         {"role": "system", "content": system},
@@ -52,6 +53,10 @@ class LLMClient:
                     temperature=self.cfg.temperature,
                     max_tokens=self.cfg.max_output_tokens,
                 )
+                if json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
+
+                resp = self._client.chat.completions.create(**kwargs)
                 return self._build_response(resp, model, started)
             except (RateLimitError, APITimeoutError, APIError) as e:
                 last_err = e

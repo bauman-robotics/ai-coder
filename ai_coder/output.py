@@ -25,10 +25,10 @@ def _resolve_output_path(
     filename = filename_pattern.format(action=action, timestamp=timestamp)
     return base / filename
 
-
 def render_report(result: ActionResult) -> str:
     """
     Формирует MD-отчёт с метаданными, телом ответа и приложениями.
+    Для write-действий дополнительно выводит план изменений и diff.
     """
     scan = result.scan
     llm = result.llm
@@ -77,13 +77,20 @@ def render_report(result: ActionResult) -> str:
 {savings_note}
 
 ---
+"""
 
+    if result.write_plan is not None:
+        report += _render_write_section(result.write_plan)
+    else:
+        report += f"""
 ## Ответ модели
 
 {llm.content}
 
 ---
+"""
 
+    report += f"""
 ## Приложение: файлы в контексте
 
 ~~~
@@ -110,6 +117,65 @@ def render_report(result: ActionResult) -> str:
 
     return report
 
+
+def _render_write_section(plan) -> str:
+    """
+    Секция отчёта для write-действий.
+    plan — WritePlan из ai_coder.apply.
+    """
+    parts: list[str] = []
+
+    parts.append("\n## ⚠️ Предложение изменений (НЕ применено)\n")
+    parts.append(
+        "Этот отчёт содержит **предложение** правок. "
+        "Никакие файлы не изменены. Применение — отдельной командой (в следующих версиях).\n"
+    )
+
+    # --- объяснение ---
+    if plan.explanation:
+        parts.append("\n### Что и зачем\n")
+        parts.append(plan.explanation + "\n")
+
+    # --- сводка операций ---
+    parts.append(f"\n### Операции ({len(plan.operations)})\n")
+    if plan.operations:
+        parts.append("\n| # | Тип | Путь |\n|---:|---|---|\n")
+        for i, op in enumerate(plan.operations, 1):
+            parts.append(f"| {i} | `{op.type}` | `{op.path}` |\n")
+    else:
+        parts.append("\n_Операций нет._\n")
+
+    # --- проблемы валидации ---
+    if plan.parse_error:
+        parts.append("\n### ❌ Ошибка парсинга JSON\n")
+        parts.append(f"\n```\n{plan.parse_error}\n```\n")
+    if plan.problems:
+        parts.append("\n### ❌ Проблемы валидации\n")
+        for p in plan.problems:
+            parts.append(f"- {p}\n")
+
+    # --- diff ---
+    if plan.diff:
+        parts.append("\n### Diff\n")
+        parts.append("\n```diff\n")
+        parts.append(plan.diff)
+        if not plan.diff.endswith("\n"):
+            parts.append("\n")
+        parts.append("```\n")
+
+    # --- сырой ответ модели (для аудита) ---
+    if plan.raw_json:
+        parts.append("\n<details><summary>Сырой ответ модели</summary>\n\n```json\n")
+        raw = plan.raw_json
+        if len(raw) > 50000:
+            raw = raw[:50000] + f"\n... [обрезано, всего {len(plan.raw_json)} символов]"
+        parts.append(raw)
+        if not raw.endswith("\n"):
+            parts.append("\n")
+        parts.append("```\n\n</details>\n")
+
+    parts.append("\n---\n")
+    return "".join(parts)
 
 def save_report(
     result: ActionResult,

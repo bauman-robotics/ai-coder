@@ -85,6 +85,23 @@ scanning:
   max_total_tokens: 60000
   include_extensions: []            # пусто = все текстовые
 
+write:
+  max_operations: 20
+  blacklist_paths:
+    - ".git/**"
+    - ".ai-out/**"
+    - ".venv/**"
+    - "venv/**"
+    - "node_modules/**"
+    - "*.env"
+    - ".env*"
+    - "*.key"
+    - "*.pem"
+  blacklist_files:
+    - "pyproject.toml"
+    - "config/config.yaml"
+    - "config/prompts.yaml"
+
 output:
   dir: .ai-out
   per_project_subdir: true
@@ -115,19 +132,18 @@ actions:
     prompt: suggest_improvements
     mode: read
 
-  # --- v2: возвращают текст с предложениями, без применения ---
   write_readme:
-    description: "Сгенерировать README.md"
-    prompt: write_readme
+    description: "Сгенерировать README.md (предложение)"
+    prompt: write_readme_json
     mode: write
-    enabled: false
+    enabled: true
   add_docstrings:
-    description: "Дописать комментарии/докстринги к функциям"
-    prompt: add_docstrings
+    description: "Дописать комментарии/докстринги (предложение)"
+    prompt: add_docstrings_json
     mode: write
-    enabled: false
+    enabled: true
   refactor:
-    description: "Рефакторинг (предложения в виде diff)"
-    prompt: refactor
+    description: "Рефакторинг (предложение)"
+    prompt: refactor_json
     mode: write
-    enabled: false
+    enabled: true

@@ -124,6 +124,14 @@ class UsageConfig(BaseModel):
     per_project: bool = True
 
 
+# ---------- write (ДО AppConfig!) ----------
+
+class WriteConfig(BaseModel):
+    max_operations: int = 20
+    blacklist_paths: list[str] = Field(default_factory=list)
+    blacklist_files: list[str] = Field(default_factory=list)
+
+
 # ---------- actions ----------
 
 ActionMode = Literal["read", "write"]
@@ -144,6 +152,7 @@ class AppConfig(BaseModel):
     scanning: ScanningConfig
     output: OutputConfig
     usage: UsageConfig
+    write: WriteConfig
     actions: dict[str, ActionConfig]
 
     def enabled_actions(self) -> dict[str, ActionConfig]:
@@ -185,9 +194,6 @@ def load_config(path: str | Path) -> AppConfig:
 
 def load_prompts(path: str | Path) -> PromptsConfig:
     raw = _read_yaml(Path(path))
-    # поддерживаем два формата:
-    # 1) { greet: {system, user}, ... }           — плоский
-    # 2) { prompts: { greet: {...}, ... } }       — обёрнутый
     if "prompts" in raw and isinstance(raw["prompts"], dict):
         payload = raw
     else:
