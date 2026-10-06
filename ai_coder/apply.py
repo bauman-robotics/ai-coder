@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import difflib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -129,6 +128,8 @@ def _path_is_blacklisted(rel_path: str, cfg) -> bool:
 def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
     """
     Дополняет plan.problems найденными проблемами.
+    Разрешает несколько операций на один путь (например, несколько
+    edit_file в одном файле), но требует уникальный old для каждого.
     """
     root = project_root.resolve()
 
@@ -137,7 +138,10 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
             f"Слишком много операций: {len(plan.operations)} > {cfg.write.max_operations}"
         )
 
-    seen_paths: set[str] = set()
+    # для каждого файла — накапливаем old-фрагменты, чтобы проверить
+    # уникальность внутри самого плана и отсутствие вложенности
+    edits_by_path: dict[str, list[str]] = {}
+    created_paths: set[str] = set()
 
     for i, op in enumerate(plan.operations):
         tag = f"operations[{i}] ({op.path})"
@@ -148,12 +152,6 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
             continue
 
         rel = Path(op.path).as_posix()
-
-        # --- дубликаты ---
-        if rel in seen_paths:
-            plan.problems.append(f"{tag}: путь повторяется в плане")
-            continue
-        seen_paths.add(rel)
 
         # --- blacklist ---
         if _path_is_blacklisted(rel, cfg):
@@ -170,13 +168,24 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
             continue
 
         if op.type == "create_file":
+            if rel in created_paths:
+                plan.problems.append(f"{tag}: файл уже создаётся другой операцией")
+                continue
+            created_paths.add(rel)
             if abs_path.exists():
                 plan.problems.append(f"{tag}: файл уже существует (create_file)")
                 continue
             if op.content is None or op.content == "":
                 plan.problems.append(f"{tag}: пустое содержимое")
                 continue
+            if rel in edits_by_path:
+                plan.problems.append(f"{tag}: файл одновременно создаётся и редактируется")
+                continue
+
         elif op.type == "edit_file":
+            if rel in created_paths:
+                plan.problems.append(f"{tag}: файл одновременно создаётся и редактируется")
+                continue
             if not abs_path.exists():
                 plan.problems.append(f"{tag}: файл не найден (edit_file)")
                 continue
@@ -189,6 +198,9 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
             if op.old is None or op.old == "":
                 plan.problems.append(f"{tag}: пустой old")
                 continue
+            if op.old == op.new:
+                plan.problems.append(f"{tag}: old и new идентичны")
+                continue
 
             count = text.count(op.old)
             if count == 0:
@@ -200,9 +212,15 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
                 )
                 continue
 
-            if op.old == op.new:
-                plan.problems.append(f"{tag}: old и new идентичны")
-
+            # проверяем пересечение old-фрагментов в рамках одного файла
+            for j, existing in enumerate(edits_by_path.get(rel, [])):
+                if op.old in existing or existing in op.old:
+                    plan.problems.append(
+                        f"{tag}: фрагмент old пересекается с другой правкой этого файла"
+                    )
+                    break
+            else:
+                edits_by_path.setdefault(rel, []).append(op.old)
 
 # ---------- рендер diff ----------
 def render_diff(plan: WritePlan, project_root: Path) -> str:
