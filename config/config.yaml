@@ -108,6 +108,13 @@ fix:
   max_attempts: 3
   prompt: fix_errors_json
 
+agent:
+  max_steps: 10
+  max_minutes: 30
+  verify_commands: []              # напр. ["pytest -q", "ruff check ."]
+  stop_on_verify_failure: true
+  include_read_steps: false
+  
 output:
   dir: .ai-out
   per_project_subdir: true

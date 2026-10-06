@@ -13,6 +13,7 @@ from .apply import apply_plan, check_python_files, list_backups, rollback as do_
 from .config import load_config, load_prompts
 from .output import save_report
 from .actions import run_action, run_fix_action
+from .agent import run_agent
 
 app = typer.Typer(
     name="ai-coder",
@@ -505,6 +506,72 @@ def _run_dry(
         "Реальный cache hit может снизить стоимость в разы.[/dim]"
     )
 
+@app.command("agent")
+def agent_cmd(
+    goal: str = typer.Argument(..., help="Цель агента (что нужно сделать)"),
+    path: Path = typer.Argument(Path("."), help="Путь к проекту"),
+    config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
+    prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
+    depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
+    exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
+    apply: bool = typer.Option(False, "--apply", help="Применять шаги (по умолчанию — только план и предложения)"),
+    verify: bool = typer.Option(True, "--verify/--no-verify", help="Проверять py_compile после каждого шага"),
+    max_steps: Optional[int] = typer.Option(None, "--max-steps", help="Максимум шагов (по умолчанию из конфига)"),
+    max_minutes: Optional[int] = typer.Option(None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"),
+    max_fix_attempts: int = typer.Option(0, "--max-fix-attempts", help="Попыток fix на шаг (0 = без fix)"),
+    journal: bool = typer.Option(True, "--journal/--no-journal", help="Сохранять журнал агента в .ai-out/<project>/agent-<ts>/"),
+):
+    """Запустить агента: LLM строит план шагов и выполняет их по цели."""
+    cfg, pr_cfg = _load(config, prompts)
+
+    project_root = path.resolve()
+    if not project_root.is_dir():
+        console.print(f"[red]Не директория:[/red] {project_root}")
+        raise typer.Exit(1)
+
+    console.print(Panel.fit(
+        f"[bold]Цель:[/bold] {goal}\n"
+        f"[bold]Проект:[/bold] {project_root}\n"
+        f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
+        f"[bold]Глубина:[/bold] {depth}\n"
+        f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}\n"
+        f"[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
+        title="ai-coder agent",
+    ))
+
+    try:
+        with console.status("[cyan]Планирую и выполняю..."):
+            result = run_agent(
+                goal=goal,
+                project_root=project_root,
+                cfg=cfg,
+                prompts_cfg=pr_cfg,
+                model=model,
+                depth=depth,
+                extra_exclude=list(exclude) or None,
+                apply=apply,
+                verify=verify,
+                max_fix_attempts=max_fix_attempts,
+                max_steps=max_steps,
+                max_minutes=max_minutes,
+                journal=journal,
+            )
+    except Exception as e:
+        console.print(f"[red]Ошибка агента:[/red] {e}")
+        raise typer.Exit(1)
+
+    # --- шапка с планом ---
+    _print_agent_plan(result)
+
+    if result.plan.valid:
+        # --- шапка прогресса ---
+        for sr in result.steps:
+            _print_agent_step_summary(sr)
+
+    # --- итог ---
+    _print_agent_summary(result)
+
 @app.command("rollback")
 def rollback_cmd(
     backup_dir: Path = typer.Argument(..., help="Папка бэкапа (из .ai-out/<project>/backup-*)"),
@@ -773,6 +840,90 @@ def _print_group_table(title: str, data: dict[str, dict]) -> None:
     for key, slot in data.items():
         t.add_row(str(key), str(slot["requests"]), str(slot["total_tokens"]), f"{slot['cost_rub']:.4f}")
     console.print(t)
+
+def _print_agent_plan(result) -> None:
+    console.print()
+    console.print(Panel.fit(
+        f"[bold]План:[/bold] {len(result.plan.steps)} шагов\n"
+        f"[bold]Стоимость планировщика:[/bold] {result.planner_cost_rub:.6f} RUB",
+        title="План агента",
+    ))
+    if result.plan.explanation:
+        console.print(f"[dim]{result.plan.explanation}[/dim]\n")
+
+    if not result.plan.steps:
+        console.print("[yellow]План пуст (цель, возможно, уже достигнута или модель не смогла разбить задачу).[/yellow]")
+        if result.plan.parse_error:
+            console.print(f"[red]Ошибка парсинга плана:[/red] {result.plan.parse_error}")
+        return
+
+    table = Table(title="Шаги", show_lines=False)
+    table.add_column("#", justify="right")
+    table.add_column("Название", style="cyan")
+    table.add_column("Файлы", style="dim")
+    for s in result.plan.steps:
+        files = ", ".join(s.target_files[:3])
+        if len(s.target_files) > 3:
+            files += f" … (+{len(s.target_files) - 3})"
+        table.add_row(str(s.n), s.title, files or "—")
+    console.print(table)
+
+
+def _print_agent_step_summary(sr) -> None:
+    s = sr.step
+    status_parts: list[str] = []
+    if sr.applied:
+        status_parts.append("[green]применено[/green]")
+    if sr.errors:
+        status_parts.append("[red]ошибки[/red]")
+    if sr.verify_errors:
+        status_parts.append("[red]verify failed[/red]")
+    if sr.rolled_back:
+        status_parts.append("[yellow]откат[/yellow]")
+
+    status = " / ".join(status_parts) or "[dim]только предложение[/dim]"
+
+    console.print(f"\n[bold]Шаг {s.n}:[/bold] {s.title} — {status}")
+    console.print(f"  [dim]Токенов: {sr.llm.total_tokens}, стоимость: {sr.cost_rub:.6f} RUB[/dim]")
+    if sr.errors:
+        for e in sr.errors:
+            console.print(f"  [red]✗[/red] {e}")
+    if sr.verify_errors:
+        for e in sr.verify_errors[:3]:
+            console.print(f"  [red]✗[/red] {e}")
+        if len(sr.verify_errors) > 3:
+            console.print(f"  [dim]... ещё {len(sr.verify_errors) - 3}[/dim]")
+    if sr.applied_count:
+        console.print(f"  [green]операций применено:[/green] {sr.applied_count}")
+
+
+def _print_agent_summary(result) -> None:
+    duration = (result.finished_at - result.started_at).total_seconds()
+    console.print()
+    table = Table(title="Итог", show_header=False, box=None)
+    table.add_column(style="bold")
+    table.add_column()
+    table.add_row("Длительность:", f"{duration:.1f} c")
+    table.add_row("Причина остановки:", result.stopped_reason)
+    table.add_row("Выполнено шагов:", f"{len(result.steps)} из {len(result.plan.steps)}")
+    table.add_row("Стоимость планировщика:", f"{result.planner_cost_rub:.6f} RUB")
+    table.add_row("Стоимость шагов:", f"{sum(s.cost_rub for s in result.steps):.6f} RUB")
+    table.add_row("**Всего:**", f"{result.total_cost_rub:.6f} RUB")
+    if result.journal_dir:
+        try:
+            rel = result.journal_dir.relative_to(Path.cwd())
+            table.add_row("Журнал:", str(rel))
+        except ValueError:
+            table.add_row("Журнал:", str(result.journal_dir))
+    console.print(table)
+
+    if not result.steps or any(not s.applied for s in result.steps):
+        if not result.plan.valid:
+            pass
+        elif not any(s.applied for s in result.steps) and result.plan.steps:
+            console.print(
+                "\n[dim]Совет: запустите с `--apply`, чтобы применить предложенные изменения.[/dim]"
+            )
 
 if __name__ == "__main__":
     app()

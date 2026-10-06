@@ -152,19 +152,25 @@ class ActionConfig(BaseModel):
     max_output_tokens: int | None = None
     temperature: float | None = None
 
+class AgentConfig(BaseModel):
+    max_steps: int = 10
+    max_minutes: int = 30
+    verify_commands: list[str] = Field(default_factory=list)
+    stop_on_verify_failure: bool = True
+    include_read_steps: bool = False   # если False — шаги типа read пропускаются
 
 # ---------- root ----------
 
 class AppConfig(BaseModel):
     """Корневой конфиг приложения, объединяющий все секции config.yaml."""
-
     api: ApiConfig
     currency: CurrencyConfig
     scanning: ScanningConfig
     output: OutputConfig
     usage: UsageConfig
     write: WriteConfig
-    fix: FixConfig  
+    fix: FixConfig
+    agent: AgentConfig           # ← NEW
     actions: dict[str, ActionConfig]
 
     def enabled_actions(self) -> dict[str, ActionConfig]:

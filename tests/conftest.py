@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ai_coder.config import (
+    AgentConfig, 
     AppConfig,
     ApiConfig,
     CurrencyConfig,
@@ -93,6 +94,13 @@ def minimal_cfg(minimal_pricing) -> AppConfig:
             backup_dir_name="backup",
         ),
         fix=FixConfig(max_attempts=3, prompt="fix_errors_json"),
+        agent=AgentConfig(
+            max_steps=10,
+            max_minutes=30,
+            verify_commands=[],
+            stop_on_verify_failure=True,
+            include_read_steps=False,
+        ),
         actions={},
     )
 
