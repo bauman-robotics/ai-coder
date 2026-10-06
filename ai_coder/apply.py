@@ -123,7 +123,7 @@ def _path_is_blacklisted(rel_path: str, cfg) -> bool:
     patterns = list(cfg.write.blacklist_paths)
     if not patterns:
         return False
-    spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    spec = pathspec.PathSpec.from_lines("gitignore", patterns)
     if spec.match_file(rel_path) or spec.match_file(rel_path + "/"):
         return True
     if rel_path in cfg.write.blacklist_files:

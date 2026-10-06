@@ -40,7 +40,7 @@ def _load_specs_recursive(root: Path) -> list[tuple[Path, pathspec.PathSpec]]:
             lines = gi.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
-        specs.append((gi.parent, pathspec.PathSpec.from_lines("gitwildmatch", lines)))
+        specs.append((gi.parent, pathspec.PathSpec.from_lines("gitignore", lines)))
     return specs
 
 
@@ -66,7 +66,7 @@ def _is_gitignored(rel_path: str, specs: list[tuple[Path, pathspec.PathSpec]], r
 def _match_any(path_posix: str, patterns: list[str]) -> bool:
     if not patterns:
         return False
-    spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    spec = pathspec.PathSpec.from_lines("gitignore", patterns)
     # пробуем и как файл, и как директорию
     return spec.match_file(path_posix) or spec.match_file(path_posix + "/")
 
