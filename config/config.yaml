@@ -109,6 +109,8 @@ output:
   per_project_subdir: true
   filename_pattern: "{action}-{timestamp}.md"
   save_raw_response: true
+  use_cache: true
+  cache_dir_name: cache
 
 usage:
   jsonl: .ai-out/usage.jsonl

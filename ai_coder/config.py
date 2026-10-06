@@ -116,7 +116,8 @@ class OutputConfig(BaseModel):
     per_project_subdir: bool = True
     filename_pattern: str = "{action}-{timestamp}.md"
     save_raw_response: bool = True
-
+    use_cache: bool = True           # по умолчанию кэш включён
+    cache_dir_name: str = "cache"
 
 class UsageConfig(BaseModel):
     jsonl: str = ".ai-out/usage.jsonl"

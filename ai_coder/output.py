@@ -50,6 +50,11 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
             f"{llm.prompt_cache_hit_tokens} hit / {llm.prompt_cache_miss_tokens} miss"
         )
 
+    # --- блок про кэш отчётов ---
+    cache_note = ""
+    if getattr(result, "from_cache", False):
+        cache_note = "\n- **Источник:** результат из кэша (API не вызывался, стоимость 0)\n"
+
     # --- блок про применение (для write-действий) ---
     apply_note = ""
     if applied_info is not None:
@@ -83,7 +88,7 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
 - **Начало (МСК):** {started_msk.isoformat(timespec="seconds")}
 - **Длительность:** {duration_s:.1f} c
 - **finish_reason:** {llm.finish_reason}
-{apply_note}
+{cache_note}{apply_note}
 ## Расход
 
 | Показатель | Токены |

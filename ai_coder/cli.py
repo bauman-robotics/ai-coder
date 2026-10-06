@@ -69,6 +69,8 @@ def run(
     yes: bool = typer.Option(False, "--yes", "-y", help="Не спрашивать подтверждения при --apply"),
     no_verify: bool = typer.Option(False, "--no-verify", help="Не запускать py_compile после применения"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Не использовать кэш отчётов"),
+    refresh: bool = typer.Option(False, "--refresh", help="Игнорировать кэш и заново спросить API"),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -83,7 +85,8 @@ def run(
         f"[bold]Проект:[/bold] {project_root}\n"
         f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
         f"[bold]Глубина:[/bold] {depth}"
-        + ("\n[bold]Режим:[/bold] dry-run" if dry_run else ""),
+        + ("\n[bold]Режим:[/bold] dry-run" if dry_run else "")
+        + ("\n[bold]Кэш:[/bold] выключен" if no_cache else ("\n[bold]Кэш:[/bold] refresh" if refresh else "")),
         title="ai-coder",
     ))
 
@@ -110,6 +113,8 @@ def run(
                 model=model,
                 depth=depth,
                 extra_exclude=list(exclude) or None,
+                use_cache=not no_cache,
+                refresh=refresh,
             )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")
@@ -177,6 +182,9 @@ def run(
     # ---------- сводка ----------
     _print_result_summary(result, report_path)
 
+    if getattr(result, "from_cache", False):
+        console.print("[yellow]ℹ Результат из кэша — API не вызывался, стоимость 0.[/yellow]")
+
 def _print_plan_summary(plan) -> None:
     console.print()
     console.print(Panel.fit(
@@ -199,22 +207,30 @@ def _print_plan_summary(plan) -> None:
 
 def _print_result_summary(result, report_path: Path) -> None:
     llm = result.llm
+    from_cache = getattr(result, "from_cache", False)
+
     table = Table(title="Результат", show_header=False, box=None)
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Файлов:", str(len(result.scan.files)))
-    table.add_row(
-        "Токенов prompt:",
-        f"{llm.prompt_tokens} (hit: {llm.prompt_cache_hit_tokens}, miss: {llm.prompt_cache_miss_tokens})",
-    )
-    table.add_row("Токенов completion:", str(llm.completion_tokens))
-    table.add_row("Всего токенов:", str(llm.total_tokens))
-    table.add_row("Тариф:", "peak" if result.is_peak else "off-peak")
-    table.add_row(
-        "Стоимость:",
-        f"{result.cost_cny:.6f} CNY / {result.cost_rub:.6f} RUB / {result.cost_usd:.6f} USD",
-    )
-    table.add_row("Длительность:", f"{llm.duration_ms / 1000:.1f} c")
+
+    if from_cache:
+        table.add_row("Источник:", "[yellow]кэш[/yellow] (API не вызывался)")
+        table.add_row("Токенов (из кэша):", f"{llm.total_tokens}")
+        table.add_row("Стоимость:", "0.000000 CNY / 0.000000 RUB / 0.000000 USD")
+    else:
+        table.add_row(
+            "Токенов prompt:",
+            f"{llm.prompt_tokens} (hit: {llm.prompt_cache_hit_tokens}, miss: {llm.prompt_cache_miss_tokens})",
+        )
+        table.add_row("Токенов completion:", str(llm.completion_tokens))
+        table.add_row("Всего токенов:", str(llm.total_tokens))
+        table.add_row("Тариф:", "peak" if result.is_peak else "off-peak")
+        table.add_row(
+            "Стоимость:",
+            f"{result.cost_cny:.6f} CNY / {result.cost_rub:.6f} RUB / {result.cost_usd:.6f} USD",
+        )
+        table.add_row("Длительность:", f"{llm.duration_ms / 1000:.1f} c")
 
     try:
         rel = report_path.relative_to(Path.cwd())
