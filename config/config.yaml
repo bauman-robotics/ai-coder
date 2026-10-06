@@ -88,7 +88,7 @@ scanning:
 write:
   max_operations: 20
   verify_after_apply: true
-  backup_dir_name: backup  
+  backup_dir_name: backup
   blacklist_paths:
     - ".git/**"
     - ".ai-out/**"
@@ -114,7 +114,7 @@ agent:
   verify_commands: []              # напр. ["pytest -q", "ruff check ."]
   stop_on_verify_failure: true
   include_read_steps: false
-  
+
 output:
   dir: .ai-out
   per_project_subdir: true
@@ -146,6 +146,8 @@ actions:
     description: "Предложить варианты доработки"
     prompt: suggest_improvements
     mode: read
+    max_output_tokens: 16000
+    temperature: 0.4
 
   write_readme:
     description: "Сгенерировать README.md (предложение)"
