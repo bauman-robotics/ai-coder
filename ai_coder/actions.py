@@ -114,7 +114,14 @@ def run_action(
 
     client = LLMClient(cfg.api)
     json_mode = action.mode == "write"
-    llm_resp = client.chat(system=system, user=user, model=model, json_mode=json_mode)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=json_mode,
+        max_tokens=action.max_output_tokens,
+        temperature=action.temperature,
+    )
     finished_at = datetime.now(ZoneInfo("UTC"))
 
     write_plan: WritePlan | None = None

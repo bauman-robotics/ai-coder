@@ -149,6 +149,8 @@ class ActionConfig(BaseModel):
     prompt: str
     mode: ActionMode = "read"
     enabled: bool = True
+    max_output_tokens: int | None = None
+    temperature: float | None = None
 
 
 # ---------- root ----------

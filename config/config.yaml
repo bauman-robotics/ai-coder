@@ -155,3 +155,5 @@ actions:
     prompt: refactor_json
     mode: write
     enabled: true
+    max_output_tokens: 12000
+    temperature: 0.2

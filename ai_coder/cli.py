@@ -9,7 +9,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .actions import run_action
 from .apply import apply_plan, check_python_files, list_backups, rollback as do_rollback
 from .config import load_config, load_prompts
 from .output import save_report
@@ -363,6 +362,12 @@ def run(
 
     # ---------- сводка ----------
     _print_result_summary(result, report_path)
+
+    if result.llm.finish_reason == "length":
+        console.print(
+            "[yellow]⚠️ Ответ модели обрезан по лимиту max_output_tokens. "
+            "Проверьте отчёт — результат может быть неполным.[/yellow]"
+        )
 
     if getattr(result, "from_cache", False):
         console.print("[yellow]ℹ Результат из кэша — API не вызывался, стоимость 0.[/yellow]")

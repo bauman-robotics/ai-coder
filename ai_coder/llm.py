@@ -37,6 +37,8 @@ class LLMClient:
         user: str,
         model: str | None = None,
         json_mode: bool = False,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         model = model or self.cfg.model
         started = time.monotonic()
@@ -50,8 +52,8 @@ class LLMClient:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    temperature=self.cfg.temperature,
-                    max_tokens=self.cfg.max_output_tokens,
+                    temperature=temperature if temperature is not None else self.cfg.temperature,
+                    max_tokens=max_tokens if max_tokens is not None else self.cfg.max_output_tokens,
                 )
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}

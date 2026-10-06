@@ -82,6 +82,15 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
         if applied_info.get("fix_cost_rub", 0) > 0:
             apply_note += f"- **Стоимость fix-итераций:** {applied_info['fix_cost_rub']:.6f} RUB\n"
 
+    # --- предупреждение об обрезке ответа ---
+    length_warning = ""
+    if llm.finish_reason == "length":
+        length_warning = (
+            "\n> ⚠️ **Ответ модели обрезан** по лимиту `max_output_tokens`. "
+            "Результат может быть неполным. Увеличьте лимит в конфиге "
+            "(поле `max_output_tokens` у действия) или упростите задачу.\n"
+        )
+
     report = f"""# {result.action} — {scan.root.name}
 
 - **Модель:** {result.model}
@@ -110,6 +119,7 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
 | RUB | {_fmt_float(result.cost_rub)} |
 | USD | {_fmt_float(result.cost_usd)} |
 {savings_note}
+{length_warning}
 
 ---
 """
