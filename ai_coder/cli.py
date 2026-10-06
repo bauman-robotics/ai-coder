@@ -56,7 +56,6 @@ def list_actions(
 
     console.print(table)
 
-
 @app.command("run")
 def run(
     action: str = typer.Argument(..., help="Имя действия из config.yaml"),
@@ -69,6 +68,7 @@ def run(
     apply: bool = typer.Option(False, "--apply", help="Применить план изменений (для write-действий)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Не спрашивать подтверждения при --apply"),
     no_verify: bool = typer.Option(False, "--no-verify", help="Не запускать py_compile после применения"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -82,9 +82,23 @@ def run(
         f"[bold]Действие:[/bold] {action}\n"
         f"[bold]Проект:[/bold] {project_root}\n"
         f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
-        f"[bold]Глубина:[/bold] {depth}",
+        f"[bold]Глубина:[/bold] {depth}"
+        + ("\n[bold]Режим:[/bold] dry-run" if dry_run else ""),
         title="ai-coder",
     ))
+
+    # ---------- dry-run ----------
+    if dry_run:
+        _run_dry(
+            action,
+            project_root,
+            cfg,
+            pr_cfg,
+            model=model,
+            depth=depth,
+            extra_exclude=list(exclude) or None,
+        )
+        return
 
     try:
         with console.status("[cyan]Сканирую проект и обращаюсь к DeepSeek..."):
@@ -113,10 +127,8 @@ def run(
             for p in plan.problems:
                 console.print(f"  - {p}")
         else:
-            # показываем сводку
             _print_plan_summary(plan)
 
-            # подтверждение
             if not yes:
                 proceed = typer.confirm("Применить эти изменения?", default=False)
                 if not proceed:
@@ -137,7 +149,6 @@ def run(
                 else:
                     console.print(f"[green]Применено операций:[/green] {len(applied)}")
 
-                    # верификация
                     verify_errors: list[str] = []
                     if cfg.write.verify_after_apply and not no_verify:
                         verify_errors = check_python_files(applied, project_root)
@@ -147,7 +158,7 @@ def run(
                         for e in verify_errors:
                             console.print(f"  - {e}")
                         restored = do_rollback(backup_dir, project_root)
-                        console.print(f"[yellow]Откат выполнен:[/yellow] восстановлено {len(restored)} файлов")
+                        console.print(f"[yellow]Откат выполнен:[/yellow] изменено путей {len(restored)}")
                         applied_info = {"applied": 0, "errors": verify_errors, "rolled_back": True, "backup_dir": backup_dir}
                     else:
                         console.print("[green]Проверка пройдена.[/green]")
@@ -165,7 +176,6 @@ def run(
 
     # ---------- сводка ----------
     _print_result_summary(result, report_path)
-
 
 def _print_plan_summary(plan) -> None:
     console.print()
@@ -214,6 +224,83 @@ def _print_result_summary(result, report_path: Path) -> None:
 
     console.print(table)
 
+def _run_dry(
+    action: str,
+    project_root: Path,
+    cfg,
+    pr_cfg,
+    *,
+    model: str | None,
+    depth: str,
+    extra_exclude: list[str] | None,
+) -> None:
+    """Оценка без запроса к API."""
+    from .scanner import scan_project
+    from .prompts import render_prompt
+    from .pricing import is_peak_now, get_rate, calculate_cost
+
+    action_cfg = cfg.actions.get(action)
+    if action_cfg is None:
+        console.print(f"[red]Действие '{action}' не найдено в конфиге[/red]")
+        raise typer.Exit(1)
+    if not action_cfg.enabled:
+        console.print(f"[red]Действие '{action}' отключено[/red]")
+        raise typer.Exit(1)
+
+    model = model or cfg.api.model
+
+    with console.status("[cyan]Сканирую проект..."):
+        scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+
+    try:
+        prompt_entry = pr_cfg.get(action_cfg.prompt)
+    except KeyError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    system, user = render_prompt(prompt_entry, depth=depth, scan=scan)
+    prompt_text = system + "\n" + user
+
+    est_prompt_tokens = max(1, len(prompt_text) // 3)
+    est_completion_tokens = cfg.api.max_output_tokens // 2
+
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=0,
+        prompt_miss_tokens=est_prompt_tokens,
+        completion_tokens=est_completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+
+    table = Table(title="Оценка (dry-run)", show_header=False, box=None)
+    table.add_column(style="bold")
+    table.add_column()
+    table.add_row("Файлов в контексте:", str(len(scan.files)))
+    table.add_row("Отсеяно:", str(len(scan.skipped)))
+    table.add_row("Обрезано по бюджету:", "да" if scan.truncated else "нет")
+    table.add_row("Оценка prompt-токенов:", f"~{est_prompt_tokens}")
+    table.add_row("Оценка completion:", f"~{est_completion_tokens}")
+    table.add_row("Тариф:", f"peak ({peak_window})" if is_peak else "off-peak")
+    table.add_row("Курс CNY/RUB:", f"{cny_to_rub.value:.4f} ({cny_to_rub.source})")
+    table.add_row("Курс USD/RUB:", f"{usd_to_rub.value:.4f} ({usd_to_rub.source})")
+    table.add_row(
+        "Оценка стоимости:",
+        f"{cost.cost_cny:.6f} CNY / {cost.cost_rub:.6f} RUB / {cost.cost_usd:.6f} USD",
+    )
+    console.print(table)
+
+    console.print(
+        "\n[dim]Оценка консервативная (весь prompt как miss, "
+        "completion ~ половина max_output_tokens). "
+        "Реальный cache hit может снизить стоимость в разы.[/dim]"
+    )
 
 @app.command("rollback")
 def rollback_cmd(

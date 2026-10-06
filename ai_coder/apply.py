@@ -390,13 +390,14 @@ def apply_plan(
             except OSError:
                 pass
         return [], [f"Ошибка применения, выполнен откат: {e}"]
+
 def rollback(backup_dir: Path, project_root: Path) -> list[str]:
     """
     Восстанавливает проект из backup_dir.
     Для create_file — удаляет файл.
     Для edit_file — восстанавливает из копии.
     Если манифеста нет (старый бэкап) — только восстанавливает копии.
-    Возвращает список изменённых путей (относительных).
+    Возвращает список изменённых путей (относительных, с префиксом ~ или -).
     """
     backup_dir = backup_dir.resolve()
     root = project_root.resolve()
@@ -410,15 +411,17 @@ def rollback(backup_dir: Path, project_root: Path) -> list[str]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         operations = manifest.get("operations", [])
 
+        done: set[str] = set()
         for op in operations:
             rel = Path(op.get("path", "")).as_posix()
-            if not rel:
+            if not rel or rel in done:
                 continue
+            done.add(rel)
+
             dst = root / rel
             op_type = op.get("type")
 
             if op_type == "create_file":
-                # удалить файл, если он есть
                 try:
                     dst.unlink()
                     restored.append(f"-{rel}")
@@ -427,7 +430,6 @@ def rollback(backup_dir: Path, project_root: Path) -> list[str]:
                 except OSError:
                     pass
             elif op_type == "edit_file":
-                # восстановить из копии
                 src = backup_dir / rel
                 if src.exists():
                     dst.parent.mkdir(parents=True, exist_ok=True)
