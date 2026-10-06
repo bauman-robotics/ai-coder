@@ -13,6 +13,7 @@ from .actions import run_action
 from .apply import apply_plan, check_python_files, list_backups, rollback as do_rollback
 from .config import load_config, load_prompts
 from .output import save_report
+from .actions import run_action, run_fix_action
 
 app = typer.Typer(
     name="ai-coder",
@@ -71,6 +72,8 @@ def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Не использовать кэш отчётов"),
     refresh: bool = typer.Option(False, "--refresh", help="Игнорировать кэш и заново спросить API"),
+    max_fix_attempts: Optional[int] = typer.Option(None, "--max-fix-attempts", help="Сколько раз пробовать авто-исправление (0 = выключено)"),
+    no_auto_fix: bool = typer.Option(False, "--no-auto-fix", help="Отключить авто-исправление ошибок"),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -141,16 +144,34 @@ def run(
                     apply = False
 
             if apply:
-                ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-                backup_dir = project_root / cfg.output.dir / project_root.name / f"{cfg.write.backup_dir_name}-{ts}"
+                ts_base = datetime.now().strftime("%Y%m%d-%H%M%S")
+                base_dir = project_root / cfg.output.dir / project_root.name
+                backup_base_name = f"{cfg.write.backup_dir_name}-{ts_base}"
 
-                console.print(f"[cyan]Бэкап →[/cyan] {backup_dir}")
-                applied, errors = apply_plan(plan, project_root, backup_dir)
+                # --- сколько раз пробовать fix ---
+                fix_attempts = 0 if no_auto_fix else (
+                    max_fix_attempts if max_fix_attempts is not None else cfg.fix.max_attempts
+                )
+                if no_verify:
+                    fix_attempts = 0
+
+                # --- бэкап №0 и первое применение ---
+                backup0 = base_dir / f"{backup_base_name}-attempt0"
+                console.print(f"[cyan]Бэкап →[/cyan] {backup0}")
+                applied, errors = apply_plan(plan, project_root, backup0)
 
                 if errors:
                     console.print("[red]Не удалось применить:[/red]")
                     for e in errors:
                         console.print(f"  - {e}")
+                    applied_info = {
+                        "applied": 0,
+                        "errors": errors,
+                        "rolled_back": False,
+                        "backup_dir": backup0,
+                        "attempts": 0,
+                        "fix_cost_rub": 0.0,
+                    }
                 else:
                     console.print(f"[green]Применено операций:[/green] {len(applied)}")
 
@@ -158,16 +179,96 @@ def run(
                     if cfg.write.verify_after_apply and not no_verify:
                         verify_errors = check_python_files(applied, project_root)
 
+                    # --- цикл авто-исправления ---
+                    current_plan = plan
+                    current_applied = applied
+                    iteration = 0
+                    total_fix_cost_rub = 0.0
+
+                    while verify_errors and iteration < fix_attempts:
+                        iteration += 1
+                        console.print()
+                        console.print(Panel.fit(
+                            f"[bold]Итерация[/bold] {iteration}/{fix_attempts}\n"
+                            f"Ошибок: {len(verify_errors)}\n"
+                            f"Отправляю модели на исправление...",
+                            title="Авто-исправление",
+                        ))
+
+                        try:
+                            fix_result = run_fix_action(
+                                parent_action=action,
+                                iteration=iteration,
+                                project_root=project_root,
+                                cfg=cfg,
+                                prompts_cfg=pr_cfg,
+                                errors=verify_errors,
+                                previous_plan=current_plan,
+                                model=model,
+                                depth=depth,
+                                extra_exclude=list(exclude) or None,
+                                use_cache=not no_cache,
+                            )
+                        except Exception as e:
+                            console.print(f"[red]Ошибка fix-итерации:[/red] {e}")
+                            break
+
+                        total_fix_cost_rub += fix_result.cost_rub
+
+                        if fix_result.from_cache:
+                            console.print("[yellow]ℹ fix-план из кэша[/yellow]")
+
+                        fix_plan = fix_result.write_plan
+                        if fix_plan is None or not fix_plan.valid:
+                            console.print("[red]Fix-план невалиден, прекращаю попытки.[/red]")
+                            if fix_plan is not None:
+                                for p in fix_plan.problems:
+                                    console.print(f"  - {p}")
+                            break
+
+                        backupN = base_dir / f"{backup_base_name}-attempt{iteration}"
+                        console.print(f"[cyan]Бэкап →[/cyan] {backupN}")
+                        fix_applied, fix_errors = apply_plan(fix_plan, project_root, backupN)
+
+                        if fix_errors:
+                            console.print("[red]Не удалось применить fix-план:[/red]")
+                            for e in fix_errors:
+                                console.print(f"  - {e}")
+                            break
+
+                        console.print(f"[green]Применено операций:[/green] {len(fix_applied)}")
+                        current_plan = fix_plan
+                        current_applied = fix_applied
+
+                        verify_errors = check_python_files(fix_applied, project_root)
+
+                    # --- итог ---
                     if verify_errors:
-                        console.print("[red]Проверка не пройдена — откат:[/red]")
-                        for e in verify_errors:
-                            console.print(f"  - {e}")
-                        restored = do_rollback(backup_dir, project_root)
-                        console.print(f"[yellow]Откат выполнен:[/yellow] изменено путей {len(restored)}")
-                        applied_info = {"applied": 0, "errors": verify_errors, "rolled_back": True, "backup_dir": backup_dir}
+                        console.print()
+                        console.print("[red]Не удалось исправить автоматически.[/red]")
+                        console.print(f"[yellow]Откат к[/yellow] {backup0}")
+                        restored = do_rollback(backup0, project_root)
+                        console.print(f"[yellow]Изменено путей:[/yellow] {len(restored)}")
+                        applied_info = {
+                            "applied": 0,
+                            "errors": verify_errors,
+                            "rolled_back": True,
+                            "backup_dir": backup0,
+                            "attempts": iteration,
+                            "fix_cost_rub": total_fix_cost_rub,
+                        }
                     else:
                         console.print("[green]Проверка пройдена.[/green]")
-                        applied_info = {"applied": len(applied), "errors": [], "rolled_back": False, "backup_dir": backup_dir}
+                        if iteration > 0:
+                            console.print(f"[dim]Авто-исправлений применено: {iteration}[/dim]")
+                        applied_info = {
+                            "applied": len(current_applied),
+                            "errors": [],
+                            "rolled_back": False,
+                            "backup_dir": backup0,
+                            "attempts": iteration,
+                            "fix_cost_rub": total_fix_cost_rub,
+                        }
 
     # ---------- сохраняем отчёт ----------
     report_path = save_report(

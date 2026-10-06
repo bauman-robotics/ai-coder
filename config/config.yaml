@@ -104,6 +104,10 @@ write:
     - "config/config.yaml"
     - "config/prompts.yaml"
 
+fix:
+  max_attempts: 3
+  prompt: fix_errors_json
+
 output:
   dir: .ai-out
   per_project_subdir: true

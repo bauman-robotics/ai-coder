@@ -134,6 +134,11 @@ class WriteConfig(BaseModel):
     verify_after_apply: bool = True
     backup_dir_name: str = "backup"
 
+
+class FixConfig(BaseModel):
+    max_attempts: int = 3
+    prompt: str = "fix_errors_json"
+
 # ---------- actions ----------
 
 ActionMode = Literal["read", "write"]
@@ -157,6 +162,7 @@ class AppConfig(BaseModel):
     output: OutputConfig
     usage: UsageConfig
     write: WriteConfig
+    fix: FixConfig  
     actions: dict[str, ActionConfig]
 
     def enabled_actions(self) -> dict[str, ActionConfig]:

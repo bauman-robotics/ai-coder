@@ -28,6 +28,8 @@ def append_usage(
     duration_ms: int,
     status: str,
     usage_cfg,
+    iteration: int = 0,               # NEW: 0 = основной запрос, 1..N = fix-итерации
+    parent_action: str | None = None, # NEW: имя исходного действия
 ) -> None:
     """
     Пишет строку в usage.jsonl (глобальный и, если настроено, по проекту).
@@ -64,6 +66,8 @@ def append_usage(
         "rate_source": cost.rate_source,
         "duration_ms": duration_ms,
         "status": status,
+        "iteration": iteration,
+        "parent_action": parent_action or action,
     }
 
     # глобальный jsonl
@@ -81,7 +85,6 @@ def append_usage(
 
     # пересчёт summary
     _rebuild_summary(global_jsonl, output_root / "usage_summary.json")
-
 
 def _rebuild_summary(jsonl_path: Path, summary_path: Path) -> None:
     if not jsonl_path.exists():
@@ -102,6 +105,7 @@ def _rebuild_summary(jsonl_path: Path, summary_path: Path) -> None:
     by_model: dict[str, dict] = {}
     by_project: dict[str, dict] = {}
     by_day: dict[str, dict] = {}
+    by_iteration: dict[str, dict] = {}
 
     with jsonl_path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -141,6 +145,7 @@ def _rebuild_summary(jsonl_path: Path, summary_path: Path) -> None:
             bump(by_action, r.get("action", "?"), r)
             bump(by_model, r.get("model", "?"), r)
             bump(by_project, r.get("project_name", "?"), r)
+            bump(by_iteration, str(r.get("iteration", 0)), r)
             day = r.get("ts_utc", "")[:10]
             if day:
                 bump(by_day, day, r)
@@ -151,6 +156,7 @@ def _rebuild_summary(jsonl_path: Path, summary_path: Path) -> None:
         "by_model": by_model,
         "by_project": by_project,
         "by_day": by_day,
+        "by_iteration": by_iteration,
         "updated_at": _now_iso(),
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)

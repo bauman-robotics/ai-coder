@@ -181,3 +181,172 @@ def run_action(
         write_plan=write_plan,
         from_cache=False,
     )
+
+def run_fix_action(
+    *,
+    parent_action: str,
+    iteration: int,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    errors: list[str],
+    previous_plan: WritePlan,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+    use_cache: bool = True,
+) -> ActionResult:
+    """
+    Одна итерация авто-исправления: отправляет модели список ошибок
+    от py_compile + предыдущий план + текущее содержимое проекта.
+    Возвращает ActionResult с новым WritePlan.
+    """
+    model = model or cfg.api.model
+
+    # 1. пересканируем проект — файлы изменились после apply
+    scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+
+    # 2. промпт fix
+    prompt_entry = prompts_cfg.get(cfg.fix.prompt)
+
+    # 3. текстовые блоки для подстановки
+    errors_text = "\n".join(f"- {e}" for e in errors) or "- (нет)"
+    previous_plan_text = _render_previous_plan(previous_plan)
+
+    # 4. рендер
+    system, user = render_prompt(
+        prompt_entry,
+        depth=depth,
+        scan=scan,
+        extra={
+            "errors": errors_text,
+            "previous_plan": previous_plan_text,
+        },
+    )
+
+    # 5. кэш (по хэшу: файлы + шаблон + errors + previous_plan + модель + depth)
+    cache_enabled = use_cache and cfg.output.use_cache
+    hash_hex: str | None = None
+    if cache_enabled:
+        hash_hex = cache_mod.compute_hash(
+            scan=scan,
+            prompt_system=prompt_entry.system + "\nERRORS:\n" + errors_text + "\nPREV:\n" + previous_plan_text,
+            prompt_user=prompt_entry.user,
+            model=model,
+            depth=depth,
+        )
+        cached = cache_mod.from_cache(
+            project_root=project_root,
+            output_dir=cfg.output.dir,
+            cache_dir_name=cfg.output.cache_dir_name,
+            hash_hex=hash_hex,
+            scan=scan,
+        )
+        if cached is not None:
+            llm_resp, cached_plan = cached
+            now = datetime.now(ZoneInfo("UTC"))
+            return ActionResult(
+                action=f"{parent_action}:fix{iteration}",
+                model=model,
+                depth=depth,
+                scan=scan,
+                llm=llm_resp,
+                cost_rub=0.0,
+                cost_cny=0.0,
+                cost_usd=0.0,
+                is_peak=False,
+                peak_window=None,
+                started_at=now,
+                finished_at=now,
+                write_plan=cached_plan,
+                from_cache=True,
+            )
+
+    # 6. запрос
+    started_at = datetime.now(ZoneInfo("UTC"))
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    client = LLMClient(cfg.api)
+    llm_resp = client.chat(system=system, user=user, model=model, json_mode=True)
+    finished_at = datetime.now(ZoneInfo("UTC"))
+
+    write_plan = build_plan(llm_resp.content, project_root, cfg)
+
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+
+    # 7. usage с iteration/parent_action
+    output_root = project_root / cfg.output.dir
+    append_usage(
+        project_root=project_root,
+        output_root=output_root,
+        action=f"{parent_action}:fix{iteration}",
+        project_name=project_root.name,
+        model=model,
+        depth=depth,
+        files_count=len(scan.files),
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok",
+        usage_cfg=cfg.usage,
+        iteration=iteration,
+        parent_action=parent_action,
+    )
+
+    if cache_enabled and hash_hex:
+        cache_mod.save(
+            project_root=project_root,
+            output_dir=cfg.output.dir,
+            cache_dir_name=cfg.output.cache_dir_name,
+            hash_hex=hash_hex,
+            action=f"{parent_action}:fix{iteration}",
+            model=model,
+            depth=depth,
+            prompt_name=cfg.fix.prompt,
+            llm=llm_resp,
+            write_plan=write_plan,
+        )
+
+    return ActionResult(
+        action=f"{parent_action}:fix{iteration}",
+        model=model,
+        depth=depth,
+        scan=scan,
+        llm=llm_resp,
+        cost_rub=cost.cost_rub,
+        cost_cny=cost.cost_cny,
+        cost_usd=cost.cost_usd,
+        is_peak=is_peak,
+        peak_window=peak_window,
+        started_at=started_at,
+        finished_at=finished_at,
+        write_plan=write_plan,
+        from_cache=False,
+    )
+
+
+def _render_previous_plan(plan: WritePlan) -> str:
+    """
+    Краткое текстовое представление предыдущего плана для промпта.
+    Включает explanation + список операций, без diff (он избыточен и дорог).
+    """
+    parts: list[str] = []
+    if plan.explanation:
+        parts.append(f"Explanation: {plan.explanation}")
+    parts.append(f"Operations ({len(plan.operations)}):")
+    for i, op in enumerate(plan.operations, 1):
+        parts.append(f"  {i}. {op.type} {op.path}")
+    return "\n".join(parts) or "(пусто)"    

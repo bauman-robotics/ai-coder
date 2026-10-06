@@ -77,6 +77,11 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
         if errs:
             apply_note += f"- **Ошибки:** {len(errs)}\n"
 
+        if applied_info.get("attempts", 0) > 0:
+            apply_note += f"- **Fix-итераций:** {applied_info['attempts']}\n"
+        if applied_info.get("fix_cost_rub", 0) > 0:
+            apply_note += f"- **Стоимость fix-итераций:** {applied_info['fix_cost_rub']:.6f} RUB\n"
+
     report = f"""# {result.action} — {scan.root.name}
 
 - **Модель:** {result.model}
