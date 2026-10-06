@@ -380,23 +380,171 @@ def backups_cmd(
         )
     console.print(table)
 
-
 @app.command("usage")
 def usage_show(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
+    since: Optional[str] = typer.Option(None, "--since", help="С какого дня (YYYY-MM-DD), в UTC"),
+    until: Optional[str] = typer.Option(None, "--until", help="По какой день (YYYY-MM-DD), в UTC"),
+    action: Optional[str] = typer.Option(None, "--action", "-a", help="Фильтр по действию"),
+    project: Optional[str] = typer.Option(None, "--project", help="Фильтр по имени проекта"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Фильтр по модели"),
+    export: Optional[str] = typer.Option(None, "--export", help="csv|json — выгрузить отфильтрованные записи"),
+    out: Optional[Path] = typer.Option(None, "--out", help="Файл для экспорта (по умолчанию stdout)"),
 ):
-    """Показать сводку расходов."""
-    import json
+    """Показать сводку расходов с фильтрами."""
+    import csv
+    import io
+    import json as _json
+
     cfg = load_config(config)
-    summary_path = Path(cfg.usage.summary)
-    if not summary_path.exists():
-        console.print("[yellow]Сводка пуста — ещё не было запросов.[/yellow]")
+    jsonl_path = Path(cfg.usage.jsonl)
+    if not jsonl_path.exists():
+        console.print("[yellow]Журнал пуст — ещё не было запросов.[/yellow]")
         raise typer.Exit(0)
 
-    data = json.loads(summary_path.read_text(encoding="utf-8"))
-    total = data.get("total", {})
+    # --- читаем все записи ---
+    records: list[dict] = []
+    with jsonl_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(_json.loads(line))
+            except _json.JSONDecodeError:
+                continue
 
-    table = Table(title="Итого", show_header=False, box=None)
+    # --- фильтры ---
+    def _match(r: dict) -> bool:
+        day = (r.get("ts_utc") or "")[:10]
+        if since and day < since:
+            return False
+        if until and day > until:
+            return False
+        if action and r.get("action") != action:
+            return False
+        if project and r.get("project_name") != project:
+            return False
+        if model and r.get("model") != model:
+            return False
+        return True
+
+    filtered = [r for r in records if _match(r)]
+
+    if not filtered:
+        console.print("[yellow]Под фильтры ничего не попало.[/yellow]")
+        raise typer.Exit(0)
+
+    # --- экспорт ---
+    if export:
+        if export not in ("csv", "json"):
+            console.print(f"[red]Неизвестный формат: {export} (ожидается csv или json)[/red]")
+            raise typer.Exit(1)
+
+        if export == "json":
+            payload = _json.dumps(filtered, ensure_ascii=False, indent=2)
+        else:  # csv
+            fields = [
+                "ts_utc", "ts_msk", "action", "project_name", "model", "depth",
+                "files_count", "prompt_tokens", "prompt_cache_hit_tokens",
+                "prompt_cache_miss_tokens", "completion_tokens", "total_tokens",
+                "is_peak", "cost_cny", "cost_rub", "cost_usd",
+                "cny_to_rub_rate", "usd_to_rub_rate", "rate_source",
+                "duration_ms", "status",
+            ]
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            for r in filtered:
+                writer.writerow(r)
+            payload = buf.getvalue()
+
+        if out:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(payload, encoding="utf-8")
+            console.print(f"[green]Экспортировано:[/green] {out} ({len(filtered)} записей)")
+        else:
+            console.print(payload)
+        return
+
+    # --- агрегаты по отфильтрованному ---
+    total = _aggregate(filtered)
+    _print_usage_table("Итого (по фильтру)", total)
+
+    # группировки
+    by_action = _group(filtered, "action")
+    by_model = _group(filtered, "model")
+    by_project = _group(filtered, "project_name")
+    by_day = _group(filtered, "ts_utc", key_fn=lambda v: (v or "")[:10])
+
+    _print_group_table("По действиям", by_action)
+    _print_group_table("По моделям", by_model)
+    _print_group_table("По проектам", by_project)
+
+    # по дням — последние 14
+    days_sorted = sorted(by_day.items(), reverse=True)[:14]
+    _print_group_table("По дням (последние 14)", dict(days_sorted))
+
+    # --- контекст фильтров ---
+    if any([since, until, action, project, model]):
+        console.print()
+        parts = []
+        if since: parts.append(f"since={since}")
+        if until: parts.append(f"until={until}")
+        if action: parts.append(f"action={action}")
+        if project: parts.append(f"project={project}")
+        if model: parts.append(f"model={model}")
+        console.print(f"[dim]Фильтры: {', '.join(parts)}. Записей: {len(filtered)} из {len(records)}[/dim]")
+
+
+def _aggregate(records: list[dict]) -> dict:
+    total = {
+        "requests": len(records),
+        "prompt_tokens": 0,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_cny": 0.0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+    }
+    for r in records:
+        for k in (
+            "prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens",
+            "completion_tokens", "total_tokens",
+        ):
+            total[k] += r.get(k, 0)
+        for k in ("cost_cny", "cost_rub", "cost_usd"):
+            total[k] += r.get(k, 0.0)
+    return total
+
+
+def _group(records: list[dict], field: str, key_fn=None) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for r in records:
+        key = key_fn(r.get(field)) if key_fn else r.get(field, "?")
+        if key not in out:
+            out[key] = {
+                "requests": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost_cny": 0.0,
+                "cost_rub": 0.0,
+            }
+        slot = out[key]
+        slot["requests"] += 1
+        slot["prompt_tokens"] += r.get("prompt_tokens", 0)
+        slot["completion_tokens"] += r.get("completion_tokens", 0)
+        slot["total_tokens"] += r.get("total_tokens", 0)
+        slot["cost_cny"] += r.get("cost_cny", 0.0)
+        slot["cost_rub"] += r.get("cost_rub", 0.0)
+    return out
+
+
+def _print_usage_table(title: str, total: dict) -> None:
+    table = Table(title=title, show_header=False, box=None)
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Запросов:", str(total.get("requests", 0)))
@@ -410,17 +558,18 @@ def usage_show(
     table.add_row("Стоимость USD:", f"{total.get('cost_usd', 0):.6f}")
     console.print(table)
 
-    by_action = data.get("by_action", {})
-    if by_action:
-        t = Table(title="По действиям")
-        t.add_column("Действие", style="cyan")
-        t.add_column("Запросов", justify="right")
-        t.add_column("Токенов", justify="right")
-        t.add_column("RUB", justify="right")
-        for name, slot in sorted(by_action.items()):
-            t.add_row(name, str(slot["requests"]), str(slot["total_tokens"]), f"{slot['cost_rub']:.4f}")
-        console.print(t)
 
+def _print_group_table(title: str, data: dict[str, dict]) -> None:
+    if not data:
+        return
+    t = Table(title=title)
+    t.add_column("Ключ", style="cyan")
+    t.add_column("Запросов", justify="right")
+    t.add_column("Токенов", justify="right")
+    t.add_column("RUB", justify="right")
+    for key, slot in data.items():
+        t.add_row(str(key), str(slot["requests"]), str(slot["total_tokens"]), f"{slot['cost_rub']:.4f}")
+    console.print(t)
 
 if __name__ == "__main__":
     app()
