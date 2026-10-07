@@ -6,6 +6,37 @@
 
 
 
+
+## [2026-10-07] iteration 6.7 — CI (GitHub Actions)
+
+### Добавлено
+- `.github/workflows/test.yml`:
+  - pytest на Python 3.10, 3.11, 3.12 (матрица);
+  - ruff — стиль и импорты;
+  - mypy — типизация.
+- Кэш pip через actions/setup-python (`cache: pip`).
+- `workflow_dispatch` — запуск вручную.
+- Бейдж CI в README.
+
+### Изменено
+- ruff.toml — конфиг с `select`/`ignore` (B008, BLE001, DTZ005 и др.).
+- pyproject.toml — `[tool.pytest.ini_options]`.
+- Автофиксы ruff (49 правок): порядок импортов, W291.
+- mypy: реальные баги в `cli.py` (e вне except → err), `apply.py`
+  (Path vs str), `agent.py` (TYPE_CHECKING + WritePlan), `llm.py`
+  (create_kwargs + type: ignore), `cli.py` (peak_window).
+- actions/checkout v4→v5, actions/setup-python v5→v6.
+
+### Итог
+- pytest — 56 passed (x3 Python)
+- ruff check . — All checks passed
+- mypy ai_coder — Success: no issues found in 13 source files
+
+### TODO
+- pytest-cov для измерения покрытия (в перспективе).
+
+---
+
 ## [2026-10-07] iteration 6.6 — agent --preview-only
 
 ### Добавлено

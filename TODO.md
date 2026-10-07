@@ -116,7 +116,7 @@
 
 ### CI
 
-- [ ] GitHub Actions: pytest + ruff + mypy на push и PR.
+- [x] GitHub Actions: pytest + ruff + mypy на push и PR (5 jobs: pytest x3, ruff, mypy).
       Файл: `.github/workflows/test.yml`.
       Быстрая матрица: `python-version: ["3.10", "3.11", "3.12"]`.
       Кэш зависимостей через `actions/setup-python@v5` с `cache: pip`.
