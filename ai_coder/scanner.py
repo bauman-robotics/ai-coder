@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -96,6 +97,32 @@ def _match_any(path_posix: str, spec: pathspec.PathSpec | None) -> bool:
         return False
     # пробуем и как файл, и как директорию
     return spec.match_file(path_posix) or spec.match_file(path_posix + "/")
+
+# ---------- content-фильтр секретов ----------
+
+# Узкие паттерны: реальные ключи и токены, минимум ложных срабатываний.
+# Каждый — кортеж (regex, человекочитаемое название).
+_SECRET_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"sk-[a-zA-Z0-9]{20,}", "OpenAI/DeepSeek API key"),
+    (r"AKIA[0-9A-Z]{16}", "AWS access key"),
+    (r"ghp_[a-zA-Z0-9]{36}", "GitHub personal access token"),
+    (r"github_pat_[a-zA-Z0-9_]{82}", "GitHub fine-grained PAT"),
+    (r"xox[baprs]-[a-zA-Z0-9-]{10,}", "Slack token"),
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key (PEM)"),
+    (r"AIza[0-9A-Za-z_\-]{35}", "Google API key"),
+)
+
+
+def _contains_secret(text: str) -> str | None:
+    """
+    Проверяет содержимое на типичные секреты (ключи, токены, PEM-ключи).
+    Возвращает название найденного паттерна или None.
+    """
+    for pattern, name in _SECRET_PATTERNS:
+        if re.search(pattern, text):
+            return name
+    return None
+
 
 def _expand_dir_patterns(patterns: list[str]) -> list[str]:
     """
@@ -204,8 +231,9 @@ def scan_project(
             try:
                 size = entry.stat().st_size
             except OSError:
-                result.skipped.append(SkippedFile(rel, "too_large"))
+                result.skipped.append(SkippedFile(rel, "binary"))
                 continue
+
             if size > max_bytes:
                 result.skipped.append(SkippedFile(rel, "too_large"))
                 continue
@@ -220,6 +248,12 @@ def scan_project(
                     continue
             except OSError:
                 result.skipped.append(SkippedFile(rel, "binary"))
+                continue
+
+            # content-проверка на секреты (review 1.4)
+            found = _contains_secret(text)
+            if found is not None:
+                result.skipped.append(SkippedFile(rel, f"secret_content: {found}"))
                 continue
 
             collected.append((rel, text, size))
