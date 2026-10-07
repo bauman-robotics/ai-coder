@@ -11,6 +11,31 @@
 
 
 
+
+## [2026-10-07] iteration 7.2 — feat(scanner): content-фильтр секретов
+
+### Добавлено
+- **review 1.4:** content-проверка файлов на типичные секреты.
+  Файлы с найденными ключами не попадают в контекст (skipped
+  с причиной `secret_content: <название>`).
+- Паттерны (узкие, минимум ложных срабатываний):
+  - `sk-...` — OpenAI/DeepSeek API key;
+  - `AKIA...` — AWS access key;
+  - `ghp_...` / `github_pat_...` — GitHub tokens;
+  - `xox[baprs]-...` — Slack tokens;
+  - `-----BEGIN ... PRIVATE KEY-----` — PEM-ключи;
+  - `AIza...` — Google API key.
+
+### Исправлено
+- Восстановлена проверка `max_file_size_kb`: файлы больше лимита снова
+  попадают в `skipped` с причиной `too_large` (регрессия была занесена
+  при рефакторинге `walk`).
+
+### Тесты
+- 60 passed (+4 новых: content secret, PEM, короткий токен, too_large).
+
+---
+
 ## [2026-10-07] iteration 7.1 — feat(agent): skipped в preview
 
 ### Добавлено

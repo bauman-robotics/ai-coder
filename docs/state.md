@@ -104,21 +104,22 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ## Актуальные приоритеты
 
-Сделано в итерациях 6.5–7.0:
+Сделано в итерациях 6.5–7.2:
 - review 1.2 — `get_rate` не падает на read-only FS
 - review 1.1 — перепроверка плана при cache hit (частично)
+- review 1.3 — usage пути из конфига + нет O(N^2) в summary
+- review 1.4 — content-фильтр секретов (sk-, AKIA, ghp_, PEM и др.)
+- review 5.2 — `_load_specs_recursive` без обхода служебных каталогов (~30x)
+- review 5.3 — `PathSpec` компилируется один раз (~2.2x)
 - TODO про агент: applied_count, skipped, empty_plan, фильтр диагностики
 - `agent --preview-only` — только план, без шагов (~0.05 RUB вместо ~11)
-- review 5.3 — `PathSpec` компилируется один раз (сканер ~2.2x)
-- review 5.2 — `_load_specs_recursive` без обхода служебных каталогов (~30x)
-- review 1.3 — usage пути из конфига + нет O(N^2) в summary
 - CI: GitHub Actions (pytest x3 + ruff + mypy) — зелёный
 
 Осталось:
 
-1. **TODO 3.5, 3.6, 3.8** — skipped в preview, экономия в обычном preview,
-   замена эвристики диагностики на явный `type: read` в JSON-плане
-2. **Review 1.4** — content-секреты перед отправкой в LLM
+1. **TODO 3.6, 3.8** — экономия в обычном preview, замена эвристики
+   диагностики на явный `type: read` в JSON-плане
+2. **TODO 3.7** — `--preview-only` уже сделано, TODO обновить
 3. **pytest-cov** — измерение покрытия тестами
 4. **Review 5.4** — пересканирование проекта на fix-итерациях
 
