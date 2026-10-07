@@ -15,6 +15,35 @@
 
 
 
+
+## [2026-10-07] iteration 7.6 — scanner: приоритизация + пустые файлы
+
+### Добавлено
+- `scanner._file_weight(rel_path)` — вес файла для приоритизации.
+  Точки входа (100), метаданные (90), код в пакетах (80),
+  конфиги (70), `__init__.py` (40), скрипты (30), тесты (20),
+  вёрстка (10).
+- `scanner.scan_project` — двухфазный обход: `walk` собирает пути
+  без чтения → сортировка `candidates` по весу → чтение
+  в приоритетном порядке.
+- Пропуск **пустых файлов** (`size == 0`) с причиной `empty`.
+- Тест `test_scan_skips_empty_files`.
+
+### Проверено на `lichess_db_project`
+- **9 важных файлов** — в контексте: `README.md`, `Makefile`,
+  `requirements.txt`, `run_web.py`, `wsgi.py`, `web_app/app.py`,
+  `web_app/routes.py`, `services/lichess_client.py`,
+  `services/pgn_parser.py`.
+- **Обрезаны** — только скрипты (`scripts/*`) и вёрстка
+  (`web_app/static/*`, `web_app/templates/*`).
+- Раньше обрезались `README.md`, `web_app/app.py`, `services/*` —
+  теперь попадают первыми.
+
+### Итого тестов
+- 123 passed.
+
+---
+
 ## [2026-10-07] iteration 7.5 — первый реальный проект
 
 ### Проверено
