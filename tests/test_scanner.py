@@ -91,4 +91,4 @@ def test_scan_keeps_normal_file_with_short_token(sample_project: Path, minimal_c
     f = sample_project / "config.py"
     f.write_text('TOKEN = "sk-short"\n', encoding="utf-8")
     res = scan_project(sample_project, minimal_cfg.scanning)
-    assert "config.py" in res.files    
+    assert "config.py" in res.files
