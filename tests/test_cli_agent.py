@@ -175,3 +175,29 @@ def test_agent_error_handling(cli_env):
 
     assert result.exit_code == 1
     assert "Ошибка агента" in result.stdout
+
+
+def test_agent_max_tokens_override(cli_env):
+    """--max-tokens принимается командой agent."""
+    from unittest.mock import patch
+
+    with patch("ai_coder.cli.run_agent") as mock_agent:
+        mock_agent.return_value = _fake_agent_result(cli_env["project"])
+
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--max-tokens",
+                "50000",
+                "--preview-only",
+            ],
+        )
+
+    assert result.exit_code == 0

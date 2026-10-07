@@ -378,3 +378,25 @@ def test_run_apply_rollback_on_verify_fail(cli_env):
     assert result.exit_code == 0
     assert mock_rollback.call_count == 1
     assert "откат" in result.stdout.lower() or "Откат" in result.stdout
+
+
+def test_run_dry_run_with_max_tokens(cli_env):
+    """--max-tokens переопределяет max_total_tokens сканера."""
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--dry-run",
+            "--max-tokens",
+            "100000",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Оценка (dry-run)" in result.stdout

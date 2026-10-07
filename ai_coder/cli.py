@@ -175,9 +175,18 @@ def run(
     no_auto_fix: bool = typer.Option(
         False, "--no-auto-fix", help="Отключить авто-исправление ошибок"
     ),
+    max_tokens: int | None = typer.Option(
+        None,
+        "--max-tokens",
+        help="Переопределить max_total_tokens сканера (по умолчанию из config.yaml)",
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
+
+    # --max-tokens: переопределяем бюджет сканера
+    if max_tokens is not None:
+        cfg.scanning.max_total_tokens = max_tokens
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -575,9 +584,18 @@ def agent_cmd(
     preview_only: bool = typer.Option(
         False, "--preview-only", help="Только план и оценка, без выполнения шагов (экономит токены)"
     ),
+    max_tokens: int | None = typer.Option(
+        None,
+        "--max-tokens",
+        help="Переопределить max_total_tokens сканера (по умолчанию из config.yaml)",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
+
+    # --max-tokens: переопределяем бюджет сканера
+    if max_tokens is not None:
+        cfg.scanning.max_total_tokens = max_tokens
 
     project_root = path.resolve()
     if not project_root.is_dir():
