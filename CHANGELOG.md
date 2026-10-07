@@ -17,6 +17,39 @@
 
 
 
+
+## [2026-10-07] iteration 7.8 — авто-исключение вёрстки
+
+### Добавлено
+- `ActionConfig.exclude_web_assets` (bool, по умолчанию false).
+- Константа `WEB_ASSET_EXTENSIONS` в `config.py` —
+  .html, .htm, .css, .scss, .less, .js, .jsx, .ts, .tsx, .mjs,
+  .cjs, .vue, .svelte, .svg.
+- `config.yaml`: `exclude_web_assets: true` для действий
+  `greet`, `inventory`, `suggest_improvements`, `write_readme`.
+- CLI-флаги `--exclude-web` / `--include-web` в `run` и `agent`:
+  - `--exclude-web` — принудительно исключить вёрстку;
+  - `--include-web` — принудительно включить (переопределить авто);
+  - взаимоисключающие (одновременно нельзя).
+- Логика `web_assets_override` в `run_action`, `run_agent`,
+  `_run_agent_step`, `_run_dry`.
+
+### Поведение
+- **`greet`/`inventory`/`write_readme`** — вёрстка исключается
+  автоматически.
+- **`agent`** — вёрстка **включается** (по умолчанию);
+  `--exclude-web` — исключает.
+- **`refactor`** и другие действия — **без авто-исключения**.
+- При малом бюджете (60K, 80K) эффект скрыт: вёрстка обрезается
+  и так. При большом бюджете (200K) — видно: 65 -> 45 файлов,
+  вёрстка 20 -> 0.
+
+### Тесты
+- 128 passed (+3 теста: --exclude-web, взаимоисключение,
+  agent-exclude-web).
+
+---
+
 ## [2026-10-07] iteration 7.7 — первый E2E-тест агента
 
 ### Проверено на `lichess_db_project`
