@@ -18,6 +18,32 @@
 
 
 
+
+## [2026-10-07] iteration 8.0 — verify_commands (Уровень A)
+
+### Добавлено
+- `apply.run_verify_commands(commands, project_root, timeout_sec, max_output_chars)`
+  — запуск shell-команд через subprocess, возвращает список ошибок.
+- `AgentConfig.verify_timeout_sec` (60), `verify_max_output_chars` (10000).
+- `agent._run_agent_step` — после `py_compile` запускает
+  `cfg.agent.verify_commands`, вывод идёт в `verify_errors`.
+- `cli.run` — verify_commands тоже запускаются (для `--apply`).
+- CLI-флаги `--verify-commands "pytest -q;ruff check ."` для
+  `agent` и `run`.
+- Тесты: `test_run_verify_commands_*` (4), `test_agent_verify_commands_flag`.
+
+### Проверено E2E
+- Проект `/tmp/verify-test`: `add(a, b) -> a - b` (баг), тест падает.
+- Агент: план 1 шаг -> `edit_file` -> `py_compile` passed ->
+  `pytest -q` passed -> `completed`.
+- Стоимость ~0.04-0.05 RUB, ~5-6 сек.
+- Проверено и через config.yaml, и через CLI-флаг.
+
+### Итого тестов
+- 134 passed.
+
+---
+
 ## [2026-10-07] iteration 7.8 — авто-исключение вёрстки
 
 ### Добавлено
