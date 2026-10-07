@@ -31,7 +31,12 @@ jobs:
           pip install -e .
 
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            python -m pytest tests/ -v --cov=ai_coder --cov-report=term-missing --cov-fail-under=40
+          else
+            python -m pytest tests/ -v
+          fi
 
   lint:
     name: ruff
