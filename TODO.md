@@ -11,6 +11,64 @@
   content-level фильтрация секретов, O(N²) в usage, `rglob` без pruning, компиляция `PathSpec` на каждый файл.
   Приоритетные фиксы см. в самом review.
 
+## 🔥 Автономность: shell-команды и tool loop
+
+**Цель:** ускорить разработку — агент **сам запускает команды**
+(pytest, ruff, mypy, git) и **чинит по выводу**. Человек — только
+подтверждает и ревьюит.
+
+### Уровень A: verify_commands (следующая итерация, ~2 часа)
+
+- [ ] Подключить `agent.verify_commands` из `config.yaml`:
+      после `apply_plan` запускать команды через `subprocess`,
+      собирать `stdout`/`stderr`, non-zero exit -> `verify_errors`.
+- [ ] Научить `run_fix_action` **видеть вывод команд** —
+      передавать в промпт `fix_errors_json` не только `py_compile`,
+      но и `pytest`/`ruff`/`mypy`.
+- [ ] Флаг CLI `--verify-commands "pytest -q;ruff check ."` —
+      переопределить список из CLI.
+- [ ] Безопасность: whitelist команд, `timeout` (30 сек),
+      лимит вывода (10K символов).
+- [ ] Тесты: 3–4 (`test_verify_commands`, `test_fix_from_pytest_output`).
+- [ ] Проверить на `ai-coder`: `agent "исправь тесты" --apply`
+      с `verify_commands: pytest -q`.
+
+**Что это даст:** агент правит код, запускает `pytest`, если упал —
+**сам чинит** до N попыток. Если не смог — откат.
+
+### Уровень B: --interactive (~2 часа)
+
+- [ ] Флаг `--interactive` в `agent`: перед применением каждого шага —
+      показывать diff и спрашивать `y/n/a/skip`.
+- [ ] «Принять все» (`a`), «skip» — пропустить шаг.
+- [ ] Логировать решения в журнал.
+
+### Уровень C: tool loop (~2–3 дня)
+
+- [ ] Новый промпт `agent_tool_json`: модель возвращает
+      `{"tool": "run_shell", "args": {"command": "pytest -q"}}`.
+- [ ] Инструменты: `read_file`, `write_file`, `edit_file`,
+      `run_shell`, `list_files`.
+- [ ] Whitelist команд: pytest, ruff, mypy, git, make, ls, cat, grep, find.
+- [ ] Цикл tool loop: модель -> инструмент -> результат -> модель.
+      Лимит итераций (`--max-iterations 20`).
+- [ ] Безопасность: `timeout`, лимит вывода, `--dry-run`,
+      `commands.log`.
+- [ ] Совместимость с текущим пайплайном `agent`.
+
+### Уровень D: полная автономность (неделя+)
+
+- [ ] План -> правки -> тесты -> fix -> коммит -> PR.
+- [ ] Git-интеграция: ветка `ai-coder/<task>-<ts>`, автокоммит.
+- [ ] Лимиты: `--max-cost-rub`, `--max-minutes`, `--max-steps`.
+- [ ] MCP-интеграции (опционально).
+
+**Приоритет:** 🔴 высокий (стратегическое направление).
+
+**Начать с:** Уровень A — `verify_commands`. **2 часа**, максимум пользы.
+
+---
+
 ## 🔥 Срочное / дешёвое (сделать в первую очередь)
 
 ### Агент: честность про пустые шаги
