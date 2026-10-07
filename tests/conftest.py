@@ -163,3 +163,86 @@ def prompts_cfg() -> PromptsConfig:
             "fix": PromptEntry(system="S", user="U"),
         }
     )
+
+# ---------- фикстуры для output/actions ----------
+
+@pytest.fixture
+def fake_llm_response():
+    """Возвращает фабрику LLMResponse с настраиваемыми параметрами."""
+    from ai_coder.llm import LLMResponse
+
+    def _make(
+        content: str = "test response",
+        finish_reason: str = "stop",
+        prompt_tokens: int = 100,
+        prompt_cache_hit_tokens: int = 0,
+        prompt_cache_miss_tokens: int = 100,
+        completion_tokens: int = 50,
+    ) -> LLMResponse:
+        return LLMResponse(
+            content=content,
+            model="test-model",
+            prompt_tokens=prompt_tokens,
+            prompt_cache_hit_tokens=prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens=prompt_cache_miss_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            duration_ms=1000,
+            finish_reason=finish_reason,
+        )
+
+    return _make
+
+
+@pytest.fixture
+def fake_scan_result():
+    """Фабрика ScanResult."""
+    from ai_coder.scanner import ScanResult
+
+    def _make(root: Path, files: dict[str, str] | None = None, tree: str = "") -> ScanResult:
+        return ScanResult(root=root, files=files or {}, tree=tree)
+
+    return _make
+
+
+@pytest.fixture
+def fake_action_result(tmp_path, fake_llm_response, fake_scan_result):
+    """Фабрика ActionResult для тестов output."""
+    from datetime import datetime, timezone
+
+    from ai_coder.actions import ActionResult
+
+    def _make(
+        action: str = "greet",
+        write_plan=None,
+        from_cache: bool = False,
+        is_peak: bool = False,
+        peak_window: str | None = None,
+        llm=None,
+        scan=None,
+        cost_rub: float = 0.25,
+        cost_cny: float = 0.02,
+        cost_usd: float = 0.003,
+    ) -> ActionResult:
+        now = datetime.now(timezone.utc)
+        scan = scan or fake_scan_result(tmp_path, {"src/main.py": "x = 1\n"}, "src/\n  main.py")
+        llm = llm or fake_llm_response()
+
+        return ActionResult(
+            action=action,
+            model="test-model",
+            depth="shallow",
+            scan=scan,
+            llm=llm,
+            cost_rub=cost_rub,
+            cost_cny=cost_cny,
+            cost_usd=cost_usd,
+            is_peak=is_peak,
+            peak_window=peak_window,
+            started_at=now,
+            finished_at=now,
+            write_plan=write_plan,
+            from_cache=from_cache,
+        )
+
+    return _make
