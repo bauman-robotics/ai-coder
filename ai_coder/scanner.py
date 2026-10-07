@@ -62,13 +62,24 @@ def _is_gitignored(rel_path: str, specs: list[tuple[Path, pathspec.PathSpec]], r
     return False
 
 
-def _match_any(path_posix: str, patterns: list[str]) -> bool:
+def _compile_spec(patterns: list[str]) -> pathspec.PathSpec | None:
+    """
+    Компилирует gitignore-паттерны один раз. Возвращает None, если пусто.
+    """
     if not patterns:
+        return None
+    return pathspec.PathSpec.from_lines("gitignore", patterns)
+
+
+def _match_any(path_posix: str, spec: pathspec.PathSpec | None) -> bool:
+    """
+    Проверяет путь против скомпилированного PathSpec.
+    Принимает уже готовый spec, а не список паттернов.
+    """
+    if spec is None:
         return False
-    spec = pathspec.PathSpec.from_lines("gitignore", patterns)
     # пробуем и как файл, и как директорию
     return spec.match_file(path_posix) or spec.match_file(path_posix + "/")
-
 
 def _expand_dir_patterns(patterns: list[str]) -> list[str]:
     """
@@ -115,10 +126,11 @@ def scan_project(
     # 1. specs из .gitignore
     gi_specs = _load_specs_recursive(root) if cfg.use_gitignore else []
 
-    # 2. доп. паттерны (с расширением под директории)
+    # 2. доп. паттерны (с расширением под директории) — компилируем один раз
     extra_patterns = _expand_dir_patterns(list(cfg.extra_ignore) + (extra_exclude or []))
     secret_patterns = _expand_dir_patterns(list(cfg.secret_ignore))
-
+    extra_spec = _compile_spec(extra_patterns)
+    secret_spec = _compile_spec(secret_patterns)
     binary_ext = set(cfg.binary_extensions)
     include_ext = set(cfg.include_extensions)
     max_bytes = cfg.max_file_size_kb * 1024
@@ -131,9 +143,9 @@ def scan_project(
         if name in _SERVICE_DIRS:
             return True
         rel_posix = f"{rel_dir}/{name}" if rel_dir else name
-        if _match_any(rel_posix, extra_patterns):
+        if _match_any(rel_posix, extra_spec):
             return True
-        if _match_any(rel_posix, secret_patterns):
+        if _match_any(rel_posix, secret_spec):
             return True
         if cfg.use_gitignore and _is_gitignored(rel_posix, gi_specs, root):
             return True
@@ -158,10 +170,10 @@ def scan_project(
             if cfg.use_gitignore and _is_gitignored(rel, gi_specs, root):
                 result.skipped.append(SkippedFile(rel, "gitignore"))
                 continue
-            if _match_any(rel, extra_patterns):
+            if _match_any(rel, extra_spec):
                 result.skipped.append(SkippedFile(rel, "extra_ignore"))
                 continue
-            if _match_any(rel, secret_patterns):
+            if _match_any(rel, secret_spec):
                 result.skipped.append(SkippedFile(rel, "secret_ignore"))
                 continue
 
