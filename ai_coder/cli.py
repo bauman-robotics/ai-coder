@@ -868,12 +868,12 @@ def _print_agent_plan(result) -> None:
         table.add_row(str(s.n), s.title, files or "—")
     console.print(table)
 
-
 def _print_agent_step_summary(sr) -> None:
     s = sr.step
     status_parts: list[str] = []
     if sr.applied:
-        status_parts.append("[green]применено[/green]")
+        n = sr.applied_count
+        status_parts.append(f"[green]применено ({n} операций)[/green]")
     if sr.errors:
         status_parts.append("[red]ошибки[/red]")
     if sr.verify_errors:
@@ -893,9 +893,6 @@ def _print_agent_step_summary(sr) -> None:
             console.print(f"  [red]✗[/red] {e}")
         if len(sr.verify_errors) > 3:
             console.print(f"  [dim]... ещё {len(sr.verify_errors) - 3}[/dim]")
-    if sr.applied_count:
-        console.print(f"  [green]операций применено:[/green] {sr.applied_count}")
-
 
 def _print_agent_summary(result) -> None:
     duration = (result.finished_at - result.started_at).total_seconds()
