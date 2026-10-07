@@ -14,6 +14,7 @@ runner = CliRunner(env={"COLUMNS": "200"})
 
 # ---------- фикстуры ----------
 
+
 @pytest.fixture
 def cli_files(tmp_path: Path, minimal_cfg):
     """Создаёт на диске config.yaml и prompts.yaml для CLI."""
@@ -25,16 +26,23 @@ def cli_files(tmp_path: Path, minimal_cfg):
     # минимальный config.yaml с действиями
     minimal_cfg.actions = {
         "greet": ActionConfig(description="greet desc", prompt="greet", mode="read", enabled=True),
-        "write_readme": ActionConfig(description="write", prompt="write_readme_json", mode="write", enabled=True),
+        "write_readme": ActionConfig(
+            description="write", prompt="write_readme_json", mode="write", enabled=True
+        ),
     }
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
 
     # минимальные промпты
     prompts_path.write_text(
-        yaml.safe_dump({
-            "greet": {"system": "S {{depth}}", "user": "U {{files}}"},
-            "write_readme_json": {"system": "S", "user": "U {{files}}"},
-        }, allow_unicode=True),
+        yaml.safe_dump(
+            {
+                "greet": {"system": "S {{depth}}", "user": "U {{files}}"},
+                "write_readme_json": {"system": "S", "user": "U {{files}}"},
+            },
+            allow_unicode=True,
+        ),
         encoding="utf-8",
     )
 
@@ -42,6 +50,7 @@ def cli_files(tmp_path: Path, minimal_cfg):
 
 
 # ---------- _load: ошибки конфигов ----------
+
 
 def test_load_missing_config(tmp_path: Path):
     missing = tmp_path / "nope.yaml"
@@ -54,11 +63,16 @@ def test_load_missing_config(tmp_path: Path):
 def test_load_missing_prompts(tmp_path: Path, cli_files):
     config_path, _ = cli_files
     missing_prompts = tmp_path / "missing.yaml"
-    result = runner.invoke(app, [
-        "actions",
-        "--config", str(config_path),
-        "--prompts", str(missing_prompts),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "actions",
+            "--config",
+            str(config_path),
+            "--prompts",
+            str(missing_prompts),
+        ],
+    )
 
     assert result.exit_code == 1
     assert "Промпты не найдены" in result.stdout
@@ -66,13 +80,19 @@ def test_load_missing_prompts(tmp_path: Path, cli_files):
 
 # ---------- actions ----------
 
+
 def test_actions_basic(cli_files):
     config_path, prompts_path = cli_files
-    result = runner.invoke(app, [
-        "actions",
-        "--config", str(config_path),
-        "--prompts", str(prompts_path),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "actions",
+            "--config",
+            str(config_path),
+            "--prompts",
+            str(prompts_path),
+        ],
+    )
 
     assert result.exit_code == 0
     assert "greet" in result.stdout
@@ -88,13 +108,19 @@ def test_actions_verbose(cli_files, tmp_path: Path):
     project.mkdir()
     (project / "x.py").write_text("x = 1\n", encoding="utf-8")
 
-    result = runner.invoke(app, [
-        "actions",
-        "--config", str(config_path),
-        "--prompts", str(prompts_path),
-        "--path", str(project),
-        "--verbose",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "actions",
+            "--config",
+            str(config_path),
+            "--prompts",
+            str(prompts_path),
+            "--path",
+            str(project),
+            "--verbose",
+        ],
+    )
 
     assert result.exit_code == 0
     assert "Оценка действий" in result.stdout
@@ -105,13 +131,19 @@ def test_actions_verbose_bad_path(cli_files, tmp_path: Path):
     config_path, prompts_path = cli_files
     missing = tmp_path / "no-such-dir"
 
-    result = runner.invoke(app, [
-        "actions",
-        "--config", str(config_path),
-        "--prompts", str(prompts_path),
-        "--path", str(missing),
-        "--verbose",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "actions",
+            "--config",
+            str(config_path),
+            "--prompts",
+            str(prompts_path),
+            "--path",
+            str(missing),
+            "--verbose",
+        ],
+    )
 
     assert result.exit_code == 1
     assert "Не директория" in result.stdout
@@ -119,13 +151,17 @@ def test_actions_verbose_bad_path(cli_files, tmp_path: Path):
 
 # ---------- usage ----------
 
+
 def test_usage_empty_journal(cli_files, tmp_path: Path, minimal_cfg):
     config_path, prompts_path = cli_files
 
     # делаем путь к usage.jsonl "несуществующим" (в tmp)
     minimal_cfg.usage.jsonl = str(tmp_path / "nonexistent" / "usage.jsonl")
     import yaml
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8")
+
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
 
     result = runner.invoke(app, ["usage", "--config", str(config_path)])
 
@@ -177,7 +213,10 @@ def test_usage_with_records(cli_files, tmp_path: Path, minimal_cfg):
 
     minimal_cfg.usage.jsonl = str(jsonl_path)
     import yaml
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8")
+
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
 
     result = runner.invoke(app, ["usage", "--config", str(config_path)])
 
@@ -193,14 +232,36 @@ def test_usage_filter_by_action(cli_files, tmp_path: Path, minimal_cfg):
 
     jsonl_path = tmp_path / "usage.jsonl"
     records = [
-        {"ts_utc": "2026-10-07T10:00:00+00:00", "action": "greet", "project_name": "p",
-         "model": "m", "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150,
-         "cost_rub": 0.12, "cost_cny": 0.01, "cost_usd": 0.001,
-         "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 100, "iteration": 0},
-        {"ts_utc": "2026-10-07T11:00:00+00:00", "action": "refactor", "project_name": "p",
-         "model": "m", "prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300,
-         "cost_rub": 0.25, "cost_cny": 0.02, "cost_usd": 0.002,
-         "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 200, "iteration": 0},
+        {
+            "ts_utc": "2026-10-07T10:00:00+00:00",
+            "action": "greet",
+            "project_name": "p",
+            "model": "m",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "cost_rub": 0.12,
+            "cost_cny": 0.01,
+            "cost_usd": 0.001,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 100,
+            "iteration": 0,
+        },
+        {
+            "ts_utc": "2026-10-07T11:00:00+00:00",
+            "action": "refactor",
+            "project_name": "p",
+            "model": "m",
+            "prompt_tokens": 200,
+            "completion_tokens": 100,
+            "total_tokens": 300,
+            "cost_rub": 0.25,
+            "cost_cny": 0.02,
+            "cost_usd": 0.002,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 200,
+            "iteration": 0,
+        },
     ]
     jsonl_path.write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
@@ -209,13 +270,21 @@ def test_usage_filter_by_action(cli_files, tmp_path: Path, minimal_cfg):
 
     minimal_cfg.usage.jsonl = str(jsonl_path)
     import yaml
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8")
 
-    result = runner.invoke(app, [
-        "usage",
-        "--config", str(config_path),
-        "--action", "greet",
-    ])
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "usage",
+            "--config",
+            str(config_path),
+            "--action",
+            "greet",
+        ],
+    )
 
     assert result.exit_code == 0
     assert "greet" in result.stdout
@@ -228,23 +297,43 @@ def test_usage_export_json(cli_files, tmp_path: Path, minimal_cfg):
     config_path, prompts_path = cli_files
 
     jsonl_path = tmp_path / "usage.jsonl"
-    record = {"ts_utc": "2026-10-07T10:00:00+00:00", "action": "greet", "project_name": "p",
-              "model": "m", "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150,
-              "cost_rub": 0.12, "cost_cny": 0.01, "cost_usd": 0.001,
-              "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 100, "iteration": 0}
+    record = {
+        "ts_utc": "2026-10-07T10:00:00+00:00",
+        "action": "greet",
+        "project_name": "p",
+        "model": "m",
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "total_tokens": 150,
+        "cost_rub": 0.12,
+        "cost_cny": 0.01,
+        "cost_usd": 0.001,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 100,
+        "iteration": 0,
+    }
     jsonl_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
 
     minimal_cfg.usage.jsonl = str(jsonl_path)
     import yaml
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8")
+
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
 
     out_file = tmp_path / "export.json"
-    result = runner.invoke(app, [
-        "usage",
-        "--config", str(config_path),
-        "--export", "json",
-        "--out", str(out_file),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "usage",
+            "--config",
+            str(config_path),
+            "--export",
+            "json",
+            "--out",
+            str(out_file),
+        ],
+    )
 
     assert result.exit_code == 0
     assert out_file.exists()
@@ -255,6 +344,7 @@ def test_usage_export_json(cli_files, tmp_path: Path, minimal_cfg):
 
 
 # ---------- backups ----------
+
 
 def test_backups_empty(tmp_path: Path):
     project = tmp_path / "empty-project"
@@ -281,6 +371,7 @@ def test_backups_with_data(tmp_path: Path):
 
 
 # ---------- rollback ----------
+
 
 def test_rollback_missing_backup(tmp_path: Path):
     project = tmp_path / "proj"

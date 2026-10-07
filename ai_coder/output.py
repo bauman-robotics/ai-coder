@@ -68,8 +68,7 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
             )
         elif n > 0:
             apply_note = (
-                f"\n- **Применение:** ✅ применено операций: {n}\n"
-                f"- **Бэкап:** `{backup_dir}`\n"
+                f"\n- **Применение:** ✅ применено операций: {n}\n" f"- **Бэкап:** `{backup_dir}`\n"
             )
         else:
             apply_note = "\n- **Применение:** не выполнено\n"
@@ -144,6 +143,7 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
 
     if scan.skipped:
         from collections import Counter
+
         reasons = Counter(s.reason for s in scan.skipped)
         report += "\n## Отсеянные файлы\n\n"
         report += "| Причина | Кол-во |\n|---|---:|\n"

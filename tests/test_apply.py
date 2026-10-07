@@ -16,13 +16,16 @@ from ai_coder.apply import (
 
 # ---------- parse_response ----------
 
+
 def test_parse_valid_json():
-    content = json.dumps({
-        "explanation": "add file",
-        "operations": [
-            {"type": "create_file", "path": "a.py", "content": "x = 1\n"},
-        ],
-    })
+    content = json.dumps(
+        {
+            "explanation": "add file",
+            "operations": [
+                {"type": "create_file", "path": "a.py", "content": "x = 1\n"},
+            ],
+        }
+    )
     plan = parse_response(content)
     assert plan.parse_error is None
     assert plan.explanation == "add file"
@@ -52,122 +55,152 @@ def test_parse_invalid_json():
 
 
 def test_parse_unknown_operation_type():
-    content = json.dumps({
-        "explanation": "",
-        "operations": [{"type": "delete_file", "path": "x.py"}],
-    })
+    content = json.dumps(
+        {
+            "explanation": "",
+            "operations": [{"type": "delete_file", "path": "x.py"}],
+        }
+    )
     plan = parse_response(content)
     assert any("неизвестный type" in p for p in plan.problems)
 
 
 # ---------- validate_operations ----------
 
+
 def _plan_with(ops: list[Operation], explanation: str = "") -> WritePlan:
     return WritePlan(explanation=explanation, operations=ops)
 
 
 def test_validate_create_file_ok(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path="new.py", content="x = 1\n"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path="new.py", content="x = 1\n"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert plan.problems == []
 
 
 def test_validate_create_file_exists(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path="README.md", content="x"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path="README.md", content="x"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("уже существует" in p for p in plan.problems)
 
 
 def test_validate_path_escapes_project(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path="../evil.py", content="x"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path="../evil.py", content="x"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("относительным" in p or "вне проекта" in p for p in plan.problems)
 
 
 def test_validate_blacklist(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path=".git/hooks/pre-commit", content="x"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path=".git/hooks/pre-commit", content="x"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("blacklist" in p for p in plan.problems)
 
 
 def test_validate_edit_file_ok(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(
-            type="edit_file",
-            path="src/main.py",
-            old='    return "world"',
-            new='    """docstring"""\n    return "world"',
-        ),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='    return "world"',
+                new='    """docstring"""\n    return "world"',
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert plan.problems == []
 
 
 def test_validate_edit_file_old_not_found(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(
-            type="edit_file",
-            path="src/main.py",
-            old="never_was_in_file",
-            new="x",
-        ),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old="never_was_in_file",
+                new="x",
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("не найден" in p for p in plan.problems)
 
 
 def test_validate_edit_file_old_ambiguous(sample_project: Path, minimal_cfg):
     (sample_project / "dup.py").write_text("x = 1\nx = 1\n", encoding="utf-8")
-    plan = _plan_with([
-        Operation(type="edit_file", path="dup.py", old="x = 1", new="y = 1"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="edit_file", path="dup.py", old="x = 1", new="y = 1"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("неоднозначна" in p for p in plan.problems)
 
 
 def test_validate_multiple_edits_same_file_ok(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="edit_file", path="src/main.py",
-                  old='def hello():', new='def hello() -> str:'),
-        Operation(type="edit_file", path="src/main.py",
-                  old='    return "world"', new='    return "world!"'),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file", path="src/main.py", old="def hello():", new="def hello() -> str:"
+            ),
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='    return "world"',
+                new='    return "world!"',
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert plan.problems == []
 
 
 def test_validate_overlapping_edits_same_file(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(
-            type="edit_file",
-            path="src/main.py",
-            old='def hello():\n    return "world"',
-            new='def hello():\n    """doc"""\n    return "world"',
-        ),
-        Operation(
-            type="edit_file",
-            path="src/main.py",
-            old='    return "world"',
-            new='    return "WORLD"',
-        ),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='def hello():\n    return "world"',
+                new='def hello():\n    """doc"""\n    return "world"',
+            ),
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='    return "world"',
+                new='    return "WORLD"',
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert any("пересекается" in p for p in plan.problems)
 
+
 # ---------- apply_plan / rollback ----------
 
+
 def test_apply_create_file_and_rollback(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path="new.py", content="x = 1\n"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path="new.py", content="x = 1\n"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     backup = sample_project / ".ai-out" / "b1"
 
@@ -182,11 +215,16 @@ def test_apply_create_file_and_rollback(sample_project: Path, minimal_cfg):
 
 def test_apply_edit_file_and_rollback(sample_project: Path, minimal_cfg):
     original = (sample_project / "src" / "main.py").read_text(encoding="utf-8")
-    plan = _plan_with([
-        Operation(type="edit_file", path="src/main.py",
-                  old='    return "world"',
-                  new='    """docstring"""\n    return "world"'),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='    return "world"',
+                new='    """docstring"""\n    return "world"',
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     backup = sample_project / ".ai-out" / "b2"
 
@@ -205,12 +243,19 @@ def test_apply_edit_file_and_rollback(sample_project: Path, minimal_cfg):
 def test_apply_multiple_edits_same_file_backup_is_original(sample_project: Path, minimal_cfg):
     """Регрессия: бэкап должен содержать ОРИГИНАЛ, а не промежуточное состояние."""
     original = (sample_project / "src" / "main.py").read_text(encoding="utf-8")
-    plan = _plan_with([
-        Operation(type="edit_file", path="src/main.py",
-                  old='def hello():', new='def hello() -> str:'),
-        Operation(type="edit_file", path="src/main.py",
-                  old='    return "world"', new='    return "world!"'),
-    ])
+    plan = _plan_with(
+        [
+            Operation(
+                type="edit_file", path="src/main.py", old="def hello():", new="def hello() -> str:"
+            ),
+            Operation(
+                type="edit_file",
+                path="src/main.py",
+                old='    return "world"',
+                new='    return "world!"',
+            ),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     backup = sample_project / ".ai-out" / "b3"
 
@@ -226,9 +271,11 @@ def test_apply_multiple_edits_same_file_backup_is_original(sample_project: Path,
 
 
 def test_apply_fails_on_invalid_plan(sample_project: Path, minimal_cfg):
-    plan = _plan_with([
-        Operation(type="create_file", path="README.md", content="x"),
-    ])
+    plan = _plan_with(
+        [
+            Operation(type="create_file", path="README.md", content="x"),
+        ]
+    )
     validate_operations(plan, sample_project, minimal_cfg)
     assert plan.problems
 
@@ -251,12 +298,14 @@ def test_check_python_files_broken(sample_project: Path):
 
 
 def test_build_plan_full_cycle(sample_project: Path, minimal_cfg):
-    content = json.dumps({
-        "explanation": "test",
-        "operations": [
-            {"type": "create_file", "path": "new.py", "content": "x = 1\n"},
-        ],
-    })
+    content = json.dumps(
+        {
+            "explanation": "test",
+            "operations": [
+                {"type": "create_file", "path": "new.py", "content": "x = 1\n"},
+            ],
+        }
+    )
     plan = build_plan(content, sample_project, minimal_cfg)
     assert plan.parse_error is None
     assert plan.problems == []

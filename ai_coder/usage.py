@@ -27,8 +27,8 @@ def append_usage(
     duration_ms: int,
     status: str,
     usage_cfg,
-    iteration: int = 0,               # NEW: 0 = основной запрос, 1..N = fix-итерации
-    parent_action: str | None = None, # NEW: имя исходного действия
+    iteration: int = 0,  # NEW: 0 = основной запрос, 1..N = fix-итерации
+    parent_action: str | None = None,  # NEW: имя исходного действия
 ) -> None:
     """
     Пишет строку в usage.jsonl (глобальный и, если настроено, по проекту).
@@ -37,6 +37,7 @@ def append_usage(
     tz_msk = None
     try:
         from zoneinfo import ZoneInfo
+
         tz_msk = datetime.now(ZoneInfo("Europe/Moscow")).isoformat(timespec="seconds")
     except Exception:
         pass
@@ -85,4 +86,3 @@ def append_usage(
     # summary не пересчитывается при записи:
     # O(N^2) при каждом запросе; сводка строится командой `usage` на лету
     # из JSONL (review 1.3).
-

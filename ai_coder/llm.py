@@ -53,7 +53,9 @@ class LLMClient:
                         {"role": "user", "content": user},
                     ],
                     "temperature": temperature if temperature is not None else self.cfg.temperature,
-                    "max_tokens": max_tokens if max_tokens is not None else self.cfg.max_output_tokens,
+                    "max_tokens": max_tokens
+                    if max_tokens is not None
+                    else self.cfg.max_output_tokens,
                 }
                 if json_mode:
                     create_kwargs["response_format"] = {"type": "json_object"}

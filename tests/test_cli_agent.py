@@ -26,13 +26,18 @@ def cli_env(tmp_path: Path, minimal_cfg):
     minimal_cfg.actions = {
         "greet": ActionConfig(description="greet", prompt="greet", mode="read", enabled=True),
     }
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(mode="json"), allow_unicode=True), encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(mode="json"), allow_unicode=True), encoding="utf-8"
+    )
     prompts_path.write_text(
-        yaml.safe_dump({
-            "greet": {"system": "S", "user": "U"},
-            "agent_plan_json": {"system": "S {{max_steps}}", "user": "U {{goal}}"},
-            "agent_step_json": {"system": "S", "user": "U {{goal}}"},
-        }, allow_unicode=True),
+        yaml.safe_dump(
+            {
+                "greet": {"system": "S", "user": "U"},
+                "agent_plan_json": {"system": "S {{max_steps}}", "user": "U {{goal}}"},
+                "agent_step_json": {"system": "S", "user": "U {{goal}}"},
+            },
+            allow_unicode=True,
+        ),
         encoding="utf-8",
     )
 
@@ -86,15 +91,23 @@ def _fake_agent_result(project: Path, *, preview_only: bool = False):
 
 # ---------- тесты ----------
 
+
 def test_agent_preview_only_apply_conflict(cli_env):
     """--preview-only и --apply вместе — ошибка."""
-    result = runner.invoke(app, [
-        "agent", "test goal", str(cli_env["project"]),
-        "--config", str(cli_env["config"]),
-        "--prompts", str(cli_env["prompts"]),
-        "--preview-only",
-        "--apply",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--preview-only",
+            "--apply",
+        ],
+    )
 
     assert result.exit_code == 1
     assert "Нельзя одновременно" in result.stdout
@@ -102,11 +115,18 @@ def test_agent_preview_only_apply_conflict(cli_env):
 
 def test_agent_bad_path(cli_env, tmp_path):
     missing = tmp_path / "no-such-dir"
-    result = runner.invoke(app, [
-        "agent", "test goal", str(missing),
-        "--config", str(cli_env["config"]),
-        "--prompts", str(cli_env["prompts"]),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(missing),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+        ],
+    )
 
     assert result.exit_code == 1
     assert "Не директория" in result.stdout
@@ -117,12 +137,19 @@ def test_agent_empty_plan(cli_env):
     with patch("ai_coder.cli.run_agent") as mock_agent:
         mock_agent.return_value = _fake_agent_result(cli_env["project"])
 
-        result = runner.invoke(app, [
-            "agent", "test goal", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-            "--preview-only",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--preview-only",
+            ],
+        )
 
     assert result.exit_code == 0
     assert mock_agent.call_count == 1
@@ -133,11 +160,18 @@ def test_agent_error_handling(cli_env):
     with patch("ai_coder.cli.run_agent") as mock_agent:
         mock_agent.side_effect = RuntimeError("planner failed")
 
-        result = runner.invoke(app, [
-            "agent", "test goal", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
 
     assert result.exit_code == 1
     assert "Ошибка агента" in result.stdout

@@ -18,11 +18,12 @@ if TYPE_CHECKING:
     from .apply import WritePlan
 # ---------- структуры ----------
 
+
 @dataclass
 class AgentStep:
     n: int
     title: str
-    type: str               # "edit" (пока единственный)
+    type: str  # "edit" (пока единственный)
     details: str
     target_files: list[str] = field(default_factory=list)
 
@@ -45,20 +46,26 @@ _DIAGNOSTIC_MARKERS = (
     # "диагностика", "продиагностировать"
     "диагност",
     # "проанализировать", "проанализируй", "анализ", "анализировать"
-    "проанализир", "анализ",
+    "проанализир",
+    "анализ",
     # "составь список" (буквально)
     "составь список",
     # "проверь", "проверить", "проверка"
-    "проверь", "проверить", "проверк",
+    "проверь",
+    "проверить",
+    "проверк",
     # "изучить", "изучение"
     "изуч",
     # "прочитать", "прочти"
-    "прочита", "прочти",
+    "прочита",
+    "прочти",
     # "опиши", "описать", "описание"
-    "опиши", "описа",
+    "опиши",
+    "описа",
     # "исследовать", "исследуй"
     "исследу",
 )
+
 
 def _is_diagnostic_step(title: str, details: str) -> bool:
     """
@@ -68,7 +75,9 @@ def _is_diagnostic_step(title: str, details: str) -> bool:
     text = (title + " " + details).lower()
     return any(marker in text for marker in _DIAGNOSTIC_MARKERS)
 
+
 # ---------- парсинг плана ----------
+
 
 def parse_agent_plan(content: str, goal: str) -> AgentPlan:
     """
@@ -88,7 +97,7 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
-            text = text[start:end + 1]
+            text = text[start : end + 1]
 
     try:
         data = json.loads(text)
@@ -125,13 +134,15 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
         tf = s.get("target_files", [])
         target_files = [str(x) for x in tf] if isinstance(tf, list) else []
 
-        plan.steps.append(AgentStep(
-            n=i,
-            title=title,
-            type=stype,
-            details=details,
-            target_files=target_files,
-        ))
+        plan.steps.append(
+            AgentStep(
+                n=i,
+                title=title,
+                type=stype,
+                details=details,
+                target_files=target_files,
+            )
+        )
 
     if not plan.steps:
         plan.empty = True
@@ -139,6 +150,7 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
 
 
 # ---------- запрос плана у LLM ----------
+
 
 @dataclass
 class PlannerResult:
@@ -245,7 +257,9 @@ def run_planner(
         finished_at=finished_at,
     )
 
+
 # ---------- журнал агента ----------
+
 
 @dataclass
 class StepResult:
@@ -264,6 +278,7 @@ class StepResult:
     skipped: bool = False
     skip_reason: str = ""
 
+
 @dataclass
 class AgentRunResult:
     goal: str
@@ -275,7 +290,7 @@ class AgentRunResult:
     steps: list[StepResult]
     started_at: datetime
     finished_at: datetime
-    stopped_reason: str = "completed"   # completed | error | max_steps | verify_failed | parse_error
+    stopped_reason: str = "completed"  # completed | error | max_steps | verify_failed | parse_error
     journal_dir: Path | None = None
 
     @property
@@ -284,6 +299,7 @@ class AgentRunResult:
 
 
 # ---------- исполнитель одного шага ----------
+
 
 def _run_agent_step(
     *,
@@ -408,7 +424,9 @@ def _run_agent_step(
         return result
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = project_root / cfg.output.dir / project_root.name / f"agent-backup-{ts}-step{step.n}"
+    backup_dir = (
+        project_root / cfg.output.dir / project_root.name / f"agent-backup-{ts}-step{step.n}"
+    )
 
     applied, apply_errors = apply_plan(write_plan, project_root, backup_dir)
     if apply_errors:
@@ -455,7 +473,12 @@ def _run_agent_step(
                 result.errors.append("Fix-план невалиден")
                 break
 
-            fix_backup = project_root / cfg.output.dir / project_root.name / f"agent-backup-{ts}-step{step.n}-fix{fix_iter}"
+            fix_backup = (
+                project_root
+                / cfg.output.dir
+                / project_root.name
+                / f"agent-backup-{ts}-step{step.n}-fix{fix_iter}"
+            )
             fix_applied, fix_errors = apply_plan(fix_plan, project_root, fix_backup)
             if fix_errors:
                 result.errors.extend(fix_errors)
@@ -476,6 +499,7 @@ def _run_agent_step(
 
 # ---------- рендер вспомогательных текстов ----------
 
+
 def _render_plan_summary(plan: AgentPlan) -> str:
     parts: list[str] = []
     if plan.explanation:
@@ -486,6 +510,7 @@ def _render_plan_summary(plan: AgentPlan) -> str:
 
 
 # ---------- главный цикл ----------
+
 
 def run_agent(
     *,
@@ -627,6 +652,7 @@ def run_agent(
 
 # ---------- сохранение журнала ----------
 
+
 def _save_plan_json(journal_dir: Path, plan: AgentPlan, llm: LLMResponse) -> None:
     data = {
         "goal": plan.goal,
@@ -663,7 +689,9 @@ def _save_step_md(journal_dir: Path, step_result: StepResult, apply: bool) -> No
     lines.append(f"- **Details:** {s.details or '(нет)'}")
     lines.append(f"- **Target files:** {', '.join(s.target_files) or '(нет)'}")
     lines.append(f"- **Модель:** {step_result.llm.model}")
-    lines.append(f"- **Токены:** prompt {step_result.llm.prompt_tokens} / completion {step_result.llm.completion_tokens}")
+    lines.append(
+        f"- **Токены:** prompt {step_result.llm.prompt_tokens} / completion {step_result.llm.completion_tokens}"
+    )
     lines.append(f"- **Стоимость:** {step_result.cost_rub:.6f} RUB")
     lines.append(f"- **Применено:** {'да' if step_result.applied else 'нет'}")
     if step_result.applied_count:
@@ -723,6 +751,8 @@ def _save_agent_report(journal_dir: Path, result: AgentRunResult, apply: bool) -
         lines.append("|---:|---|:---:|---:|---:|")
         for sr in result.steps:
             ok = "✅" if sr.applied else "—"
-            lines.append(f"| {sr.step.n} | {sr.step.title} | {ok} | {len(sr.errors)+len(sr.verify_errors)} | {sr.cost_rub:.6f} |")
+            lines.append(
+                f"| {sr.step.n} | {sr.step.title} | {ok} | {len(sr.errors)+len(sr.verify_errors)} | {sr.cost_rub:.6f} |"
+            )
 
     (journal_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

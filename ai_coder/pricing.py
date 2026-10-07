@@ -14,6 +14,7 @@ from .config import ModelPricing
 
 # ---------- peak / off-peak ----------
 
+
 def is_peak_now(schedule) -> tuple[bool, str | None]:
     """
     Возвращает (is_peak, name_of_window).
@@ -38,6 +39,7 @@ def is_peak_now(schedule) -> tuple[bool, str | None]:
 
 
 # ---------- курсы валют ----------
+
 
 @dataclass
 class Rate:
@@ -71,6 +73,7 @@ def _save_cache(root: Path, data: dict) -> None:
         p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass
+
 
 def _fetch_cbr_rates() -> dict[str, float]:
     """
@@ -128,6 +131,7 @@ def get_rate(
 
 
 # ---------- расчёт стоимости ----------
+
 
 @dataclass
 class CostBreakdown:

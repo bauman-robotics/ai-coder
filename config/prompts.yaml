@@ -197,7 +197,7 @@ refactor_json:
     {{depth_hint}}
 
     ## Файлы
-    {{files}}    
+    {{files}}
 
 fix_errors_json:
   system: |
@@ -252,7 +252,7 @@ fix_errors_json:
     Никакого текста вне JSON. Никаких markdown-обёрток ```json.
 
     Глубина: {{depth}}.
-    {{depth_hint}}    
+    {{depth_hint}}
 
 agent_plan_json:
   system: |
@@ -301,7 +301,7 @@ agent_plan_json:
 
     ## Содержимое файлов
 
-    {{files}}    
+    {{files}}
 
 agent_step_json:
   system: |
@@ -355,4 +355,4 @@ agent_step_json:
     Никакого текста вне JSON. Никаких markdown-обёрток ```json.
 
     ## Файлы (актуальное состояние)
-    {{files}}    
+    {{files}}

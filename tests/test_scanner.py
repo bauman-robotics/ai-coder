@@ -54,6 +54,7 @@ def test_render_files_block(sample_project: Path, minimal_cfg):
     assert "### src/main.py" in block
     assert 'return "world"' in block
 
+
 def test_scan_ignores_too_large_file(sample_project: Path, minimal_cfg):
     """Файл больше max_file_size_kb должен попасть в skipped."""
     big = sample_project / "big.py"
@@ -64,6 +65,7 @@ def test_scan_ignores_too_large_file(sample_project: Path, minimal_cfg):
     assert "big.py" not in res.files
     reasons = {s.reason for s in res.skipped if s.path == "big.py"}
     assert "too_large" in reasons
+
 
 def test_scan_ignores_content_secret(sample_project: Path, minimal_cfg):
     secrets_file = sample_project / "settings.py"

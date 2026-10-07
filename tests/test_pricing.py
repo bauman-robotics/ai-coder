@@ -11,6 +11,7 @@ from ai_coder.pricing import Rate, calculate_cost, is_peak_now
 
 # ---------- is_peak_now ----------
 
+
 def _schedule():
     return PeakSchedule(
         timezone="UTC",
@@ -23,14 +24,17 @@ def _schedule():
     )
 
 
-@pytest.mark.parametrize("hour,expected", [
-    (2, True),    # внутри 01:00–04:00
-    (3, True),
-    (7, True),    # внутри 06:00–10:00
-    (5, False),   # между окнами
-    (11, False),  # после второго окна
-    (0, False),   # до первого окна
-])
+@pytest.mark.parametrize(
+    "hour,expected",
+    [
+        (2, True),  # внутри 01:00–04:00
+        (3, True),
+        (7, True),  # внутри 06:00–10:00
+        (5, False),  # между окнами
+        (11, False),  # после второго окна
+        (0, False),  # до первого окна
+    ],
+)
 def test_is_peak_windows(hour, expected):
     sched = _schedule()
     fake_now = datetime(2026, 10, 7, hour, 30, tzinfo=ZoneInfo("UTC"))  # среда
@@ -51,6 +55,7 @@ def test_is_peak_weekend_off():
 
 
 # ---------- calculate_cost ----------
+
 
 def _pricing():
     return ModelPricing(
@@ -83,27 +88,38 @@ def test_calculate_cost_off_peak_miss_only():
 
 def test_calculate_cost_peak_doubles():
     off = calculate_cost(
-        pricing=_pricing(), is_peak=False, peak_window=None,
-        prompt_hit_tokens=0, prompt_miss_tokens=1_000_000,
+        pricing=_pricing(),
+        is_peak=False,
+        peak_window=None,
+        prompt_hit_tokens=0,
+        prompt_miss_tokens=1_000_000,
         completion_tokens=1_000_000,
-        cny_to_rub=_rate(1.0), usd_to_rub=_rate(1.0),
+        cny_to_rub=_rate(1.0),
+        usd_to_rub=_rate(1.0),
     )
     peak = calculate_cost(
-        pricing=_pricing(), is_peak=True, peak_window="01:00-04:00 UTC",
-        prompt_hit_tokens=0, prompt_miss_tokens=1_000_000,
+        pricing=_pricing(),
+        is_peak=True,
+        peak_window="01:00-04:00 UTC",
+        prompt_hit_tokens=0,
+        prompt_miss_tokens=1_000_000,
         completion_tokens=1_000_000,
-        cny_to_rub=_rate(1.0), usd_to_rub=_rate(1.0),
+        cny_to_rub=_rate(1.0),
+        usd_to_rub=_rate(1.0),
     )
     assert peak.cost_cny == pytest.approx(off.cost_cny * 2)
 
 
 def test_calculate_cost_with_cache_hit():
     cost = calculate_cost(
-        pricing=_pricing(), is_peak=False, peak_window=None,
+        pricing=_pricing(),
+        is_peak=False,
+        peak_window=None,
         prompt_hit_tokens=1_000_000,
         prompt_miss_tokens=0,
         completion_tokens=0,
-        cny_to_rub=_rate(1.0), usd_to_rub=_rate(1.0),
+        cny_to_rub=_rate(1.0),
+        usd_to_rub=_rate(1.0),
     )
     # 1M hit * 0.02 = 0.02 CNY
     assert cost.cost_cny == pytest.approx(0.02)

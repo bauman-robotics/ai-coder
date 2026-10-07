@@ -164,7 +164,9 @@ def prompts_cfg() -> PromptsConfig:
         }
     )
 
+
 # ---------- фикстуры для output/actions ----------
+
 
 @pytest.fixture
 def fake_llm_response():

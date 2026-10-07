@@ -15,6 +15,7 @@ from ai_coder.output import (
 
 # ---------- _fmt_float ----------
 
+
 def test_fmt_float_default():
     assert _fmt_float(1.23456789) == "1.234568"
     assert _fmt_float(0.0) == "0.000000"
@@ -26,6 +27,7 @@ def test_fmt_float_custom_digits():
 
 
 # ---------- _resolve_output_path ----------
+
 
 def test_resolve_output_path_with_per_project(tmp_path: Path):
     p = _resolve_output_path(
@@ -52,6 +54,7 @@ def test_resolve_output_path_without_per_project(tmp_path: Path):
 
 
 # ---------- render_report: базовое (read-действие) ----------
+
 
 def test_render_report_read_action(fake_action_result):
     result = fake_action_result(action="greet", write_plan=None)
@@ -90,6 +93,7 @@ def test_render_report_with_write_plan(fake_action_result):
 
 # ---------- render_report: applied_info ----------
 
+
 def test_render_report_applied_success(fake_action_result):
     plan = WritePlan(
         explanation="",
@@ -100,14 +104,17 @@ def test_render_report_applied_success(fake_action_result):
     )
     result = fake_action_result(action="write_readme", write_plan=plan)
 
-    md = render_report(result, applied_info={
-        "applied": 3,
-        "errors": [],
-        "rolled_back": False,
-        "backup_dir": Path("/tmp/backup"),
-        "attempts": 1,
-        "fix_cost_rub": 0.05,
-    })
+    md = render_report(
+        result,
+        applied_info={
+            "applied": 3,
+            "errors": [],
+            "rolled_back": False,
+            "backup_dir": Path("/tmp/backup"),
+            "attempts": 1,
+            "fix_cost_rub": 0.05,
+        },
+    )
 
     assert "✅ применено операций: 3" in md
     assert "/tmp/backup" in md
@@ -125,14 +132,17 @@ def test_render_report_applied_rolled_back(fake_action_result):
     )
     result = fake_action_result(action="write_readme", write_plan=plan)
 
-    md = render_report(result, applied_info={
-        "applied": 0,
-        "errors": ["syntax error"],
-        "rolled_back": True,
-        "backup_dir": Path("/tmp/backup"),
-        "attempts": 0,
-        "fix_cost_rub": 0.0,
-    })
+    md = render_report(
+        result,
+        applied_info={
+            "applied": 0,
+            "errors": ["syntax error"],
+            "rolled_back": True,
+            "backup_dir": Path("/tmp/backup"),
+            "attempts": 0,
+            "fix_cost_rub": 0.0,
+        },
+    )
 
     assert "❌ откат" in md
     assert "**Ошибки:** 1" in md
@@ -140,8 +150,10 @@ def test_render_report_applied_rolled_back(fake_action_result):
 
 # ---------- render_report: warnings ----------
 
+
 def test_render_report_length_warning(fake_action_result):
     from ai_coder.llm import LLMResponse
+
     llm = LLMResponse(
         content="cut off",
         model="test-model",
@@ -170,6 +182,7 @@ def test_render_report_from_cache(fake_action_result):
 
 def test_render_report_with_savings_note(fake_action_result):
     from ai_coder.llm import LLMResponse
+
     llm = LLMResponse(
         content="ok",
         model="test-model",
@@ -189,6 +202,7 @@ def test_render_report_with_savings_note(fake_action_result):
 
 
 # ---------- _render_write_section ----------
+
 
 def test_render_write_section_basic():
     plan = WritePlan(
@@ -256,6 +270,7 @@ def test_render_write_section_raw_json_too_long():
 
 
 # ---------- save_report ----------
+
 
 def test_save_report_writes_file(tmp_path: Path, fake_action_result):
     result = fake_action_result(action="greet")

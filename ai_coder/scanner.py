@@ -10,16 +10,19 @@ from .config import ScanningConfig
 
 # ---------- результат ----------
 
+
 @dataclass
 class SkippedFile:
     path: str
-    reason: str  # gitignore | extra_ignore | secret_ignore | binary | too_large | not_included | budget
+    reason: (
+        str  # gitignore | extra_ignore | secret_ignore | binary | too_large | not_included | budget
+    )
 
 
 @dataclass
 class ScanResult:
     root: Path
-    files: dict[str, str] = field(default_factory=dict)   # rel_path -> content
+    files: dict[str, str] = field(default_factory=dict)  # rel_path -> content
     tree: str = ""
     skipped: list[SkippedFile] = field(default_factory=list)
     total_bytes: int = 0
@@ -28,6 +31,7 @@ class ScanResult:
 
 
 # ---------- вспомогательное ----------
+
 
 def _load_specs_recursive(root: Path) -> list[tuple[Path, pathspec.PathSpec]]:
     """
@@ -98,6 +102,7 @@ def _match_any(path_posix: str, spec: pathspec.PathSpec | None) -> bool:
     # пробуем и как файл, и как директорию
     return spec.match_file(path_posix) or spec.match_file(path_posix + "/")
 
+
 # ---------- content-фильтр секретов ----------
 
 # Узкие паттерны: реальные ключи и токены, минимум ложных срабатываний.
@@ -151,10 +156,21 @@ def _estimate_tokens(text: str) -> int:
 
 # ---------- служебные директории ----------
 
-_SERVICE_DIRS = {".git", ".ai-out", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
+_SERVICE_DIRS = {
+    ".git",
+    ".ai-out",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+}
 
 
 # ---------- основной обход ----------
+
 
 def scan_project(
     root: Path,
@@ -281,6 +297,7 @@ def scan_project(
 
 # ---------- дерево ----------
 
+
 def build_tree(paths: list[str]) -> str:
     """
     Строит текстовое дерево из списка относительных POSIX-путей.
@@ -313,6 +330,7 @@ def build_tree(paths: list[str]) -> str:
 
 
 # ---------- рендер файлов для промпта ----------
+
 
 def render_files_block(result: ScanResult, max_file_chars: int = 20000) -> str:
     """

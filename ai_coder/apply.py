@@ -18,10 +18,10 @@ class Operation:
     """Одна операция записи: edit_file (замена old→new) или create_file (новый файл)."""
 
     type: OperationType
-    path: str                       # POSIX-путь относительно project_root
-    old: str | None = None          # для edit_file
-    new: str | None = None          # для edit_file
-    content: str | None = None      # для create_file
+    path: str  # POSIX-путь относительно project_root
+    old: str | None = None  # для edit_file
+    new: str | None = None  # для edit_file
+    content: str | None = None  # для create_file
 
 
 @dataclass
@@ -41,6 +41,7 @@ class WritePlan:
 
 
 # ---------- парсинг ответа модели ----------
+
 
 def parse_response(content: str) -> WritePlan:
     """
@@ -68,7 +69,7 @@ def parse_response(content: str) -> WritePlan:
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
-            text = text[start:end + 1]
+            text = text[start : end + 1]
 
     try:
         data = json.loads(text)
@@ -118,6 +119,7 @@ def parse_response(content: str) -> WritePlan:
 
 
 # ---------- валидация ----------
+
 
 def _path_is_blacklisted(rel_path: str, cfg) -> bool:
     patterns = list(cfg.write.blacklist_paths)
@@ -228,6 +230,7 @@ def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:
             else:
                 edits_by_path.setdefault(rel, []).append(op.old)
 
+
 # ---------- рендер diff ----------
 def render_diff(plan: WritePlan, project_root: Path) -> str:
     """
@@ -283,6 +286,7 @@ def _render_edit_diff(path: str, old: str, new: str) -> str:
         lines.append("+" + line)
     return "\n".join(lines) + "\n"
 
+
 def build_plan(content: str, project_root: Path, cfg) -> WritePlan:
     """
     Полный цикл: парсинг → валидация → diff.
@@ -294,7 +298,9 @@ def build_plan(content: str, project_root: Path, cfg) -> WritePlan:
         plan.diff = render_diff(plan, project_root)
     return plan
 
+
 # ---------- применение ----------
+
 
 def _copy_to_backup(abs_path: Path, project_root: Path, backup_dir: Path) -> Path:
     """
@@ -307,6 +313,7 @@ def _copy_to_backup(abs_path: Path, project_root: Path, backup_dir: Path) -> Pat
     if abs_path.exists():
         shutil.copy2(abs_path, dst)
     return dst
+
 
 def apply_plan(
     plan: WritePlan,
@@ -323,7 +330,7 @@ def apply_plan(
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     applied: list[str] = []
-    backed_up_paths: set[str] = set()           # rel-пути, уже забэкапленные
+    backed_up_paths: set[str] = set()  # rel-пути, уже забэкапленные
     backups_made: list[tuple[Path, Path]] = []  # для отката при ошибке
     created_files: list[Path] = []
     operations_log: list[dict] = []
@@ -357,9 +364,7 @@ def apply_plan(
             elif op.type == "edit_file":
                 text = abs_path.read_text(encoding="utf-8")
                 if text.count(op.old or "") != 1:
-                    raise RuntimeError(
-                        f"operations[{i}] ({rel}): old встречается не один раз"
-                    )
+                    raise RuntimeError(f"operations[{i}] ({rel}): old встречается не один раз")
                 new_text = text.replace(op.old or "", op.new or "", 1)
                 abs_path.write_text(new_text, encoding="utf-8")
                 applied.append(rel)
@@ -390,6 +395,7 @@ def apply_plan(
             except OSError:
                 pass
         return [], [f"Ошибка применения, выполнен откат: {e}"]
+
 
 def rollback(backup_dir: Path, project_root: Path) -> list[str]:
     """
@@ -449,6 +455,7 @@ def rollback(backup_dir: Path, project_root: Path) -> list[str]:
         restored.append(f"~{rel_path.as_posix()}")
     return restored
 
+
 def check_python_files(paths: list[str], project_root: Path) -> list[str]:
     errors: list[str] = []
     for rel in paths:
@@ -462,6 +469,7 @@ def check_python_files(paths: list[str], project_root: Path) -> list[str]:
         except OSError as e:
             errors.append(f"{rel}: {e}")
     return errors
+
 
 def list_backups(project_root: Path) -> list[dict]:
     """
@@ -484,10 +492,12 @@ def list_backups(project_root: Path) -> list[dict]:
                 ops = len(manifest.get("operations", []))
             except (OSError, json.JSONDecodeError):
                 pass
-        out.append({
-            "dir": d,
-            "name": d.name,
-            "files": len(files),
-            "operations": ops,
-        })
+        out.append(
+            {
+                "dir": d,
+                "name": d.name,
+                "files": len(files),
+                "operations": ops,
+            }
+        )
     return out

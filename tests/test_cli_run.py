@@ -14,6 +14,7 @@ runner = CliRunner(env={"COLUMNS": "200"})
 
 # ---------- фикстуры ----------
 
+
 @pytest.fixture
 def cli_env(tmp_path: Path, minimal_cfg):
     """Готовит config.yaml + prompts.yaml + пустой проект."""
@@ -30,14 +31,21 @@ def cli_env(tmp_path: Path, minimal_cfg):
 
     minimal_cfg.actions = {
         "greet": ActionConfig(description="greet", prompt="greet", mode="read", enabled=True),
-        "write_readme": ActionConfig(description="write", prompt="write_readme_json", mode="write", enabled=True),
+        "write_readme": ActionConfig(
+            description="write", prompt="write_readme_json", mode="write", enabled=True
+        ),
     }
-    config_path.write_text(yaml.safe_dump(minimal_cfg.model_dump(mode="json"), allow_unicode=True), encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(mode="json"), allow_unicode=True), encoding="utf-8"
+    )
     prompts_path.write_text(
-        yaml.safe_dump({
-            "greet": {"system": "S {{depth}}", "user": "U {{files}}"},
-            "write_readme_json": {"system": "S", "user": "U {{files}}"},
-        }, allow_unicode=True),
+        yaml.safe_dump(
+            {
+                "greet": {"system": "S {{depth}}", "user": "U {{files}}"},
+                "write_readme_json": {"system": "S", "user": "U {{files}}"},
+            },
+            allow_unicode=True,
+        ),
         encoding="utf-8",
     )
 
@@ -48,7 +56,9 @@ def cli_env(tmp_path: Path, minimal_cfg):
     }
 
 
-def _fake_action_result(project: Path, *, write_plan=None, from_cache: bool = False, finish_reason: str = "stop"):
+def _fake_action_result(
+    project: Path, *, write_plan=None, from_cache: bool = False, finish_reason: str = "stop"
+):
     """Собирает ActionResult для мока run_action."""
     from ai_coder.actions import ActionResult
     from ai_coder.llm import LLMResponse
@@ -102,14 +112,23 @@ def _fake_write_plan(valid: bool = True):
 
 # ---------- dry-run ----------
 
+
 def test_run_dry_run(cli_env):
-    result = runner.invoke(app, [
-        "run", "greet", str(cli_env["project"]),
-        "--config", str(cli_env["config"]),
-        "--prompts", str(cli_env["prompts"]),
-        "--dry-run",
-        "--depth", "shallow",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--dry-run",
+            "--depth",
+            "shallow",
+        ],
+    )
 
     assert result.exit_code == 0
     assert "Оценка (dry-run)" in result.stdout
@@ -118,12 +137,19 @@ def test_run_dry_run(cli_env):
 
 
 def test_run_dry_run_unknown_action(cli_env):
-    result = runner.invoke(app, [
-        "run", "unknown-action", str(cli_env["project"]),
-        "--config", str(cli_env["config"]),
-        "--prompts", str(cli_env["prompts"]),
-        "--dry-run",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "unknown-action",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--dry-run",
+        ],
+    )
 
     assert result.exit_code == 1
     assert "не найдено в конфиге" in result.stdout
@@ -131,11 +157,18 @@ def test_run_dry_run_unknown_action(cli_env):
 
 def test_run_bad_path(cli_env, tmp_path):
     missing = tmp_path / "no-such-dir"
-    result = runner.invoke(app, [
-        "run", "greet", str(missing),
-        "--config", str(cli_env["config"]),
-        "--prompts", str(cli_env["prompts"]),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(missing),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+        ],
+    )
 
     assert result.exit_code == 1
     assert "Не директория" in result.stdout
@@ -143,18 +176,29 @@ def test_run_bad_path(cli_env, tmp_path):
 
 # ---------- run с моком run_action ----------
 
+
 def test_run_success(cli_env):
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"])
         mock_save.return_value = cli_env["project"] / "report.md"
 
-        result = runner.invoke(app, [
-            "run", "greet", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-            "--depth", "shallow",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "greet",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--depth",
+                "shallow",
+            ],
+        )
 
     assert result.exit_code == 0
     assert mock_run.call_count == 1
@@ -162,16 +206,25 @@ def test_run_success(cli_env):
 
 
 def test_run_from_cache(cli_env):
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"], from_cache=True)
         mock_save.return_value = cli_env["project"] / "report.md"
 
-        result = runner.invoke(app, [
-            "run", "greet", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "greet",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
 
     assert result.exit_code == 0
     assert "из кэша" in result.stdout.lower()
@@ -181,27 +234,43 @@ def test_run_error_handling(cli_env):
     with patch("ai_coder.cli.run_action") as mock_run:
         mock_run.side_effect = RuntimeError("API failed")
 
-        result = runner.invoke(app, [
-            "run", "greet", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "greet",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
 
     assert result.exit_code == 1
     assert "Ошибка" in result.stdout
 
 
 def test_run_length_warning(cli_env):
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"], finish_reason="length")
         mock_save.return_value = cli_env["project"] / "report.md"
 
-        result = runner.invoke(app, [
-            "run", "greet", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "greet",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
 
     assert result.exit_code == 0
     assert "обрезан" in result.stdout
@@ -209,21 +278,31 @@ def test_run_length_warning(cli_env):
 
 # ---------- run --apply ----------
 
+
 def test_run_apply_invalid_plan(cli_env):
     invalid_plan = _fake_write_plan(valid=False)
 
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"], write_plan=invalid_plan)
         mock_save.return_value = cli_env["project"] / "report.md"
 
-        result = runner.invoke(app, [
-            "run", "write_readme", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-            "--apply",
-            "--yes",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "write_readme",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--apply",
+                "--yes",
+            ],
+        )
 
     assert result.exit_code == 0
     assert "невалиден" in result.stdout.lower()
@@ -232,22 +311,31 @@ def test_run_apply_invalid_plan(cli_env):
 def test_run_apply_yes_success(cli_env):
     valid_plan = _fake_write_plan(valid=True)
 
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save, \
-         patch("ai_coder.cli.apply_plan") as mock_apply, \
-         patch("ai_coder.cli.check_python_files") as mock_verify:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+        patch("ai_coder.cli.apply_plan") as mock_apply,
+        patch("ai_coder.cli.check_python_files") as mock_verify,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"], write_plan=valid_plan)
         mock_save.return_value = cli_env["project"] / "report.md"
         mock_apply.return_value = (["README.md"], [])  # applied, errors
         mock_verify.return_value = []  # no verify errors
 
-        result = runner.invoke(app, [
-            "run", "write_readme", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-            "--apply",
-            "--yes",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "write_readme",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--apply",
+                "--yes",
+            ],
+        )
 
     assert result.exit_code == 0
     assert mock_apply.call_count == 1
@@ -257,25 +345,35 @@ def test_run_apply_yes_success(cli_env):
 def test_run_apply_rollback_on_verify_fail(cli_env):
     valid_plan = _fake_write_plan(valid=True)
 
-    with patch("ai_coder.cli.run_action") as mock_run, \
-         patch("ai_coder.cli.save_report") as mock_save, \
-         patch("ai_coder.cli.apply_plan") as mock_apply, \
-         patch("ai_coder.cli.check_python_files") as mock_verify, \
-         patch("ai_coder.cli.do_rollback") as mock_rollback:
+    with (
+        patch("ai_coder.cli.run_action") as mock_run,
+        patch("ai_coder.cli.save_report") as mock_save,
+        patch("ai_coder.cli.apply_plan") as mock_apply,
+        patch("ai_coder.cli.check_python_files") as mock_verify,
+        patch("ai_coder.cli.do_rollback") as mock_rollback,
+    ):
         mock_run.return_value = _fake_action_result(cli_env["project"], write_plan=valid_plan)
         mock_save.return_value = cli_env["project"] / "report.md"
         mock_apply.return_value = (["README.md"], [])
         mock_verify.return_value = ["syntax error in README.md"]  # verify fail
         mock_rollback.return_value = ["README.md"]
 
-        result = runner.invoke(app, [
-            "run", "write_readme", str(cli_env["project"]),
-            "--config", str(cli_env["config"]),
-            "--prompts", str(cli_env["prompts"]),
-            "--apply",
-            "--yes",
-            "--max-fix-attempts", "0",  # отключаем fix, сразу откат
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "write_readme",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--apply",
+                "--yes",
+                "--max-fix-attempts",
+                "0",  # отключаем fix, сразу откат
+            ],
+        )
 
     assert result.exit_code == 0
     assert mock_rollback.call_count == 1

@@ -7,3 +7,4 @@ ruff>=0.5
 mypy>=1.10
 types-PyYAML
 pytest-cov
+pre-commit>=3.7

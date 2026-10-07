@@ -11,6 +11,7 @@ from ai_coder.llm import LLMClient, LLMResponse
 
 # ---------- вспомогательные объекты, имитирующие ChatCompletion ----------
 
+
 @dataclass
 class FakeMessage:
     content: str
@@ -51,6 +52,7 @@ def _fake_response(
 
 # ---------- LLMClient с мок-клиентом ----------
 
+
 @pytest.fixture
 def llm_client(minimal_cfg, monkeypatch):
     """LLMClient с подменённым _client (не идёт в сеть и не требует реального ключа)."""
@@ -61,7 +63,9 @@ def llm_client(minimal_cfg, monkeypatch):
         client = LLMClient(minimal_cfg.api)
         yield client
 
+
 # ---------- _build_response ----------
+
 
 def test_build_response_with_cache_fields(llm_client):
     resp = _fake_response(
@@ -115,6 +119,7 @@ def test_build_response_finish_reason_length(llm_client):
 
 
 # ---------- chat ----------
+
 
 def test_chat_success(llm_client):
     llm_client._client.chat.completions.create.return_value = _fake_response(content="ok")

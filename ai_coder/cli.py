@@ -44,7 +44,9 @@ def list_actions(
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
     path: Path = typer.Option(Path("."), "--path", help="Проект для оценки (только с --verbose)"),
     model: str | None = typer.Option(None, "--model", "-m", help="Модель для оценки (с --verbose)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Показать оценку стоимости для текущего проекта"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Показать оценку стоимости для текущего проекта"
+    ),
 ):
     """Показать доступные действия из конфига."""
     cfg, pr_cfg = _load(config, prompts)
@@ -60,7 +62,9 @@ def list_actions(
             table.add_row(name, act.mode, act.prompt, act.description)
 
         console.print(table)
-        console.print("\n[dim]Подсказка: `actions --verbose` покажет оценку стоимости на текущем проекте.[/dim]")
+        console.print(
+            "\n[dim]Подсказка: `actions --verbose` покажет оценку стоимости на текущем проекте.[/dim]"
+        )
         return
 
     # --- verbose-режим ---
@@ -82,14 +86,18 @@ def list_actions(
     cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
     usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
 
-    peak_label = f"peak ({peak_window})" if is_peak and peak_window else ("peak" if is_peak else "off-peak")
-    console.print(Panel.fit(
-        f"[bold]Проект:[/bold] {project_root}\n"
-        f"[bold]Файлов в контексте:[/bold] {len(scan.files)}\n"
-        f"[bold]Модель:[/bold] {model_name}\n"
-        f"[bold]Тариф:[/bold] {peak_label}",
-        title="Оценка действий",
-    ))
+    peak_label = (
+        f"peak ({peak_window})" if is_peak and peak_window else ("peak" if is_peak else "off-peak")
+    )
+    console.print(
+        Panel.fit(
+            f"[bold]Проект:[/bold] {project_root}\n"
+            f"[bold]Файлов в контексте:[/bold] {len(scan.files)}\n"
+            f"[bold]Модель:[/bold] {model_name}\n"
+            f"[bold]Тариф:[/bold] {peak_label}",
+            title="Оценка действий",
+        )
+    )
 
     table = Table(title="Действия и оценка стоимости", show_lines=False)
     table.add_column("Имя", style="cyan")
@@ -139,6 +147,7 @@ def list_actions(
         "Реальный cache hit может снизить стоимость в разы.[/dim]"
     )
 
+
 @app.command("run")
 def run(
     action: str = typer.Argument(..., help="Имя действия из config.yaml"),
@@ -148,14 +157,24 @@ def run(
     model: str | None = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
     depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
     exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
-    apply: bool = typer.Option(False, "--apply", help="Применить план изменений (для write-действий)"),
+    apply: bool = typer.Option(
+        False, "--apply", help="Применить план изменений (для write-действий)"
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Не спрашивать подтверждения при --apply"),
-    no_verify: bool = typer.Option(False, "--no-verify", help="Не запускать py_compile после применения"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"),
+    no_verify: bool = typer.Option(
+        False, "--no-verify", help="Не запускать py_compile после применения"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"
+    ),
     no_cache: bool = typer.Option(False, "--no-cache", help="Не использовать кэш отчётов"),
     refresh: bool = typer.Option(False, "--refresh", help="Игнорировать кэш и заново спросить API"),
-    max_fix_attempts: int | None = typer.Option(None, "--max-fix-attempts", help="Сколько раз пробовать авто-исправление (0 = выключено)"),
-    no_auto_fix: bool = typer.Option(False, "--no-auto-fix", help="Отключить авто-исправление ошибок"),
+    max_fix_attempts: int | None = typer.Option(
+        None, "--max-fix-attempts", help="Сколько раз пробовать авто-исправление (0 = выключено)"
+    ),
+    no_auto_fix: bool = typer.Option(
+        False, "--no-auto-fix", help="Отключить авто-исправление ошибок"
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -165,15 +184,21 @@ def run(
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
 
-    console.print(Panel.fit(
-        f"[bold]Действие:[/bold] {action}\n"
-        f"[bold]Проект:[/bold] {project_root}\n"
-        f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
-        f"[bold]Глубина:[/bold] {depth}"
-        + ("\n[bold]Режим:[/bold] dry-run" if dry_run else "")
-        + ("\n[bold]Кэш:[/bold] выключен" if no_cache else ("\n[bold]Кэш:[/bold] refresh" if refresh else "")),
-        title="ai-coder",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Действие:[/bold] {action}\n"
+            f"[bold]Проект:[/bold] {project_root}\n"
+            f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
+            f"[bold]Глубина:[/bold] {depth}"
+            + ("\n[bold]Режим:[/bold] dry-run" if dry_run else "")
+            + (
+                "\n[bold]Кэш:[/bold] выключен"
+                if no_cache
+                else ("\n[bold]Кэш:[/bold] refresh" if refresh else "")
+            ),
+            title="ai-coder",
+        )
+    )
 
     # ---------- dry-run ----------
     if dry_run:
@@ -231,8 +256,12 @@ def run(
                 backup_base_name = f"{cfg.write.backup_dir_name}-{ts_base}"
 
                 # --- сколько раз пробовать fix ---
-                fix_attempts = 0 if no_auto_fix else (
-                    max_fix_attempts if max_fix_attempts is not None else cfg.fix.max_attempts
+                fix_attempts = (
+                    0
+                    if no_auto_fix
+                    else (
+                        max_fix_attempts if max_fix_attempts is not None else cfg.fix.max_attempts
+                    )
                 )
                 if no_verify:
                     fix_attempts = 0
@@ -270,12 +299,14 @@ def run(
                     while verify_errors and iteration < fix_attempts:
                         iteration += 1
                         console.print()
-                        console.print(Panel.fit(
-                            f"[bold]Итерация[/bold] {iteration}/{fix_attempts}\n"
-                            f"Ошибок: {len(verify_errors)}\n"
-                            f"Отправляю модели на исправление...",
-                            title="Авто-исправление",
-                        ))
+                        console.print(
+                            Panel.fit(
+                                f"[bold]Итерация[/bold] {iteration}/{fix_attempts}\n"
+                                f"Ошибок: {len(verify_errors)}\n"
+                                f"Отправляю модели на исправление...",
+                                title="Авто-исправление",
+                            )
+                        )
 
                         try:
                             fix_result = run_fix_action(
@@ -374,13 +405,16 @@ def run(
     if getattr(result, "from_cache", False):
         console.print("[yellow]ℹ Результат из кэша — API не вызывался, стоимость 0.[/yellow]")
 
+
 def _print_plan_summary(plan) -> None:
     console.print()
-    console.print(Panel.fit(
-        f"[bold]Операций:[/bold] {len(plan.operations)}\n"
-        f"[bold]Файлов затронуто:[/bold] {len({op.path for op in plan.operations})}",
-        title="План изменений",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Операций:[/bold] {len(plan.operations)}\n"
+            f"[bold]Файлов затронуто:[/bold] {len({op.path for op in plan.operations})}",
+            title="План изменений",
+        )
+    )
     files_table = Table(title="Файлы", show_header=True, box=None)
     files_table.add_column("Тип", style="magenta")
     files_table.add_column("Путь", style="cyan")
@@ -428,6 +462,7 @@ def _print_result_summary(result, report_path: Path) -> None:
         table.add_row("Отчёт:", str(report_path))
 
     console.print(table)
+
 
 def _run_dry(
     action: str,
@@ -507,6 +542,7 @@ def _run_dry(
         "Реальный cache hit может снизить стоимость в разы.[/dim]"
     )
 
+
 @app.command("agent")
 def agent_cmd(
     goal: str = typer.Argument(..., help="Цель агента (что нужно сделать)"),
@@ -516,15 +552,30 @@ def agent_cmd(
     model: str | None = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
     depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
     exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
-    apply: bool = typer.Option(False, "--apply", help="Применять шаги (по умолчанию — только план и предложения)"),
-    verify: bool = typer.Option(True, "--verify/--no-verify", help="Проверять py_compile после каждого шага"),
-    max_steps: int | None = typer.Option(None, "--max-steps", help="Максимум шагов (по умолчанию из конфига)"),
-    max_minutes: int | None = typer.Option(None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"),
-    max_fix_attempts: int = typer.Option(0, "--max-fix-attempts", help="Попыток fix на шаг (0 = без fix)"),
-    journal: bool = typer.Option(True, "--journal/--no-journal", help="Сохранять журнал агента в .ai-out/<project>/agent-<ts>/"),
-    preview_only: bool = typer.Option(False, "--preview-only", help="Только план и оценка, без выполнения шагов (экономит токены)"),
+    apply: bool = typer.Option(
+        False, "--apply", help="Применять шаги (по умолчанию — только план и предложения)"
+    ),
+    verify: bool = typer.Option(
+        True, "--verify/--no-verify", help="Проверять py_compile после каждого шага"
+    ),
+    max_steps: int | None = typer.Option(
+        None, "--max-steps", help="Максимум шагов (по умолчанию из конфига)"
+    ),
+    max_minutes: int | None = typer.Option(
+        None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"
+    ),
+    max_fix_attempts: int = typer.Option(
+        0, "--max-fix-attempts", help="Попыток fix на шаг (0 = без fix)"
+    ),
+    journal: bool = typer.Option(
+        True,
+        "--journal/--no-journal",
+        help="Сохранять журнал агента в .ai-out/<project>/agent-<ts>/",
+    ),
+    preview_only: bool = typer.Option(
+        False, "--preview-only", help="Только план и оценка, без выполнения шагов (экономит токены)"
+    ),
 ):
-
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
 
@@ -537,16 +588,18 @@ def agent_cmd(
         console.print("[red]Нельзя одновременно --preview-only и --apply[/red]")
         raise typer.Exit(1)
 
-    console.print(Panel.fit(
-        f"[bold]Цель:[/bold] {goal}\n"
-        f"[bold]Проект:[/bold] {project_root}\n"
-        f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
-        f"[bold]Глубина:[/bold] {depth}\n"
-        f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}"
-        + ("\n[bold]Только план:[/bold] да (--preview-only)" if preview_only else "")
-        + f"\n[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
-        title="ai-coder agent",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Цель:[/bold] {goal}\n"
+            f"[bold]Проект:[/bold] {project_root}\n"
+            f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
+            f"[bold]Глубина:[/bold] {depth}\n"
+            f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}"
+            + ("\n[bold]Только план:[/bold] да (--preview-only)" if preview_only else "")
+            + f"\n[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
+            title="ai-coder agent",
+        )
+    )
 
     try:
         with console.status("[cyan]Планирую и выполняю..."):
@@ -581,6 +634,7 @@ def agent_cmd(
     # --- итог ---
     _print_agent_summary(result)
 
+
 @app.command("rollback")
 def rollback_cmd(
     backup_dir: Path = typer.Argument(..., help="Папка бэкапа (из .ai-out/<project>/backup-*)"),
@@ -601,19 +655,22 @@ def rollback_cmd(
     if manifest_path.exists():
         try:
             import json as _json
+
             manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
             ops_count = len(manifest.get("operations", []))
         except Exception:
             ops_count = 0
 
     files = [p for p in backup_dir.rglob("*") if p.is_file() and p.name != "manifest.json"]
-    console.print(Panel.fit(
-        f"[bold]Бэкап:[/bold] {backup_dir}\n"
-        f"[bold]Файлов в бэкапе:[/bold] {len(files)}\n"
-        f"[bold]Операций в манифесте:[/bold] {ops_count}\n"
-        f"[bold]Проект:[/bold] {project_root}",
-        title="Откат",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Бэкап:[/bold] {backup_dir}\n"
+            f"[bold]Файлов в бэкапе:[/bold] {len(files)}\n"
+            f"[bold]Операций в манифесте:[/bold] {ops_count}\n"
+            f"[bold]Проект:[/bold] {project_root}",
+            title="Откат",
+        )
+    )
 
     if not yes:
         proceed = typer.confirm("Откатить изменения по этому бэкапу?", default=False)
@@ -659,6 +716,7 @@ def backups_cmd(
         )
     console.print(table)
 
+
 @app.command("usage")
 def usage_show(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
@@ -667,7 +725,9 @@ def usage_show(
     action: str | None = typer.Option(None, "--action", "-a", help="Фильтр по действию"),
     project: str | None = typer.Option(None, "--project", help="Фильтр по имени проекта"),
     model: str | None = typer.Option(None, "--model", "-m", help="Фильтр по модели"),
-    export: str | None = typer.Option(None, "--export", help="csv|json — выгрузить отфильтрованные записи"),
+    export: str | None = typer.Option(
+        None, "--export", help="csv|json — выгрузить отфильтрованные записи"
+    ),
     out: Path | None = typer.Option(None, "--out", help="Файл для экспорта (по умолчанию stdout)"),
 ):
     """Показать сводку расходов с фильтрами."""
@@ -724,12 +784,27 @@ def usage_show(
             payload = _json.dumps(filtered, ensure_ascii=False, indent=2)
         else:  # csv
             fields = [
-                "ts_utc", "ts_msk", "action", "project_name", "model", "depth",
-                "files_count", "prompt_tokens", "prompt_cache_hit_tokens",
-                "prompt_cache_miss_tokens", "completion_tokens", "total_tokens",
-                "is_peak", "cost_cny", "cost_rub", "cost_usd",
-                "cny_to_rub_rate", "usd_to_rub_rate", "rate_source",
-                "duration_ms", "status",
+                "ts_utc",
+                "ts_msk",
+                "action",
+                "project_name",
+                "model",
+                "depth",
+                "files_count",
+                "prompt_tokens",
+                "prompt_cache_hit_tokens",
+                "prompt_cache_miss_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "is_peak",
+                "cost_cny",
+                "cost_rub",
+                "cost_usd",
+                "cny_to_rub_rate",
+                "usd_to_rub_rate",
+                "rate_source",
+                "duration_ms",
+                "status",
             ]
             buf = io.StringIO()
             writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
@@ -778,7 +853,9 @@ def usage_show(
             parts.append(f"project={project}")
         if model:
             parts.append(f"model={model}")
-        console.print(f"[dim]Фильтры: {', '.join(parts)}. Записей: {len(filtered)} из {len(records)}[/dim]")
+        console.print(
+            f"[dim]Фильтры: {', '.join(parts)}. Записей: {len(filtered)} из {len(records)}[/dim]"
+        )
 
 
 def _aggregate(records: list[dict]) -> dict:
@@ -795,8 +872,11 @@ def _aggregate(records: list[dict]) -> dict:
     }
     for r in records:
         for k in (
-            "prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens",
-            "completion_tokens", "total_tokens",
+            "prompt_tokens",
+            "prompt_cache_hit_tokens",
+            "prompt_cache_miss_tokens",
+            "completion_tokens",
+            "total_tokens",
         ):
             total[k] += r.get(k, 0)
         for k in ("cost_cny", "cost_rub", "cost_usd"):
@@ -852,16 +932,21 @@ def _print_group_table(title: str, data: dict[str, dict]) -> None:
     t.add_column("Токенов", justify="right")
     t.add_column("RUB", justify="right")
     for key, slot in data.items():
-        t.add_row(str(key), str(slot["requests"]), str(slot["total_tokens"]), f"{slot['cost_rub']:.4f}")
+        t.add_row(
+            str(key), str(slot["requests"]), str(slot["total_tokens"]), f"{slot['cost_rub']:.4f}"
+        )
     console.print(t)
+
 
 def _print_agent_plan(result) -> None:
     console.print()
-    console.print(Panel.fit(
-        f"[bold]План:[/bold] {len(result.plan.steps)} шагов\n"
-        f"[bold]Стоимость планировщика:[/bold] {result.planner_cost_rub:.6f} RUB",
-        title="План агента",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]План:[/bold] {len(result.plan.steps)} шагов\n"
+            f"[bold]Стоимость планировщика:[/bold] {result.planner_cost_rub:.6f} RUB",
+            title="План агента",
+        )
+    )
     if result.plan.explanation:
         console.print(f"[dim]{result.plan.explanation}[/dim]\n")
 
@@ -895,6 +980,7 @@ def _print_agent_plan(result) -> None:
             "Запустите без флага, чтобы выполнить план (с --apply для применения)."
         )
 
+
 def _print_agent_step_summary(sr) -> None:
     s = sr.step
     status_parts: list[str] = []
@@ -924,6 +1010,7 @@ def _print_agent_step_summary(sr) -> None:
         if len(sr.verify_errors) > 3:
             console.print(f"  [dim]... ещё {len(sr.verify_errors) - 3}[/dim]")
 
+
 def _print_agent_summary(result) -> None:
     duration = (result.finished_at - result.started_at).total_seconds()
     console.print()
@@ -952,6 +1039,7 @@ def _print_agent_summary(result) -> None:
             console.print(
                 "\n[dim]Совет: запустите с `--apply`, чтобы применить предложенные изменения.[/dim]"
             )
+
 
 if __name__ == "__main__":
     app()

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # ---------- api ----------
 
+
 class PricePair(BaseModel):
     off_peak: float
     peak: float
@@ -24,8 +25,8 @@ class ModelPricing(BaseModel):
 
 
 class PeakWindow(BaseModel):
-    start: str   # "HH:MM"
-    end: str     # "HH:MM"
+    start: str  # "HH:MM"
+    end: str  # "HH:MM"
 
     @field_validator("start", "end")
     @classmethod
@@ -79,6 +80,7 @@ class ApiConfig(BaseModel):
 
 # ---------- currency ----------
 
+
 class CurrencyPair(BaseModel):
     fetch_online: bool = True
     source: str = "cbr"
@@ -92,6 +94,7 @@ class CurrencyConfig(BaseModel):
 
 
 # ---------- scanning ----------
+
 
 class ScanningConfig(BaseModel):
     use_gitignore: bool = True
@@ -110,13 +113,15 @@ class ScanningConfig(BaseModel):
 
 # ---------- output / usage ----------
 
+
 class OutputConfig(BaseModel):
     dir: str = ".ai-out"
     per_project_subdir: bool = True
     filename_pattern: str = "{action}-{timestamp}.md"
     save_raw_response: bool = True
-    use_cache: bool = True           # по умолчанию кэш включён
+    use_cache: bool = True  # по умолчанию кэш включён
     cache_dir_name: str = "cache"
+
 
 class UsageConfig(BaseModel):
     jsonl: str = ".ai-out/usage.jsonl"
@@ -125,6 +130,7 @@ class UsageConfig(BaseModel):
 
 
 # ---------- write (ДО AppConfig!) ----------
+
 
 class WriteConfig(BaseModel):
     max_operations: int = 20
@@ -137,6 +143,7 @@ class WriteConfig(BaseModel):
 class FixConfig(BaseModel):
     max_attempts: int = 3
     prompt: str = "fix_errors_json"
+
 
 # ---------- actions ----------
 
@@ -151,17 +158,21 @@ class ActionConfig(BaseModel):
     max_output_tokens: int | None = None
     temperature: float | None = None
 
+
 class AgentConfig(BaseModel):
     max_steps: int = 10
     max_minutes: int = 30
     verify_commands: list[str] = Field(default_factory=list)
     stop_on_verify_failure: bool = True
-    include_read_steps: bool = False   # если False — шаги типа read пропускаются
+    include_read_steps: bool = False  # если False — шаги типа read пропускаются
+
 
 # ---------- root ----------
 
+
 class AppConfig(BaseModel):
     """Корневой конфиг приложения, объединяющий все секции config.yaml."""
+
     api: ApiConfig
     currency: CurrencyConfig
     scanning: ScanningConfig
@@ -169,7 +180,7 @@ class AppConfig(BaseModel):
     usage: UsageConfig
     write: WriteConfig
     fix: FixConfig
-    agent: AgentConfig           # ← NEW
+    agent: AgentConfig  # ← NEW
     actions: dict[str, ActionConfig]
 
     def enabled_actions(self) -> dict[str, ActionConfig]:
@@ -177,6 +188,7 @@ class AppConfig(BaseModel):
 
 
 # ---------- prompts ----------
+
 
 class PromptEntry(BaseModel):
     system: str
@@ -193,6 +205,7 @@ class PromptsConfig(BaseModel):
 
 
 # ---------- загрузка ----------
+
 
 def _read_yaml(path: Path) -> dict[str, Any]:
     """Читает YAML-файл и гарантирует, что результатом является словарь."""

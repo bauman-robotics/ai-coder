@@ -52,14 +52,17 @@ def actions_cfg(minimal_cfg):
 
 @pytest.fixture
 def actions_prompts():
-    return PromptsConfig(prompts={
-        "greet": PromptEntry(system="S {{depth}}", user="U {{files}}"),
-        "write_readme_json": PromptEntry(system="S", user="U {{files}}"),
-        "fix_errors_json": PromptEntry(system="S {{errors}}", user="U {{files}}"),
-    })
+    return PromptsConfig(
+        prompts={
+            "greet": PromptEntry(system="S {{depth}}", user="U {{files}}"),
+            "write_readme_json": PromptEntry(system="S", user="U {{files}}"),
+            "fix_errors_json": PromptEntry(system="S {{errors}}", user="U {{files}}"),
+        }
+    )
 
 
 # ---------- run_action: ошибки на входе ----------
+
 
 def test_run_action_bad_depth(actions_cfg, actions_prompts, sample_project):
     with pytest.raises(ValueError, match="depth должен быть"):
@@ -94,11 +97,15 @@ def test_run_action_disabled(actions_cfg, actions_prompts, sample_project):
 
 # ---------- run_action: read-действие ----------
 
+
 def test_run_action_read_success(actions_cfg, actions_prompts, sample_project):
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response("# hello")
 
@@ -121,13 +128,17 @@ def test_run_action_read_success(actions_cfg, actions_prompts, sample_project):
 
 # ---------- run_action: write-действие ----------
 
+
 def test_run_action_write_valid_plan(actions_cfg, actions_prompts, sample_project):
     plan_json = '{"explanation": "test", "operations": [{"type": "create_file", "path": "new.py", "content": "x = 1\\n"}]}'
 
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response(plan_json)
 
@@ -146,10 +157,13 @@ def test_run_action_write_valid_plan(actions_cfg, actions_prompts, sample_projec
 
 
 def test_run_action_write_invalid_json(actions_cfg, actions_prompts, sample_project):
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response("not json at all")
 
@@ -168,12 +182,16 @@ def test_run_action_write_invalid_json(actions_cfg, actions_prompts, sample_proj
 
 # ---------- run_action: cache hit ----------
 
+
 def test_run_action_cache_hit(actions_cfg, actions_prompts, sample_project):
     """Первый вызов пишет в кэш, второй — возвращает from_cache=True."""
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response("# cached")
 
@@ -201,17 +219,30 @@ def test_run_action_cache_hit(actions_cfg, actions_prompts, sample_project):
 
 
 def test_run_action_cache_disabled(actions_cfg, actions_prompts, sample_project):
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response("answer")
 
-        r1 = run_action(action_name="greet", project_root=sample_project,
-                        cfg=actions_cfg, prompts_cfg=actions_prompts, use_cache=False)
-        r2 = run_action(action_name="greet", project_root=sample_project,
-                        cfg=actions_cfg, prompts_cfg=actions_prompts, use_cache=False)
+        r1 = run_action(
+            action_name="greet",
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            use_cache=False,
+        )
+        r2 = run_action(
+            action_name="greet",
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            use_cache=False,
+        )
 
         assert r1.from_cache is False
         assert r2.from_cache is False
@@ -220,17 +251,22 @@ def test_run_action_cache_disabled(actions_cfg, actions_prompts, sample_project)
 
 # ---------- run_fix_action ----------
 
+
 def test_run_fix_action_basic(actions_cfg, actions_prompts, sample_project):
     plan_json = '{"explanation": "fix", "operations": []}'
 
-    with patch("ai_coder.actions.LLMClient") as MockLLM, \
-         patch("ai_coder.actions.get_rate") as mock_rate, \
-         patch("ai_coder.actions.is_peak_now", return_value=(False, None)):
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+    ):
         from ai_coder.pricing import Rate
+
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockLLM.return_value.chat.return_value = _make_llm_response(plan_json)
 
         from ai_coder.apply import Operation, WritePlan
+
         prev_plan = WritePlan(
             explanation="prev",
             operations=[Operation(type="create_file", path="x.py", content="y")],

@@ -89,6 +89,7 @@ def run_action(
                 # Перепроверяем план: blacklist и содержимое файлов могли измениться
                 if cached_plan is not None:
                     from .apply import render_diff, validate_operations
+
                     cached_plan.problems = []
                     validate_operations(cached_plan, project_root, cfg)
                     cached_plan.diff = render_diff(cached_plan, project_root)
@@ -216,6 +217,7 @@ def run_action(
         from_cache=False,
     )
 
+
 def run_fix_action(
     *,
     parent_action: str,
@@ -264,7 +266,11 @@ def run_fix_action(
     if cache_enabled:
         hash_hex = cache_mod.compute_hash(
             scan=scan,
-            prompt_system=prompt_entry.system + "\nERRORS:\n" + errors_text + "\nPREV:\n" + previous_plan_text,
+            prompt_system=prompt_entry.system
+            + "\nERRORS:\n"
+            + errors_text
+            + "\nPREV:\n"
+            + previous_plan_text,
             prompt_user=prompt_entry.user,
             model=model,
             depth=depth,
@@ -282,6 +288,7 @@ def run_fix_action(
             # Перепроверяем fix-план: blacklist и содержимое файлов могли измениться
             if cached_plan is not None:
                 from .apply import render_diff, validate_operations
+
                 cached_plan.problems = []
                 validate_operations(cached_plan, project_root, cfg)
                 cached_plan.diff = render_diff(cached_plan, project_root)
