@@ -13,6 +13,31 @@
 
 
 
+
+## [2026-10-07] iteration 7.4 — chore: pre-commit
+
+### Добавлено
+- `.pre-commit-config.yaml`:
+  - `ruff --fix`
+  - `ruff-format`
+  - `trailing-whitespace`
+  - `end-of-file-fixer`
+  - `check-yaml`
+  - `check-added-large-files`
+- `pre-commit>=3.7` в `requirements-dev.txt`.
+- `check.sh` — локальный скрипт (ruff + mypy + pytest).
+
+### Изменено
+- `ruff.toml` — убран `RUF059` (несовместим с ruff 0.6.x).
+- Автоформат ruff-format (22 файла).
+- Автофиксы trailing-whitespace и end-of-file-fixer.
+
+### Заметка
+- mypy **не в pre-commit** (медленный, и конфликтует с pass_filenames).
+  Mypy работает в CI.
+
+---
+
 ## [2026-10-07] iteration 7.3 — покрытие тестами (73%)
 
 ### Добавлено
