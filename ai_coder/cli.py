@@ -10,7 +10,7 @@ from rich.table import Table
 
 from .actions import run_action, run_fix_action
 from .agent import run_agent
-from .apply import apply_plan, check_python_files, list_backups
+from .apply import apply_plan, check_python_files, list_backups, run_verify_commands
 from .apply import rollback as do_rollback
 from .config import WEB_ASSET_EXTENSIONS, load_config, load_prompts
 from .output import save_report
@@ -186,6 +186,11 @@ def run(
     include_web: bool = typer.Option(
         False, "--include-web", help="Включить вёрстку (переопределить авто-настройки)"
     ),
+    verify_commands: str | None = typer.Option(
+        None,
+        "--verify-commands",
+        help="Verify-команды через ';' (например, 'pytest -q;ruff check .')",
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -203,6 +208,10 @@ def run(
         web_override = False
     elif include_web:
         web_override = True
+
+    if verify_commands is not None:
+        cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
+        cfg.agent.verify_commands = cmds
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -314,8 +323,16 @@ def run(
                     console.print(f"[green]Применено операций:[/green] {len(applied)}")
 
                     verify_errors: list[str] = []
-                    if cfg.write.verify_after_apply and not no_verify:
-                        verify_errors = check_python_files(applied, project_root)
+                    if not no_verify:
+                        if cfg.write.verify_after_apply:
+                            verify_errors = check_python_files(applied, project_root)
+                        if cfg.agent.verify_commands:
+                            verify_errors += run_verify_commands(
+                                cfg.agent.verify_commands,
+                                project_root,
+                                timeout_sec=cfg.agent.verify_timeout_sec,
+                                max_output_chars=cfg.agent.verify_max_output_chars,
+                            )
 
                     # --- цикл авто-исправления ---
                     current_plan = plan
@@ -380,7 +397,16 @@ def run(
                         current_plan = fix_plan
                         current_applied = fix_applied
 
-                        verify_errors = check_python_files(fix_applied, project_root)
+                        verify_errors = []
+                        if cfg.write.verify_after_apply:
+                            verify_errors = check_python_files(fix_applied, project_root)
+                        if cfg.agent.verify_commands:
+                            verify_errors += run_verify_commands(
+                                cfg.agent.verify_commands,
+                                project_root,
+                                timeout_sec=cfg.agent.verify_timeout_sec,
+                                max_output_chars=cfg.agent.verify_max_output_chars,
+                            )
 
                     # --- итог ---
                     if verify_errors:
@@ -629,6 +655,11 @@ def agent_cmd(
     include_web: bool = typer.Option(
         False, "--include-web", help="Включить вёрстку (по умолчанию агент видит всё)"
     ),
+    verify_commands: str | None = typer.Option(
+        None,
+        "--verify-commands",
+        help="Verify-команды через ';' (например, 'pytest -q;ruff check .'). Переопределяет config.yaml",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -646,6 +677,10 @@ def agent_cmd(
         web_override = False
     elif include_web:
         web_override = True
+
+    if verify_commands is not None:
+        cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
+        cfg.agent.verify_commands = cmds
 
     project_root = path.resolve()
     if not project_root.is_dir():

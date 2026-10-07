@@ -439,3 +439,22 @@ def test_run_conflicting_web_flags(cli_env):
     )
     assert result.exit_code == 1
     assert "Нельзя одновременно" in result.stdout
+
+
+def test_run_verify_commands_flag(cli_env):
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--verify-commands",
+            "pytest -q",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0

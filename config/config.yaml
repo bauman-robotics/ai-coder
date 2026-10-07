@@ -111,7 +111,10 @@ fix:
 agent:
   max_steps: 10
   max_minutes: 30
-  verify_commands: []              # напр. ["pytest -q", "ruff check ."]
+  verify_commands:
+    - "python -m pytest -q"
+  verify_timeout_sec: 60
+  verify_max_output_chars: 10000
   stop_on_verify_failure: true
   include_read_steps: false
 

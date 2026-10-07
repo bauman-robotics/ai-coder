@@ -501,3 +501,52 @@ def list_backups(project_root: Path) -> list[dict]:
             }
         )
     return out
+
+
+def run_verify_commands(
+    commands: list[str],
+    project_root: Path,
+    *,
+    timeout_sec: int = 60,
+    max_output_chars: int = 10_000,
+) -> list[str]:
+    """
+    Запускает список shell-команд в project_root.
+    Возвращает список сообщений об ошибках (пустой — всё ок).
+    """
+    import subprocess
+
+    root = project_root.resolve()
+    errors: list[str] = []
+
+    for cmd in commands:
+        cmd = cmd.strip()
+        if not cmd:
+            continue
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+        except subprocess.TimeoutExpired:
+            errors.append(f"$ {cmd}\n  ТАЙМАУТ ({timeout_sec} с)")
+            continue
+        except Exception as e:
+            errors.append(f"$ {cmd}\n  не удалось запустить: {e}")
+            continue
+
+        if proc.returncode == 0:
+            continue
+
+        output = (proc.stdout or "") + (proc.stderr or "")
+        if len(output) > max_output_chars:
+            output = output[:max_output_chars] + f"\n... [обрезано, всего {len(output)} символов]"
+
+        errors.append(f"$ {cmd}\n  exit code: {proc.returncode}\n{output.rstrip()}")
+
+    return errors

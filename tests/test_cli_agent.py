@@ -221,3 +221,31 @@ def test_agent_conflicting_web_flags(cli_env):
     )
     assert result.exit_code == 1
     assert "Нельзя одновременно" in result.stdout
+
+
+def test_agent_verify_commands_flag(cli_env):
+    from unittest.mock import patch
+
+    with patch("ai_coder.cli.run_agent") as mock_agent:
+        mock_agent.return_value = _fake_agent_result(cli_env["project"])
+
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                "--verify-commands",
+                "pytest -q;ruff check .",
+                "--preview-only",
+            ],
+        )
+
+    assert result.exit_code == 0
+    call_kwargs = mock_agent.call_args.kwargs
+    cfg = call_kwargs["cfg"]
+    assert cfg.agent.verify_commands == ["pytest -q", "ruff check ."]

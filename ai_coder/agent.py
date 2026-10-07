@@ -7,6 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from .apply import (
+    WritePlan,
+    apply_plan,
+    build_plan,
+    check_python_files,
+    run_verify_commands,  # NEW
+)
 from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
@@ -323,7 +330,6 @@ def _run_agent_step(
     Ничего не решает про контроль бюджета/шагов — только делает свою работу.
     """
     from .actions import run_fix_action
-    from .apply import apply_plan, build_plan, check_python_files
     from .apply import rollback as do_rollback
 
     model = model or cfg.api.model
@@ -454,7 +460,13 @@ def _run_agent_step(
     # --- верификация ---
     if verify and applied:
         verify_errors = check_python_files(applied, project_root)
-
+        # NEW: verify-команды
+        if cfg.agent.verify_commands:
+            verify_errors += run_verify_commands(
+                cfg.agent.verify_commands,
+                project_root,
+                timeout_sec=cfg.agent.verify_timeout_sec,
+            )
         # fix-цикл
         fix_iter = 0
         while verify_errors and fix_iter < max_fix_attempts:

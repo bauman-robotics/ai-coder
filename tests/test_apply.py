@@ -312,3 +312,45 @@ def test_build_plan_full_cycle(sample_project: Path, minimal_cfg):
     assert plan.valid
     assert "+++ b/new.py" in plan.diff
     assert "+x = 1" in plan.diff
+
+
+def test_run_verify_commands_success(sample_project: Path):
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands(
+        ["python -c 'print(1)'"],
+        sample_project,
+        timeout_sec=10,
+    )
+    assert errors == []
+
+
+def test_run_verify_commands_failure(sample_project: Path):
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands(
+        ["python -c 'import sys; sys.exit(2)'"],
+        sample_project,
+        timeout_sec=10,
+    )
+    assert len(errors) == 1
+    assert "exit code: 2" in errors[0]
+
+
+def test_run_verify_commands_timeout(sample_project: Path):
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands(
+        ["python -c 'import time; time.sleep(5)'"],
+        sample_project,
+        timeout_sec=1,
+    )
+    assert len(errors) == 1
+    assert "ТАЙМАУТ" in errors[0]
+
+
+def test_run_verify_commands_empty_list(sample_project: Path):
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands([], sample_project)
+    assert errors == []

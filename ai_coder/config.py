@@ -182,8 +182,10 @@ class AgentConfig(BaseModel):
     max_steps: int = 10
     max_minutes: int = 30
     verify_commands: list[str] = Field(default_factory=list)
+    verify_timeout_sec: int = 60
+    verify_max_output_chars: int = 10_000
     stop_on_verify_failure: bool = True
-    include_read_steps: bool = False  # если False — шаги типа read пропускаются
+    include_read_steps: bool = False
 
 
 # ---------- root ----------
