@@ -86,25 +86,53 @@ def run_action(
             )
             if cached is not None:
                 llm_resp, cached_plan = cached
-                started_at = datetime.now(ZoneInfo("UTC"))
-                # пометим результат как «из кэша», вернём мгновенно
-                return ActionResult(
-                    action=action_name,
-                    model=model,
-                    depth=depth,
-                    scan=scan,
-                    llm=llm_resp,
-                    cost_rub=0.0,
-                    cost_cny=0.0,
-                    cost_usd=0.0,
-                    is_peak=False,
-                    peak_window=None,
-                    started_at=started_at,
-                    finished_at=started_at,
-                    write_plan=cached_plan,
-                    from_cache=True,
-                )
 
+                # Перепроверяем план: blacklist и содержимое файлов могли измениться
+                if cached_plan is not None:
+                    from .apply import validate_operations, render_diff
+                    cached_plan.problems = []
+                    validate_operations(cached_plan, project_root, cfg)
+                    cached_plan.diff = render_diff(cached_plan, project_root)
+
+                    if not cached_plan.valid:
+                        # кэш устарел — идём в API заново
+                        cached = None
+                    else:
+                        started_at = datetime.now(ZoneInfo("UTC"))
+                        return ActionResult(
+                            action=action_name,
+                            model=model,
+                            depth=depth,
+                            scan=scan,
+                            llm=llm_resp,
+                            cost_rub=0.0,
+                            cost_cny=0.0,
+                            cost_usd=0.0,
+                            is_peak=False,
+                            peak_window=None,
+                            started_at=started_at,
+                            finished_at=started_at,
+                            write_plan=cached_plan,
+                            from_cache=True,
+                        )
+                else:
+                    started_at = datetime.now(ZoneInfo("UTC"))
+                    return ActionResult(
+                        action=action_name,
+                        model=model,
+                        depth=depth,
+                        scan=scan,
+                        llm=llm_resp,
+                        cost_rub=0.0,
+                        cost_cny=0.0,
+                        cost_usd=0.0,
+                        is_peak=False,
+                        peak_window=None,
+                        started_at=started_at,
+                        finished_at=started_at,
+                        write_plan=None,
+                        from_cache=True,
+                    )
     # 4. рендер и запрос к LLM (как было)
     system, user = render_prompt(prompt_entry, depth=depth, scan=scan)
     started_at = datetime.now(ZoneInfo("UTC"))
@@ -251,23 +279,53 @@ def run_fix_action(
         )
         if cached is not None:
             llm_resp, cached_plan = cached
-            now = datetime.now(ZoneInfo("UTC"))
-            return ActionResult(
-                action=f"{parent_action}:fix{iteration}",
-                model=model,
-                depth=depth,
-                scan=scan,
-                llm=llm_resp,
-                cost_rub=0.0,
-                cost_cny=0.0,
-                cost_usd=0.0,
-                is_peak=False,
-                peak_window=None,
-                started_at=now,
-                finished_at=now,
-                write_plan=cached_plan,
-                from_cache=True,
-            )
+
+            # Перепроверяем fix-план: blacklist и содержимое файлов могли измениться
+            if cached_plan is not None:
+                from .apply import validate_operations, render_diff
+                cached_plan.problems = []
+                validate_operations(cached_plan, project_root, cfg)
+                cached_plan.diff = render_diff(cached_plan, project_root)
+
+                if not cached_plan.valid:
+                    # кэш устарел — идём в API заново
+                    cached = None
+                else:
+                    now = datetime.now(ZoneInfo("UTC"))
+                    return ActionResult(
+                        action=f"{parent_action}:fix{iteration}",
+                        model=model,
+                        depth=depth,
+                        scan=scan,
+                        llm=llm_resp,
+                        cost_rub=0.0,
+                        cost_cny=0.0,
+                        cost_usd=0.0,
+                        is_peak=False,
+                        peak_window=None,
+                        started_at=now,
+                        finished_at=now,
+                        write_plan=cached_plan,
+                        from_cache=True,
+                    )
+            else:
+                now = datetime.now(ZoneInfo("UTC"))
+                return ActionResult(
+                    action=f"{parent_action}:fix{iteration}",
+                    model=model,
+                    depth=depth,
+                    scan=scan,
+                    llm=llm_resp,
+                    cost_rub=0.0,
+                    cost_cny=0.0,
+                    cost_usd=0.0,
+                    is_peak=False,
+                    peak_window=None,
+                    started_at=now,
+                    finished_at=now,
+                    write_plan=None,
+                    from_cache=True,
+                )
 
     # 6. запрос
     started_at = datetime.now(ZoneInfo("UTC"))
