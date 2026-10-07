@@ -752,7 +752,7 @@ def _save_agent_report(journal_dir: Path, result: AgentRunResult, apply: bool) -
         for sr in result.steps:
             ok = "✅" if sr.applied else "—"
             lines.append(
-                f"| {sr.step.n} | {sr.step.title} | {ok} | {len(sr.errors)+len(sr.verify_errors)} | {sr.cost_rub:.6f} |"
+                f"| {sr.step.n} | {sr.step.title} | {ok} | {len(sr.errors) + len(sr.verify_errors)} | {sr.cost_rub:.6f} |"
             )
 
     (journal_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

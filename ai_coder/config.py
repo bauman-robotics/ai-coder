@@ -67,8 +67,7 @@ class ApiConfig(BaseModel):
         key = os.environ.get(self.api_key_env)
         if not key:
             raise RuntimeError(
-                f"Переменная окружения {self.api_key_env} не задана. "
-                f"Установите API-ключ DeepSeek."
+                f"Переменная окружения {self.api_key_env} не задана. Установите API-ключ DeepSeek."
             )
         return key
 
