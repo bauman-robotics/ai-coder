@@ -9,13 +9,13 @@ from typer.testing import CliRunner
 
 from ai_coder.cli import app
 
-
 runner = CliRunner(env={"COLUMNS": "200"})
 
 
 @pytest.fixture
 def cli_env(tmp_path: Path, minimal_cfg):
     import yaml
+
     from ai_coder.config import ActionConfig
 
     config_path = tmp_path / "config.yaml"

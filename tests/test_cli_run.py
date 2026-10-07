@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 
 from ai_coder.cli import app
 
-
 runner = CliRunner(env={"COLUMNS": "200"})
 
 
@@ -19,6 +18,7 @@ runner = CliRunner(env={"COLUMNS": "200"})
 def cli_env(tmp_path: Path, minimal_cfg):
     """Готовит config.yaml + prompts.yaml + пустой проект."""
     import yaml
+
     from ai_coder.config import ActionConfig
 
     config_path = tmp_path / "config.yaml"
