@@ -39,6 +39,33 @@ class AgentPlan:
         return self.parse_error is None and bool(self.steps)
 
 
+_DIAGNOSTIC_MARKERS = (
+    # "диагностика", "продиагностировать"
+    "диагност",
+    # "проанализировать", "проанализируй", "анализ", "анализировать"
+    "проанализир", "анализ",
+    # "составь список" (буквально)
+    "составь список",
+    # "проверь", "проверить", "проверка"
+    "проверь", "проверить", "проверк",
+    # "изучить", "изучение"
+    "изуч",
+    # "прочитать", "прочти"
+    "прочита", "прочти",
+    # "опиши", "описать", "описание"
+    "опиши", "описа",
+    # "исследовать", "исследуй"
+    "исследу",
+)
+
+def _is_diagnostic_step(title: str, details: str) -> bool:
+    """
+    Определяет, является ли шаг «диагностическим» (по сути read, а не edit).
+    Такие шаги пропускаем: они не порождают правок и жгут токены.
+    """
+    text = (title + " " + details).lower()
+    return any(marker in text for marker in _DIAGNOSTIC_MARKERS)
+
 # ---------- парсинг плана ----------
 
 def parse_agent_plan(content: str, goal: str) -> AgentPlan:
@@ -84,11 +111,15 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
         title = str(s.get("title", "")).strip()
         stype = str(s.get("type", "edit")).strip().lower()
         if stype not in ("edit",):
-            # пока поддерживаем только edit; остальные типы пропускаем
             continue
         if not title:
             continue
         details = str(s.get("details", "")).strip()
+
+        # NEW: пропускаем диагностические шаги (по сути read, не edit)
+        if _is_diagnostic_step(title, details):
+            continue
+
         tf = s.get("target_files", [])
         target_files = [str(x) for x in tf] if isinstance(tf, list) else []
 
@@ -363,6 +394,10 @@ def _run_agent_step(
     )
 
     if not apply:
+        # Даже без применения — если план пустой, помечаем как skipped
+        if write_plan is not None and not write_plan.operations:
+            result.skipped = True
+            result.skip_reason = "план не содержит операций"
         return result
 
     # --- применение ---
