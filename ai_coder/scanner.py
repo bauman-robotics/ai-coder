@@ -146,6 +146,64 @@ def _expand_dir_patterns(patterns: list[str]) -> list[str]:
     return out
 
 
+def _file_weight(rel_path: str) -> int:
+    """
+    Вес файла для приоритизации обхода.
+    Чем выше — тем важнее, тем раньше попадёт в контекст.
+    """
+    path = Path(rel_path)
+    name = path.name.lower()
+    parts = [p.lower() for p in path.parts]
+
+    # Точки входа
+    if name in ("main.py", "app.py", "wsgi.py", "asgi.py", "__main__.py"):
+        return 100
+    if name.startswith("run_") or name.startswith("manage"):
+        return 100
+
+    # Метаданные проекта
+    if name in (
+        "readme.md",
+        "readme.rst",
+        "readme.txt",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+        "makefile",
+        "dockerfile",
+        "license",
+        "changelog.md",
+    ):
+        return 90
+
+    # Вёрстка — в самом конце
+    if path.suffix.lower() in (".html", ".css", ".js", ".svg", ".scss", ".less"):
+        return 10
+
+    # Тесты
+    if "tests" in parts or "test" in parts or name.startswith("test_") or name.endswith("_test.py"):
+        return 20
+
+    # Скрипты
+    if "scripts" in parts or "examples" in parts:
+        return 30
+
+    # __init__.py — низкий вес (пустые уже отсеяны)
+    if name == "__init__.py":
+        return 40
+
+    # Конфиги
+    if "config" in parts or path.suffix.lower() in (".yaml", ".yml", ".toml", ".ini", ".cfg"):
+        return 70
+
+    # Код Python
+    if path.suffix.lower() == ".py":
+        return 80
+
+    return 50
+
+
 def _estimate_tokens(text: str) -> int:
     """
     Грубая консервативная оценка: ~3 символа на токен.
@@ -195,7 +253,8 @@ def scan_project(
     max_bytes = cfg.max_file_size_kb * 1024
 
     result = ScanResult(root=root)
-    collected: list[tuple[str, str, int]] = []
+    candidates: list[tuple[str, int]] = []  # (rel_path, size) — без содержимого
+    collected: list[tuple[str, str, int]] = []  # (rel_path, text, size) — после чтения
 
     def should_skip_dir(rel_dir: str, name: str) -> bool:
         """Директории, в которые не надо заходить."""
@@ -254,27 +313,41 @@ def scan_project(
                 result.skipped.append(SkippedFile(rel, "too_large"))
                 continue
 
+            # NEW: пропускаем пустые файлы и мелкие __init__.py
+            if size == 0:
+                result.skipped.append(SkippedFile(rel, "empty"))
+                continue
+
+            # просто добавляем в candidates, не читаем
+            candidates.append((rel, size))
+
+    walk(root, "")
+
+    # --- приоритизация: важные файлы — первыми ---
+    candidates.sort(key=lambda item: (-_file_weight(item[0]), item[0]))
+
+    # --- читаем содержимое в отсортированном порядке ---
+    for rel, size in candidates:
+        abs_path = root / rel
+        try:
+            text = abs_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
             try:
-                text = entry.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                try:
-                    text = entry.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    result.skipped.append(SkippedFile(rel, "binary"))
-                    continue
+                text = abs_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 result.skipped.append(SkippedFile(rel, "binary"))
                 continue
+        except OSError:
+            result.skipped.append(SkippedFile(rel, "binary"))
+            continue
 
-            # content-проверка на секреты (review 1.4)
-            found = _contains_secret(text)
-            if found is not None:
-                result.skipped.append(SkippedFile(rel, f"secret_content: {found}"))
-                continue
+        # content-проверка на секреты
+        found = _contains_secret(text)
+        if found is not None:
+            result.skipped.append(SkippedFile(rel, f"secret_content: {found}"))
+            continue
 
-            collected.append((rel, text, size))
-
-    walk(root, "")
+        collected.append((rel, text, size))
 
     # --- бюджет токенов ---
     total_tokens = 0

@@ -13,8 +13,9 @@ def test_scan_ignores_git_venv_pycache(sample_project: Path, minimal_cfg):
     # что должно попасть
     assert "src/main.py" in rel_paths
     assert "src/utils.py" in rel_paths
-    assert "src/__init__.py" in rel_paths
     assert "README.md" in rel_paths
+    # src/__init__.py пустой — пропускается (reason="empty")
+    assert "src/__init__.py" not in rel_paths
 
     # что НЕ должно попасть
     assert not any(p.startswith(".git/") for p in rel_paths)
@@ -94,3 +95,15 @@ def test_scan_keeps_normal_file_with_short_token(sample_project: Path, minimal_c
     f.write_text('TOKEN = "sk-short"\n', encoding="utf-8")
     res = scan_project(sample_project, minimal_cfg.scanning)
     assert "config.py" in res.files
+
+
+def test_scan_skips_empty_files(sample_project: Path, minimal_cfg):
+    """Пустые файлы пропускаются с reason='empty'."""
+    empty_file = sample_project / "empty.py"
+    empty_file.write_text("", encoding="utf-8")
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert "empty.py" not in res.files
+    reasons = {s.reason for s in res.skipped if s.path == "empty.py"}
+    assert "empty" in reasons
