@@ -104,25 +104,22 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ## Актуальные приоритеты
 
-Сделано в итерациях 6.5–7.3:
-- review 1.2 — `get_rate` не падает на read-only FS
-- review 1.1 — перепроверка плана при cache hit (частично)
-- review 1.3 — usage пути из конфига + нет O(N^2) в summary
-- review 1.4 — content-фильтр секретов (sk-, AKIA, ghp_, PEM и др.)
-- review 5.2 — `_load_specs_recursive` без обхода служебных каталогов (~30x)
-- review 5.3 — `PathSpec` компилируется один раз (~2.2x)
-- TODO про агент: applied_count, skipped, empty_plan, фильтр диагностики
-- `agent --preview-only` — только план, без шагов (~0.05 RUB вместо ~11)
-- CI: GitHub Actions (pytest x3 + ruff + mypy) + coverage --fail-under=40
+Сделано в итерациях 6.5–7.5:
+- review 1.1–1.4, 5.2, 5.3 — закрыты
+- TODO 🔥 про агент — закрыты (applied_count, skipped, empty_plan, диагностика, --preview-only)
+- CI + coverage + pre-commit — настроены
 - Покрытие тестами: 40% -> 73% (119 тестов)
+- **Первый запуск на чужом проекте** (lichess_db_project):
+  защита секретов работает, кэш работает, стоимость адекватная
 
 Осталось:
 
-1. **`agent.py`** — 43%, остальные 190 строк (`_run_agent_step`, `run_agent`, `_save_*`)
-2. **`apply.py`** — 72%, ветки ошибок в `apply_plan`/`rollback`
-3. **`pricing.py`** — 67%, `get_rate`, `_fetch_cbr_rates` (мок httpx)
-4. **`prompts.py`** — 69%, `validate_prompt_vars`
-5. **TODO 3.6, 3.8** — экономия в обычном preview, `type: read` в JSON-плане
+1. **Сканер:** пустые файлы, приоритизация обхода, `--include`
+   (обнаружено на реальном проекте, влияет на большие проекты)
+2. **`agent.py`** — 43% покрытия (190 строк), самый большой пробел
+3. **`apply.py`** — 72%, `pricing.py` — 67%, `prompts.py` — 69%
+4. **TODO 3.6, 3.8** — улучшения агента
+5. **Review 1.1 остаток** — `write.*` в хэш кэша
 
 ---
 
