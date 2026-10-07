@@ -201,3 +201,23 @@ def test_agent_max_tokens_override(cli_env):
         )
 
     assert result.exit_code == 0
+
+
+def test_agent_conflicting_web_flags(cli_env):
+    """--exclude-web и --include-web в агенте — ошибка."""
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--exclude-web",
+            "--include-web",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Нельзя одновременно" in result.stdout

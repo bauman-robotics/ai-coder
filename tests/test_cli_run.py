@@ -400,3 +400,42 @@ def test_run_dry_run_with_max_tokens(cli_env):
 
     assert result.exit_code == 0
     assert "Оценка (dry-run)" in result.stdout
+
+
+def test_run_exclude_web_flag(cli_env):
+    """--exclude-web принимается и не ломает run."""
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--dry-run",
+            "--exclude-web",
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_run_conflicting_web_flags(cli_env):
+    """--exclude-web и --include-web вместе — ошибка."""
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "greet",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--exclude-web",
+            "--include-web",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Нельзя одновременно" in result.stdout

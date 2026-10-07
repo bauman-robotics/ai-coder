@@ -12,7 +12,7 @@ from .actions import run_action, run_fix_action
 from .agent import run_agent
 from .apply import apply_plan, check_python_files, list_backups
 from .apply import rollback as do_rollback
-from .config import load_config, load_prompts
+from .config import WEB_ASSET_EXTENSIONS, load_config, load_prompts
 from .output import save_report
 
 app = typer.Typer(
@@ -180,6 +180,12 @@ def run(
         "--max-tokens",
         help="Переопределить max_total_tokens сканера (по умолчанию из config.yaml)",
     ),
+    exclude_web: bool = typer.Option(
+        False, "--exclude-web", help="Исключить вёрстку (.html, .css, .js)"
+    ),
+    include_web: bool = typer.Option(
+        False, "--include-web", help="Включить вёрстку (переопределить авто-настройки)"
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -187,6 +193,16 @@ def run(
     # --max-tokens: переопределяем бюджет сканера
     if max_tokens is not None:
         cfg.scanning.max_total_tokens = max_tokens
+
+    if exclude_web and include_web:
+        console.print("[red]Нельзя одновременно --exclude-web и --include-web[/red]")
+        raise typer.Exit(1)
+
+    web_override: bool | None = None
+    if exclude_web:
+        web_override = False
+    elif include_web:
+        web_override = True
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -219,6 +235,7 @@ def run(
             model=model,
             depth=depth,
             extra_exclude=list(exclude) or None,
+            web_assets_override=web_override,
         )
         return
 
@@ -234,6 +251,7 @@ def run(
                 extra_exclude=list(exclude) or None,
                 use_cache=not no_cache,
                 refresh=refresh,
+                web_assets_override=web_override,
             )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")
@@ -482,6 +500,7 @@ def _run_dry(
     model: str | None,
     depth: str,
     extra_exclude: list[str] | None,
+    web_assets_override: bool | None = None,
 ) -> None:
     """Оценка без запроса к API."""
     from .pricing import calculate_cost, get_rate, is_peak_now
@@ -498,9 +517,24 @@ def _run_dry(
 
     model = model or cfg.api.model
 
-    with console.status("[cyan]Сканирую проект..."):
-        scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+    # Авто-исключение вёрстки / override через флаги
+    if web_assets_override is True:
+        exclude_web = False
+    elif web_assets_override is False:
+        exclude_web = True
+    else:
+        exclude_web = action_cfg.exclude_web_assets
 
+    effective_exclude = list(extra_exclude or [])
+    if exclude_web:
+        effective_exclude += list(WEB_ASSET_EXTENSIONS)
+
+    with console.status("[cyan]Сканирую проект..."):
+        scan = scan_project(
+            project_root,
+            cfg.scanning,
+            extra_exclude=effective_exclude or None,
+        )
     try:
         prompt_entry = pr_cfg.get(action_cfg.prompt)
     except KeyError as e:
@@ -589,6 +623,12 @@ def agent_cmd(
         "--max-tokens",
         help="Переопределить max_total_tokens сканера (по умолчанию из config.yaml)",
     ),
+    exclude_web: bool = typer.Option(
+        False, "--exclude-web", help="Исключить вёрстку (.html, .css, .js)"
+    ),
+    include_web: bool = typer.Option(
+        False, "--include-web", help="Включить вёрстку (по умолчанию агент видит всё)"
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -596,6 +636,16 @@ def agent_cmd(
     # --max-tokens: переопределяем бюджет сканера
     if max_tokens is not None:
         cfg.scanning.max_total_tokens = max_tokens
+
+    if exclude_web and include_web:
+        console.print("[red]Нельзя одновременно --exclude-web и --include-web[/red]")
+        raise typer.Exit(1)
+
+    web_override: bool | None = None
+    if exclude_web:
+        web_override = False
+    elif include_web:
+        web_override = True
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -636,6 +686,7 @@ def agent_cmd(
                 max_minutes=max_minutes,
                 journal=journal,
                 preview_only=preview_only,
+                web_assets_override=web_override,
             )
     except Exception as e:
         console.print(f"[red]Ошибка агента:[/red] {e}")

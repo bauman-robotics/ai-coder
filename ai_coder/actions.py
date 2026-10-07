@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from . import cache as cache_mod
 from .apply import WritePlan, build_plan
-from .config import AppConfig, PromptsConfig
+from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
@@ -46,6 +46,7 @@ def run_action(
     extra_exclude: list[str] | None = None,
     use_cache: bool = True,
     refresh: bool = False,
+    web_assets_override: bool | None = None,
 ) -> ActionResult:
     if depth not in VALID_DEPTHS:
         raise ValueError(f"depth должен быть один из {sorted(VALID_DEPTHS)}, получено '{depth}'")
@@ -59,7 +60,23 @@ def run_action(
     model = model or cfg.api.model
 
     # 1. скан проекта
-    scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+    # --exclude-web / --include-web переопределяют авто-настройку действия
+    if web_assets_override is True:
+        exclude_web = False
+    elif web_assets_override is False:
+        exclude_web = True
+    else:
+        exclude_web = action.exclude_web_assets
+
+    effective_exclude = list(extra_exclude or [])
+    if exclude_web:
+        effective_exclude += list(WEB_ASSET_EXTENSIONS)
+
+    scan = scan_project(
+        project_root,
+        cfg.scanning,
+        extra_exclude=effective_exclude or None,
+    )
 
     # 2. шаблон промпта (без подстановки {{files}}, {{tree}})
     prompt_entry = prompts_cfg.get(action.prompt)

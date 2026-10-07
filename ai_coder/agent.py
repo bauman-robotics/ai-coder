@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from .config import AppConfig, PromptsConfig
+from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
@@ -316,6 +316,7 @@ def _run_agent_step(
     apply: bool = False,
     verify: bool = True,
     max_fix_attempts: int = 0,
+    web_assets_override: bool | None = None,
 ) -> StepResult:
     """
     Выполняет один шаг: запрос к LLM → парсинг плана → (опц.) применение → верификация.
@@ -328,7 +329,15 @@ def _run_agent_step(
     model = model or cfg.api.model
 
     # --- пересканируем проект (файлы могли измениться предыдущими шагами) ---
-    scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+    effective_exclude = list(extra_exclude or [])
+    if web_assets_override is False:  # --exclude-web
+        effective_exclude += list(WEB_ASSET_EXTENSIONS)
+
+    scan = scan_project(
+        project_root,
+        cfg.scanning,
+        extra_exclude=effective_exclude or None,
+    )
 
     # --- промпт шага ---
     prompt_entry = prompts_cfg.get("agent_step_json")
@@ -528,6 +537,7 @@ def run_agent(
     max_minutes: int | None = None,
     journal: bool = True,
     preview_only: bool = False,
+    web_assets_override: bool | None = None,
 ) -> AgentRunResult:
     """
     Полный цикл агента: план → шаги → журнал.
@@ -618,6 +628,7 @@ def run_agent(
             model=model,
             depth=depth,
             extra_exclude=extra_exclude,
+            web_assets_override=web_assets_override,
             completed_titles=completed_titles,
             apply=apply,
             verify=verify,

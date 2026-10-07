@@ -148,6 +148,25 @@ class FixConfig(BaseModel):
 
 ActionMode = Literal["read", "write"]
 
+# Расширения «вёрстки» — для авто-исключения в greet/inventory/write_readme.
+# Агент по умолчанию их видит, `--exclude-web` — исключает.
+WEB_ASSET_EXTENSIONS: tuple[str, ...] = (
+    "*.html",
+    "*.htm",
+    "*.css",
+    "*.scss",
+    "*.less",
+    "*.js",
+    "*.jsx",
+    "*.ts",
+    "*.tsx",
+    "*.mjs",
+    "*.cjs",
+    "*.vue",
+    "*.svelte",
+    "*.svg",
+)
+
 
 class ActionConfig(BaseModel):
     description: str
@@ -156,6 +175,7 @@ class ActionConfig(BaseModel):
     enabled: bool = True
     max_output_tokens: int | None = None
     temperature: float | None = None
+    exclude_web_assets: bool = False
 
 
 class AgentConfig(BaseModel):

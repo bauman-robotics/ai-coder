@@ -138,22 +138,26 @@ actions:
     description: "Познакомиться с проектом"
     prompt: greet
     mode: read
+    exclude_web_assets: true
   inventory:
     description: "Список функций, классов, переменных"
     prompt: inventory
     mode: read
+    exclude_web_assets: true
   suggest_improvements:
     description: "Предложить варианты доработки"
     prompt: suggest_improvements
     mode: read
     max_output_tokens: 16000
     temperature: 0.4
+    exclude_web_assets: true
 
   write_readme:
     description: "Сгенерировать README.md (предложение)"
     prompt: write_readme_json
     mode: write
     enabled: true
+    exclude_web_assets: true
   add_docstrings:
     description: "Дописать комментарии/докстринги (предложение)"
     prompt: add_docstrings_json
