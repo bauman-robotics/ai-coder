@@ -59,8 +59,9 @@ def test_parse_agent_plan_invalid_json():
 def test_parse_agent_plan_empty_steps():
     content = json.dumps({"explanation": "nothing to do", "steps": []})
     plan = parse_agent_plan(content, "goal")
-    assert plan.parse_error is not None
-    assert "не содержит валидных шагов" in plan.parse_error
+    assert plan.parse_error is None
+    assert plan.empty is True
+    assert plan.steps == []
 
 
 def test_parse_agent_plan_unknown_type_skipped():
@@ -76,6 +77,17 @@ def test_parse_agent_plan_unknown_type_skipped():
     assert len(plan.steps) == 1
     assert plan.steps[0].title == "keep me"
 
+
+def test_parse_agent_plan_valid_json_with_steps():
+    content = json.dumps({
+        "explanation": "",
+        "steps": [{"n": 1, "title": "do", "type": "edit",
+                   "details": "d", "target_files": ["x.py"]}],
+    })
+    plan = parse_agent_plan(content, "goal")
+    assert plan.parse_error is None
+    assert plan.empty is False
+    assert len(plan.steps) == 1
 
 # ---------- _render_plan_summary ----------
 

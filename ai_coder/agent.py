@@ -31,6 +31,7 @@ class AgentPlan:
     explanation: str = ""
     steps: list[AgentStep] = field(default_factory=list)
     parse_error: str | None = None
+    empty: bool = False
     raw_json: str = ""
 
     @property
@@ -100,7 +101,7 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
         ))
 
     if not plan.steps:
-        plan.parse_error = "План не содержит валидных шагов"
+        plan.empty = True
     return plan
 
 
@@ -377,6 +378,12 @@ def _run_agent_step(
         result.errors.extend(apply_errors)
         return result
 
+    if not applied:
+        # Нечего применять — модель вернула пустой план
+        result.skipped = True
+        result.skip_reason = "план не содержит операций"
+        return result
+
     result.applied = True
     result.applied_count = len(applied)
 
@@ -504,8 +511,13 @@ def run_agent(
         journal_dir=journal_dir,
     )
 
-    if not planner.plan.valid:
+    if planner.plan.parse_error is not None:
         result.stopped_reason = "parse_error"
+        result.finished_at = datetime.now(ZoneInfo("UTC"))
+        return result
+
+    if planner.plan.empty:
+        result.stopped_reason = "empty_plan"
         result.finished_at = datetime.now(ZoneInfo("UTC"))
         return result
 

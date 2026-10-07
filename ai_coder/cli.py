@@ -851,10 +851,17 @@ def _print_agent_plan(result) -> None:
     if result.plan.explanation:
         console.print(f"[dim]{result.plan.explanation}[/dim]\n")
 
+    if result.plan.parse_error is not None:
+        console.print(f"[red]Ошибка парсинга плана:[/red] {result.plan.parse_error}")
+        return
+
+    if result.plan.empty:
+        console.print("[yellow]Модель считает, что цель уже достигнута (план пуст).[/yellow]")
+        if result.plan.explanation:
+            console.print(f"[dim]{result.plan.explanation}[/dim]")
+        return
+
     if not result.plan.steps:
-        console.print("[yellow]План пуст (цель, возможно, уже достигнута или модель не смогла разбить задачу).[/yellow]")
-        if result.plan.parse_error:
-            console.print(f"[red]Ошибка парсинга плана:[/red] {result.plan.parse_error}")
         return
 
     table = Table(title="Шаги", show_lines=False)
@@ -874,6 +881,9 @@ def _print_agent_step_summary(sr) -> None:
     if sr.applied:
         n = sr.applied_count
         status_parts.append(f"[green]применено ({n} операций)[/green]")
+    elif sr.skipped:
+        reason = f": {sr.skip_reason}" if sr.skip_reason else ""
+        status_parts.append(f"[yellow]пропущено{reason}[/yellow]")
     if sr.errors:
         status_parts.append("[red]ошибки[/red]")
     if sr.verify_errors:
@@ -906,6 +916,7 @@ def _print_agent_summary(result) -> None:
     table.add_row("Стоимость планировщика:", f"{result.planner_cost_rub:.6f} RUB")
     table.add_row("Стоимость шагов:", f"{sum(s.cost_rub for s in result.steps):.6f} RUB")
     table.add_row("**Всего:**", f"{result.total_cost_rub:.6f} RUB")
+
     if result.journal_dir:
         try:
             rel = result.journal_dir.relative_to(Path.cwd())
