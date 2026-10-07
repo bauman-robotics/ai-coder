@@ -93,7 +93,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - **1.3** `usage.jsonl`/`usage_summary.json` игнорируют конфиг
 - **1.4** Нет content-level фильтрации секретов
 - **5.2** `rglob(".gitignore")` заходит в `.venv`, `node_modules`
-- **5.3** `PathSpec` компилируется на каждый файл
+- **5.3** `PathSpec` компилируется на каждый файл — ✅ исправлено (6.8)
 
 Локальные:
 
@@ -104,20 +104,22 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ## Актуальные приоритеты
 
-Сделано в итерации 6.5:
+Сделано в итерациях 6.5–6.8:
 - ✅ review 1.2 — `get_rate` не падает на read-only FS
-- ✅ review 1.1 — перепроверка плана при cache hit (в `run_action` и `run_fix_action`)
+- ✅ review 1.1 — перепроверка плана при cache hit (частично)
 - ✅ TODO 🔥 про агент: applied_count, skipped, empty_plan, фильтр диагностики
+- ✅ `agent --preview-only` — только план, без шагов (~0.05 RUB вместо ~11)
+- ✅ review 5.3 — `PathSpec` компилируется один раз (сканер ~2.2x быстрее)
+- ✅ CI: GitHub Actions (pytest x3 + ruff + mypy) — зелёный
 
 Осталось:
 
-1. **TODO 3.5–3.7** — preview агента: skipped в preview, `--preview-only`,
-   экономия токенов (сейчас preview 6 шагов = ~11 RUB)
+1. **TODO 3.5, 3.6, 3.8** — skipped в preview, экономия в обычном preview,
+   замена эвристики диагностики на явный `type: read` в JSON-плане
 2. **Review 1.3** — `usage.jsonl`/`usage_summary.json` игнорируют конфиг,
    O(N^2) в `_rebuild_summary`
-3. **Review 1.4 / 5.2 / 5.3** — content-секреты, `rglob` без pruning,
-   `PathSpec` на каждый файл
-4. **CI** — GitHub Actions + ruff + mypy
+3. **Review 1.4 / 5.2** — content-секреты, `rglob` без pruning
+4. **pytest-cov** — измерение покрытия тестами
 
 ---
 
