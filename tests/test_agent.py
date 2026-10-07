@@ -158,3 +158,35 @@ def test_run_planner_returns_plan(sample_project: Path, minimal_cfg):
     assert result.plan.steps[0].title == "fix stuff"
     assert result.plan.goal == "test goal"
     assert result.llm.content == plan_json
+
+def test_parse_agent_plan_skips_diagnostic_steps():
+    content = json.dumps({
+        "explanation": "",
+        "steps": [
+            {"n": 1, "title": "Продиагностировать README",
+             "type": "edit", "details": "Составить список потерянной разметки"},
+            {"n": 2, "title": "Добавить докстринг к add",
+             "type": "edit", "details": "В math.py добавить докстринг",
+             "target_files": ["math.py"]},
+        ],
+    })
+    plan = parse_agent_plan(content, "goal")
+    assert plan.parse_error is None
+    assert plan.empty is False
+    assert len(plan.steps) == 1
+    assert "докстринг" in plan.steps[0].title.lower()
+
+
+def test_parse_agent_plan_all_steps_diagnostic_becomes_empty():
+    content = json.dumps({
+        "explanation": "",
+        "steps": [
+            {"n": 1, "title": "Проанализировать проект",
+             "type": "edit", "details": "Изучить структуру"},
+            {"n": 2, "title": "Проверить код",
+             "type": "edit", "details": "Проверить качество"},
+        ],
+    })
+    plan = parse_agent_plan(content, "goal")
+    assert plan.parse_error is None
+    assert plan.empty is True

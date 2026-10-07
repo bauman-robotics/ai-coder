@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-07
+**Дата обновления:** 2026-10-07 (вечер)
 **Ветка:** main
-**Последний коммит:** c04716c
-**Тесты:** 53 passed
+**Последний коммит:** (см. `git log -1 --oneline`)
+**Тесты:** 56 passed
 **Статус:** рабочий инструмент, активная разработка
 
 ---
@@ -104,10 +104,20 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ## Актуальные приоритеты
 
-1. **Review 1.2** — `get_rate` — try/except OSError (5 мин)
-2. **Review 1.1** — перепроверка плана при cache hit (20 мин)
-3. **TODO: агент** — applied_count, skipped, фильтр диагностики (30 мин)
-4. **CI** — GitHub Actions + ruff + mypy (30 мин)
+Сделано в итерации 6.5:
+- ✅ review 1.2 — `get_rate` не падает на read-only FS
+- ✅ review 1.1 — перепроверка плана при cache hit (в `run_action` и `run_fix_action`)
+- ✅ TODO 🔥 про агент: applied_count, skipped, empty_plan, фильтр диагностики
+
+Осталось:
+
+1. **TODO 3.5–3.7** — preview агента: skipped в preview, `--preview-only`,
+   экономия токенов (сейчас preview 6 шагов = ~11 RUB)
+2. **Review 1.3** — `usage.jsonl`/`usage_summary.json` игнорируют конфиг,
+   O(N^2) в `_rebuild_summary`
+3. **Review 1.4 / 5.2 / 5.3** — content-секреты, `rglob` без pruning,
+   `PathSpec` на каждый файл
+4. **CI** — GitHub Actions + ruff + mypy
 
 ---
 

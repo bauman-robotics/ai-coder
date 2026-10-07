@@ -4,6 +4,44 @@
 
 ---
 
+
+## [2026-10-07] iteration 6.5 — правки агента (review 1.1/1.2 + TODO 🔥)
+
+### Исправлено
+- **review 1.2:** `pricing._save_cache` — не падать при невозможности
+  записать `rates_cache.json` (read-only FS, нет прав). Молча пропускает.
+- **review 1.1:** `actions.run_fix_action` — перепроверка кэшированного
+  плана после cache hit: если blacklist изменился и план стал невалиден,
+  идём в API заново.
+  (В `run_action` перепроверка уже была.)
+
+### Добавлено
+- В CLI шага агента показывается количество применённых операций:
+  `применено (N операций)`.
+- `StepResult.skipped` и `skip_reason` — пустой план помечается как
+  `пропущено` (а не «применено 0 операций»).
+- `AgentPlan.empty` — отделяет «план пуст» (норма) от «ошибка парсинга».
+  `run_agent` возвращает `stopped_reason = "empty_plan"`.
+- `parse_agent_plan` — фильтрует «диагностические» шаги
+  (по ключевым словам: диагностика, проанализируй, составь список,
+  проверь, изучи, прочитай, опиши, исследуй).
+
+### Тесты
+- `test_parse_agent_plan_empty_steps` — теперь проверяет `empty=True`.
+- `test_parse_agent_plan_valid_json_with_steps` — новый.
+- `test_parse_agent_plan_skips_diagnostic_steps` — новый.
+- `test_parse_agent_plan_all_steps_diagnostic_becomes_empty` — новый.
+
+### Итого тестов
+- 56 passed
+
+### Замечено (в TODO)
+- Preview агента дорогой: 6 шагов x 50K prompt-токенов = ~11 RUB.
+- В preview пустые шаги не помечаются как `skipped` (только в apply).
+- См. TODO: 3.5, 3.6, 3.7.
+
+---
+
 ## [2026-10-07] iteration 6.4 — docs и обзор
 
 ### Добавлено
