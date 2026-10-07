@@ -521,7 +521,9 @@ def agent_cmd(
     max_minutes: Optional[int] = typer.Option(None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"),
     max_fix_attempts: int = typer.Option(0, "--max-fix-attempts", help="Попыток fix на шаг (0 = без fix)"),
     journal: bool = typer.Option(True, "--journal/--no-journal", help="Сохранять журнал агента в .ai-out/<project>/agent-<ts>/"),
+    preview_only: bool = typer.Option(False, "--preview-only", help="Только план и оценка, без выполнения шагов (экономит токены)"),
 ):
+
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
 
@@ -530,13 +532,18 @@ def agent_cmd(
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
 
+    if preview_only and apply:
+        console.print("[red]Нельзя одновременно --preview-only и --apply[/red]")
+        raise typer.Exit(1)
+
     console.print(Panel.fit(
         f"[bold]Цель:[/bold] {goal}\n"
         f"[bold]Проект:[/bold] {project_root}\n"
         f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
         f"[bold]Глубина:[/bold] {depth}\n"
-        f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}\n"
-        f"[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
+        f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}"
+        + ("\n[bold]Только план:[/bold] да (--preview-only)" if preview_only else "")
+        + f"\n[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
         title="ai-coder agent",
     ))
 
@@ -556,6 +563,7 @@ def agent_cmd(
                 max_steps=max_steps,
                 max_minutes=max_minutes,
                 journal=journal,
+                preview_only=preview_only,
             )
     except Exception as e:
         console.print(f"[red]Ошибка агента:[/red] {e}")
@@ -874,6 +882,12 @@ def _print_agent_plan(result) -> None:
             files += f" … (+{len(s.target_files) - 3})"
         table.add_row(str(s.n), s.title, files or "—")
     console.print(table)
+
+    if result.stopped_reason == "preview_only":
+        console.print(
+            "\n[yellow]Режим --preview-only:[/yellow] шаги не выполнены. "
+            "Запустите без флага, чтобы выполнить план (с --apply для применения)."
+        )
 
 def _print_agent_step_summary(sr) -> None:
     s = sr.step

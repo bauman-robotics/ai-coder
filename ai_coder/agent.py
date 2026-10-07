@@ -500,6 +500,7 @@ def run_agent(
     max_steps: int | None = None,
     max_minutes: int | None = None,
     journal: bool = True,
+    preview_only: bool = False,
 ) -> AgentRunResult:
     """
     Полный цикл агента: план → шаги → журнал.
@@ -555,6 +556,14 @@ def run_agent(
         result.stopped_reason = "empty_plan"
         result.finished_at = datetime.now(ZoneInfo("UTC"))
         return result
+
+    # NEW: preview-only — не выполняем шаги
+    if preview_only:
+        result.stopped_reason = "preview_only"
+        result.finished_at = datetime.now(ZoneInfo("UTC"))
+        if journal_dir is not None:
+            _save_agent_report(journal_dir, result, apply=False)
+        return result    
 
     # --- цикл по шагам ---
     completed_titles: list[str] = []
