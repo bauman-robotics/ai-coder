@@ -442,11 +442,11 @@ def rollback(backup_dir: Path, project_root: Path) -> list[str]:
     for src in sorted(backup_dir.rglob("*")):
         if src.is_dir() or src.name == "manifest.json":
             continue
-        rel = src.relative_to(backup_dir)
-        dst = root / rel
+        rel_path = src.relative_to(backup_dir)
+        dst = root / rel_path
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
-        restored.append(f"~{rel.as_posix()}")
+        restored.append(f"~{rel_path.as_posix()}")
     return restored
 
 def check_python_files(paths: list[str], project_root: Path) -> list[str]:

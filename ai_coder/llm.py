@@ -46,19 +46,19 @@ class LLMClient:
         last_err: Exception | None = None
         for attempt in range(1, self.cfg.retries + 1):
             try:
-                kwargs = dict(
-                    model=model,
-                    messages=[
+                create_kwargs: dict = {
+                    "model": model,
+                    "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    temperature=temperature if temperature is not None else self.cfg.temperature,
-                    max_tokens=max_tokens if max_tokens is not None else self.cfg.max_output_tokens,
-                )
+                    "temperature": temperature if temperature is not None else self.cfg.temperature,
+                    "max_tokens": max_tokens if max_tokens is not None else self.cfg.max_output_tokens,
+                }
                 if json_mode:
-                    kwargs["response_format"] = {"type": "json_object"}
+                    create_kwargs["response_format"] = {"type": "json_object"}
 
-                resp = self._client.chat.completions.create(**kwargs)
+                resp = self._client.chat.completions.create(**create_kwargs)  # type: ignore[call-overload]
                 return self._build_response(resp, model, started)
             except (RateLimitError, APITimeoutError, APIError) as e:
                 last_err = e

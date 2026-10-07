@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from .config import AppConfig, PromptsConfig
@@ -13,6 +14,8 @@ from .prompts import render_prompt
 from .scanner import scan_project
 from .usage import append_usage
 
+if TYPE_CHECKING:
+    from .apply import WritePlan
 # ---------- структуры ----------
 
 @dataclass
@@ -248,7 +251,6 @@ def run_planner(
 class StepResult:
     step: AgentStep
     llm: LLMResponse
-    write_plan: object | None       # WritePlan | None — не импортируем, чтобы избежать цикла
     applied: bool
     applied_count: int
     errors: list[str]
@@ -258,9 +260,9 @@ class StepResult:
     cost_cny: float
     cost_usd: float
     from_cache: bool
+    write_plan: "WritePlan | None" = None
     skipped: bool = False
     skip_reason: str = ""
-
 
 @dataclass
 class AgentRunResult:

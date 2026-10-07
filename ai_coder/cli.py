@@ -82,11 +82,12 @@ def list_actions(
     cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
     usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
 
+    peak_label = f"peak ({peak_window})" if is_peak and peak_window else ("peak" if is_peak else "off-peak")
     console.print(Panel.fit(
         f"[bold]Проект:[/bold] {project_root}\n"
         f"[bold]Файлов в контексте:[/bold] {len(scan.files)}\n"
         f"[bold]Модель:[/bold] {model_name}\n"
-        f"[bold]Тариф:[/bold] {'peak (' + peak_window + ')' if is_peak else 'off-peak'}",
+        f"[bold]Тариф:[/bold] {peak_label}",
         title="Оценка действий",
     ))
 
@@ -243,8 +244,8 @@ def run(
 
                 if errors:
                     console.print("[red]Не удалось применить:[/red]")
-                    for e in errors:
-                        console.print(f"  - {e}")
+                    for err in errors:
+                        console.print(f"  - {err}")
                     applied_info = {
                         "applied": 0,
                         "errors": errors,
@@ -313,8 +314,8 @@ def run(
 
                         if fix_errors:
                             console.print("[red]Не удалось применить fix-план:[/red]")
-                            for e in fix_errors:
-                                console.print(f"  - {e}")
+                            for err in fix_errors:
+                                console.print(f"  - {err}")
                             break
 
                         console.print(f"[green]Применено операций:[/green] {len(fix_applied)}")
