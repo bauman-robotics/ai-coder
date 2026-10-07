@@ -90,7 +90,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - **1.1** Кэш не перепроверяет план после cache hit (может применять
   правки в файлы, добавленные в blacklist после кэширования)
 - **1.2** `pricing.get_rate` падает, если `.ai-out` не writable
-- **1.3** `usage.jsonl`/`usage_summary.json` игнорируют конфиг
+- **1.3** `usage.jsonl`/`usage_summary.json` игнорируют конфиг — ✅ исправлено (7.0)
 - **1.4** Нет content-level фильтрации секретов
 - **5.2** `rglob(".gitignore")` заходит в `.venv`, `node_modules`
 - **5.3** `PathSpec` компилируется на каждый файл — ✅ исправлено (6.8)
