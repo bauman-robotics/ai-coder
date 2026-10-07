@@ -9,6 +9,28 @@
 
 
 
+
+## [2026-10-07] iteration 7.0 — fix(usage): конфиг + O(N^2)
+
+### Исправлено
+- **review 1.3:** `usage.append_usage` использовал хардкод путей
+  (`output_root / "usage.jsonl"`) вместо `usage_cfg.jsonl` из конфига.
+  Теперь путь берётся из конфига, относительно `project_root`.
+- **review 1.3:** `_rebuild_summary` вызывался на каждый `append_usage`
+  и читал весь JSONL — O(N^2) по I/O. Сводка теперь строится командой
+  `usage` на лету из JSONL. Функция `_rebuild_summary` удалена
+  (мёртвый код).
+
+### Эффект
+- 200 записей подряд: было 0.281 сек, стало 0.024 сек (~12x).
+- `usage_summary.json` больше не создаётся; `ai-coder usage` читает
+  JSONL напрямую (как и раньше).
+
+### Тесты
+- 56 passed.
+
+---
+
 ## [2026-10-07] iteration 6.9 — perf(scanner): rglob с pruning
 
 ### Исправлено
