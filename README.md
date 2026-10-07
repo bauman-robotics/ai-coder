@@ -1,3 +1,5 @@
+[![tests](https://github.com/bauman-robotics/ai-coder/actions/workflows/test.yml/badge.svg)](https://github.com/bauman-robotics/ai-coder/actions/workflows/test.yml)
+
 # ai-coder
 
 AI-ассистированный анализ git-проектов через DeepSeek API. Инструмент сканирует файлы проекта, отправляет их в LLM и возвращает отчёты или предложения изменений (с возможностью применения). Поддерживает кэширование, расчёт стоимости, авто-исправление синтаксических ошибок и агентный режим для многошаговых задач.
