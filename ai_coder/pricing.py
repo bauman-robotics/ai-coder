@@ -61,10 +61,16 @@ def _load_cache(root: Path) -> dict:
 
 
 def _save_cache(root: Path, data: dict) -> None:
-    p = _cache_path(root)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
+    """
+    Пытается сохранить кэш курсов. Если это невозможно (read-only FS,
+    нет прав и т.п.) — молча игнорирует: кэш не критичен для работы.
+    """
+    try:
+        p = _cache_path(root)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
 
 def _fetch_cbr_rates() -> dict[str, float]:
     """
