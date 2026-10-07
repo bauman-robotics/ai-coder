@@ -31,15 +31,31 @@ class ScanResult:
 def _load_specs_recursive(root: Path) -> list[tuple[Path, pathspec.PathSpec]]:
     """
     Собирает все .gitignore в проекте (корень + подпапки).
-    Возвращает список (директория, spec).
+    Пропускает служебные каталоги (.venv, .git, node_modules, ...).
     """
     specs: list[tuple[Path, pathspec.PathSpec]] = []
-    for gi in sorted(root.rglob(".gitignore")):
+
+    def walk(dir_path: Path) -> None:
         try:
-            lines = gi.read_text(encoding="utf-8", errors="replace").splitlines()
+            entries = sorted(dir_path.iterdir())
         except OSError:
-            continue
-        specs.append((gi.parent, pathspec.PathSpec.from_lines("gitignore", lines)))
+            return
+
+        for entry in entries:
+            if entry.is_dir():
+                if entry.name in _SERVICE_DIRS:
+                    continue
+                walk(entry)
+                continue
+
+            if entry.name == ".gitignore":
+                try:
+                    lines = entry.read_text(encoding="utf-8", errors="replace").splitlines()
+                except OSError:
+                    continue
+                specs.append((entry.parent, pathspec.PathSpec.from_lines("gitignore", lines)))
+
+    walk(root)
     return specs
 
 
