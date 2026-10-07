@@ -12,6 +12,34 @@
 
 
 
+
+## [2026-10-07] iteration 7.3 — покрытие тестами (73%)
+
+### Добавлено
+- `tests/test_output.py` — 17 тестов, `output.py` 0% -> 87%.
+- `tests/test_llm.py` — 9 тестов, `llm.py` 39% -> 96%.
+- `tests/test_actions.py` — ~10 тестов, `actions.py` 0% -> 81%.
+- `tests/test_cli.py` — 13 тестов, базовые команды CLI.
+- `tests/test_cli_run.py` — 7 тестов, команда `run` с моками.
+- `tests/test_cli_agent.py` — 4 теста, команда `agent` с моками.
+- Новые фикстуры в `tests/conftest.py` (`fake_llm_response`, `fake_scan_result`, `fake_action_result`).
+
+### Изменено
+- `pyproject.toml` — секции `[tool.coverage.run]` и `[tool.coverage.report]`.
+- `requirements-dev.txt` — добавлен `pytest-cov>=5`.
+- `.github/workflows/test.yml` — `--cov=ai_coder --cov-fail-under=40` на Python 3.12.
+- `.gitignore` — добавлен `.coverage`, `coverage.xml`, `htmlcov/`.
+
+### Метрики
+- Тестов: 56 -> 119.
+- Общее покрытие: 40% -> 73%.
+- `output.py`: 0% -> 87%.
+- `llm.py`: 39% -> 96%.
+- `actions.py`: 0% -> 81%.
+- `cli.py`: 0% -> 75%.
+
+---
+
 ## [2026-10-07] iteration 7.2 — feat(scanner): content-фильтр секретов
 
 ### Добавлено

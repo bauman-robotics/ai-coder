@@ -104,7 +104,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ## Актуальные приоритеты
 
-Сделано в итерациях 6.5–7.2:
+Сделано в итерациях 6.5–7.3:
 - review 1.2 — `get_rate` не падает на read-only FS
 - review 1.1 — перепроверка плана при cache hit (частично)
 - review 1.3 — usage пути из конфига + нет O(N^2) в summary
@@ -113,15 +113,16 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - review 5.3 — `PathSpec` компилируется один раз (~2.2x)
 - TODO про агент: applied_count, skipped, empty_plan, фильтр диагностики
 - `agent --preview-only` — только план, без шагов (~0.05 RUB вместо ~11)
-- CI: GitHub Actions (pytest x3 + ruff + mypy) — зелёный
+- CI: GitHub Actions (pytest x3 + ruff + mypy) + coverage --fail-under=40
+- Покрытие тестами: 40% -> 73% (119 тестов)
 
 Осталось:
 
-1. **TODO 3.6, 3.8** — экономия в обычном preview, замена эвристики
-   диагностики на явный `type: read` в JSON-плане
-2. **TODO 3.7** — `--preview-only` уже сделано, TODO обновить
-3. **pytest-cov** — измерение покрытия тестами
-4. **Review 5.4** — пересканирование проекта на fix-итерациях
+1. **`agent.py`** — 43%, остальные 190 строк (`_run_agent_step`, `run_agent`, `_save_*`)
+2. **`apply.py`** — 72%, ветки ошибок в `apply_plan`/`rollback`
+3. **`pricing.py`** — 67%, `get_rate`, `_fetch_cbr_rates` (мок httpx)
+4. **`prompts.py`** — 69%, `validate_prompt_vars`
+5. **TODO 3.6, 3.8** — экономия в обычном preview, `type: read` в JSON-плане
 
 ---
 
