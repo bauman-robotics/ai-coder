@@ -27,3 +27,7 @@ dist/
 .env.*
 *.key
 *.pem
+# coverage
+.coverage
+coverage.xml
+htmlcov/
