@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from ai_coder.apply import (
     Operation,
     WritePlan,
@@ -15,7 +13,6 @@ from ai_coder.apply import (
     rollback,
     validate_operations,
 )
-
 
 # ---------- parse_response ----------
 

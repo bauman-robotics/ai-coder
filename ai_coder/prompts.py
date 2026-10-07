@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .config import PromptsConfig, PromptEntry
+from .config import PromptEntry, PromptsConfig
 from .scanner import ScanResult, render_files_block
 
 _VAR_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")

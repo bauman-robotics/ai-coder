@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .apply import apply_plan, check_python_files, list_backups, rollback as do_rollback
-from .config import load_config, load_prompts
-from .output import save_report
 from .actions import run_action, run_fix_action
 from .agent import run_agent
+from .apply import apply_plan, check_python_files, list_backups
+from .apply import rollback as do_rollback
+from .config import load_config, load_prompts
+from .output import save_report
 
 app = typer.Typer(
     name="ai-coder",
@@ -43,7 +43,7 @@ def list_actions(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
     path: Path = typer.Option(Path("."), "--path", help="Проект для оценки (только с --verbose)"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель для оценки (с --verbose)"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Модель для оценки (с --verbose)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Показать оценку стоимости для текущего проекта"),
 ):
     """Показать доступные действия из конфига."""
@@ -64,9 +64,9 @@ def list_actions(
         return
 
     # --- verbose-режим ---
-    from .scanner import scan_project
+    from .pricing import calculate_cost, get_rate, is_peak_now
     from .prompts import render_prompt
-    from .pricing import is_peak_now, get_rate, calculate_cost
+    from .scanner import scan_project
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -144,7 +144,7 @@ def run(
     path: Path = typer.Argument(Path("."), help="Путь к проекту"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
     depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
     exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
     apply: bool = typer.Option(False, "--apply", help="Применить план изменений (для write-действий)"),
@@ -153,7 +153,7 @@ def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="Только оценка: файлы, токены, стоимость — без запроса к API"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Не использовать кэш отчётов"),
     refresh: bool = typer.Option(False, "--refresh", help="Игнорировать кэш и заново спросить API"),
-    max_fix_attempts: Optional[int] = typer.Option(None, "--max-fix-attempts", help="Сколько раз пробовать авто-исправление (0 = выключено)"),
+    max_fix_attempts: int | None = typer.Option(None, "--max-fix-attempts", help="Сколько раз пробовать авто-исправление (0 = выключено)"),
     no_auto_fix: bool = typer.Option(False, "--no-auto-fix", help="Отключить авто-исправление ошибок"),
 ):
     """Выполнить действие над проектом."""
@@ -439,9 +439,9 @@ def _run_dry(
     extra_exclude: list[str] | None,
 ) -> None:
     """Оценка без запроса к API."""
-    from .scanner import scan_project
+    from .pricing import calculate_cost, get_rate, is_peak_now
     from .prompts import render_prompt
-    from .pricing import is_peak_now, get_rate, calculate_cost
+    from .scanner import scan_project
 
     action_cfg = cfg.actions.get(action)
     if action_cfg is None:
@@ -512,13 +512,13 @@ def agent_cmd(
     path: Path = typer.Argument(Path("."), help="Путь к проекту"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Модель (переопределить)"),
     depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
     exclude: list[str] = typer.Option([], "--exclude", "-x", help="Доп. паттерны исключения"),
     apply: bool = typer.Option(False, "--apply", help="Применять шаги (по умолчанию — только план и предложения)"),
     verify: bool = typer.Option(True, "--verify/--no-verify", help="Проверять py_compile после каждого шага"),
-    max_steps: Optional[int] = typer.Option(None, "--max-steps", help="Максимум шагов (по умолчанию из конфига)"),
-    max_minutes: Optional[int] = typer.Option(None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"),
+    max_steps: int | None = typer.Option(None, "--max-steps", help="Максимум шагов (по умолчанию из конфига)"),
+    max_minutes: int | None = typer.Option(None, "--max-minutes", help="Максимум минут (по умолчанию из конфига)"),
     max_fix_attempts: int = typer.Option(0, "--max-fix-attempts", help="Попыток fix на шаг (0 = без fix)"),
     journal: bool = typer.Option(True, "--journal/--no-journal", help="Сохранять журнал агента в .ai-out/<project>/agent-<ts>/"),
     preview_only: bool = typer.Option(False, "--preview-only", help="Только план и оценка, без выполнения шагов (экономит токены)"),
@@ -661,13 +661,13 @@ def backups_cmd(
 @app.command("usage")
 def usage_show(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
-    since: Optional[str] = typer.Option(None, "--since", help="С какого дня (YYYY-MM-DD), в UTC"),
-    until: Optional[str] = typer.Option(None, "--until", help="По какой день (YYYY-MM-DD), в UTC"),
-    action: Optional[str] = typer.Option(None, "--action", "-a", help="Фильтр по действию"),
-    project: Optional[str] = typer.Option(None, "--project", help="Фильтр по имени проекта"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Фильтр по модели"),
-    export: Optional[str] = typer.Option(None, "--export", help="csv|json — выгрузить отфильтрованные записи"),
-    out: Optional[Path] = typer.Option(None, "--out", help="Файл для экспорта (по умолчанию stdout)"),
+    since: str | None = typer.Option(None, "--since", help="С какого дня (YYYY-MM-DD), в UTC"),
+    until: str | None = typer.Option(None, "--until", help="По какой день (YYYY-MM-DD), в UTC"),
+    action: str | None = typer.Option(None, "--action", "-a", help="Фильтр по действию"),
+    project: str | None = typer.Option(None, "--project", help="Фильтр по имени проекта"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Фильтр по модели"),
+    export: str | None = typer.Option(None, "--export", help="csv|json — выгрузить отфильтрованные записи"),
+    out: Path | None = typer.Option(None, "--out", help="Файл для экспорта (по умолчанию stdout)"),
 ):
     """Показать сводку расходов с фильтрами."""
     import csv
@@ -767,11 +767,16 @@ def usage_show(
     if any([since, until, action, project, model]):
         console.print()
         parts = []
-        if since: parts.append(f"since={since}")
-        if until: parts.append(f"until={until}")
-        if action: parts.append(f"action={action}")
-        if project: parts.append(f"project={project}")
-        if model: parts.append(f"model={model}")
+        if since:
+            parts.append(f"since={since}")
+        if until:
+            parts.append(f"until={until}")
+        if action:
+            parts.append(f"action={action}")
+        if project:
+            parts.append(f"project={project}")
+        if model:
+            parts.append(f"model={model}")
         console.print(f"[dim]Фильтры: {', '.join(parts)}. Записей: {len(filtered)} из {len(records)}[/dim]")
 
 

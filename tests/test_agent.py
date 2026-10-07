@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from ai_coder.agent import (
     AgentPlan,
     AgentStep,
@@ -14,7 +12,6 @@ from ai_coder.agent import (
     run_planner,
 )
 from ai_coder.llm import LLMResponse
-
 
 # ---------- parse_agent_plan ----------
 
@@ -132,7 +129,7 @@ def test_run_planner_returns_plan(sample_project: Path, minimal_cfg):
     })
 
     # минимальный prompts_cfg с нужным ключом
-    from ai_coder.config import PromptsConfig, PromptEntry
+    from ai_coder.config import PromptEntry, PromptsConfig
     pr_cfg = PromptsConfig(prompts={
         "agent_plan_json": PromptEntry(system="S {{max_steps}}", user="U {{goal}}"),
     })

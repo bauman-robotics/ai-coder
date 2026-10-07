@@ -26,8 +26,8 @@ def compute_hash(
     # версия схемы — если поменяем алгоритм, старые кэши не подойдут
     h.update(b"ai-coder-cache-v1\n")
 
-    h.update(f"model:{model}\n".encode("utf-8"))
-    h.update(f"depth:{depth}\n".encode("utf-8"))
+    h.update(f"model:{model}\n".encode())
+    h.update(f"depth:{depth}\n".encode())
 
     # шаблон промпта
     h.update(b"---SYSTEM---\n")
@@ -38,7 +38,7 @@ def compute_hash(
     # файлы
     h.update(b"\n---FILES---\n")
     for rel in sorted(scan.files.keys()):
-        h.update(f"### {rel}\n".encode("utf-8"))
+        h.update(f"### {rel}\n".encode())
         h.update(scan.files[rel].encode("utf-8"))
         h.update(b"\n")
 

@@ -7,7 +7,6 @@ import pathspec
 
 from .config import ScanningConfig
 
-
 # ---------- результат ----------
 
 @dataclass

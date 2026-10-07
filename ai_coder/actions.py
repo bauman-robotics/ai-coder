@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from . import cache as cache_mod
 from .apply import WritePlan, build_plan
 from .config import AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
@@ -12,8 +13,6 @@ from .pricing import calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
 from .scanner import ScanResult, scan_project
 from .usage import append_usage
-from . import cache as cache_mod
-
 
 VALID_DEPTHS = {"shallow", "normal", "deep"}
 
@@ -89,7 +88,7 @@ def run_action(
 
                 # Перепроверяем план: blacklist и содержимое файлов могли измениться
                 if cached_plan is not None:
-                    from .apply import validate_operations, render_diff
+                    from .apply import render_diff, validate_operations
                     cached_plan.problems = []
                     validate_operations(cached_plan, project_root, cfg)
                     cached_plan.diff = render_diff(cached_plan, project_root)
@@ -282,7 +281,7 @@ def run_fix_action(
 
             # Перепроверяем fix-план: blacklist и содержимое файлов могли измениться
             if cached_plan is not None:
-                from .apply import validate_operations, render_diff
+                from .apply import render_diff, validate_operations
                 cached_plan.problems = []
                 validate_operations(cached_plan, project_root, cfg)
                 cached_plan.diff = render_diff(cached_plan, project_root)
@@ -414,4 +413,4 @@ def _render_previous_plan(plan: WritePlan) -> str:
     parts.append(f"Operations ({len(plan.operations)}):")
     for i, op in enumerate(plan.operations, 1):
         parts.append(f"  {i}. {op.type} {op.path}")
-    return "\n".join(parts) or "(пусто)"    
+    return "\n".join(parts) or "(пусто)"

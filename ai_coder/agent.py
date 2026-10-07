@@ -10,9 +10,8 @@ from .config import AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
-from .scanner import ScanResult, scan_project
+from .scanner import scan_project
 from .usage import append_usage
-
 
 # ---------- структуры ----------
 
@@ -304,8 +303,9 @@ def _run_agent_step(
     Выполняет один шаг: запрос к LLM → парсинг плана → (опц.) применение → верификация.
     Ничего не решает про контроль бюджета/шагов — только делает свою работу.
     """
-    from .apply import build_plan, apply_plan, check_python_files, rollback as do_rollback
     from .actions import run_fix_action
+    from .apply import apply_plan, build_plan, check_python_files
+    from .apply import rollback as do_rollback
 
     model = model or cfg.api.model
 
@@ -563,7 +563,7 @@ def run_agent(
         result.finished_at = datetime.now(ZoneInfo("UTC"))
         if journal_dir is not None:
             _save_agent_report(journal_dir, result, apply=False)
-        return result    
+        return result
 
     # --- цикл по шагам ---
     completed_titles: list[str] = []
@@ -667,11 +667,11 @@ def _save_step_md(journal_dir: Path, step_result: StepResult, apply: bool) -> No
     if step_result.applied_count:
         lines.append(f"- **Операций:** {step_result.applied_count}")
     if step_result.errors:
-        lines.append(f"\n## ❌ Ошибки применения\n")
+        lines.append("\n## ❌ Ошибки применения\n")
         for e in step_result.errors:
             lines.append(f"- {e}")
     if step_result.verify_errors:
-        lines.append(f"\n## ❌ Ошибки верификации\n")
+        lines.append("\n## ❌ Ошибки верификации\n")
         for e in step_result.verify_errors:
             lines.append(f"- {e}")
     if step_result.rolled_back:

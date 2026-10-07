@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from ai_coder.config import (
-    AgentConfig, 
-    AppConfig,
+    AgentConfig,
     ApiConfig,
+    AppConfig,
     CurrencyConfig,
     CurrencyPair,
     FixConfig,
@@ -16,8 +16,8 @@ from ai_coder.config import (
     PeakSchedule,
     PeakWindow,
     PricePair,
-    PromptsConfig,
     PromptEntry,
+    PromptsConfig,
     ScanningConfig,
     UsageConfig,
     WriteConfig,

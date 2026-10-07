@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -73,7 +72,7 @@ def render_report(result: ActionResult, applied_info: dict | None = None) -> str
                 f"- **Бэкап:** `{backup_dir}`\n"
             )
         else:
-            apply_note = f"\n- **Применение:** не выполнено\n"
+            apply_note = "\n- **Применение:** не выполнено\n"
         if errs:
             apply_note += f"- **Ошибки:** {len(errs)}\n"
 

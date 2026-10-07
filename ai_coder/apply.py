@@ -4,11 +4,11 @@ import json
 import py_compile
 import shutil
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import pathspec
-from datetime import datetime
 
 OperationType = Literal["edit_file", "create_file"]
 
@@ -269,7 +269,7 @@ def render_diff(plan: WritePlan, project_root: Path) -> str:
 
 
 def _render_create_diff(path: str, content: str) -> str:
-    lines = [f"--- /dev/null", f"+++ b/{path}"]
+    lines = ["--- /dev/null", f"+++ b/{path}"]
     for line in content.splitlines():
         lines.append("+" + line)
     return "\n".join(lines) + "\n"

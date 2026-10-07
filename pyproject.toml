@@ -30,6 +30,32 @@ packages = ["ai_coder"]
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+# Правила, которые мы хотим видеть
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (реальные проблемы: undefined names, unused imports)
+    "I",    # isort (порядок импортов)
+    "W",    # pycodestyle warnings
+]
+
+# Игнорируем то, что не подходит нашему стилю:
+ignore = [
+    "E501",    # line too long (проверяется линтером иначе, длинные URL)
+    "B008",    # typer.Option в дефолтах — это норма для Typer
+    "BLE001",  # except Exception — осознанное решение
+    "DTZ005",  # datetime.now() без tz — есть места, где tz не критичен
+    "SIM103",  # упрощение if/return — предпочтение стиля
+    "SIM102",  # объединение вложенных if
+    "C408",    # dict() vs {} — предпочтение
+    "TRY004",  # TypeError vs ValueError — предпочтение
+    "S110",    # try/except/pass — иногда оправдано
+    "RUF059",  # unused unpacked variable — в тестах бывает
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F841"]   # в тестах допускаем неиспользуемые импорты и переменные
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

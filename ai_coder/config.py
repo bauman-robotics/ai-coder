@@ -7,7 +7,6 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-
 # ---------- api ----------
 
 class PricePair(BaseModel):

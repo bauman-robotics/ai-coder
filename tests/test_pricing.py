@@ -6,9 +6,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from ai_coder.config import PeakSchedule, PeakWindow, PricePair, ModelPricing
+from ai_coder.config import ModelPricing, PeakSchedule, PeakWindow, PricePair
 from ai_coder.pricing import Rate, calculate_cost, is_peak_now
-
 
 # ---------- is_peak_now ----------
 
