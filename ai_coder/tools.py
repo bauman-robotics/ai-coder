@@ -518,10 +518,26 @@ def execute_tool(
 
     spec, fn = TOOL_REGISTRY[name]
 
-    # dry-run: пропускаем dangerous, но сообщаем, что бы сделали
+    # dry-run: пропускаем dangerous, но сообщаем, что БЫЛО БЫ сделано.
+    # Формулировка "EDITED/WROTE/RAN" (а не "would have called") — чтобы
+    # модель понимала: в симуляции действие УСПЕШНО, можно завершать.
     if dry_run and spec.dangerous:
-        args_repr = ", ".join(f"{k}={v!r}" for k, v in args.items())
-        preview = f"(dry-run) would have called {name}({args_repr})"
+        if name == "edit_file":
+            path = args.get("path", "?")
+            preview = f"(dry-run) EDITED {path} (simulated OK, file NOT changed on disk)"
+        elif name == "write_file":
+            path = args.get("path", "?")
+            content = args.get("content", "")
+            preview = (
+                f"(dry-run) WROTE {path} ({len(content)} chars) "
+                f"(simulated OK, file NOT created on disk)"
+            )
+        elif name == "run_shell":
+            cmd = args.get("command", "?")
+            preview = f"(dry-run) RAN `{cmd}` (simulated OK, command NOT executed)"
+        else:
+            args_repr = ", ".join(f"{k}={v!r}" for k, v in args.items())
+            preview = f"(dry-run) would have called {name}({args_repr})"
         return ToolResult(ok=True, output=preview)
 
     try:
