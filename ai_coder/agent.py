@@ -28,6 +28,7 @@ from .scanner import (
     scan_project_metadata,
 )
 from .tools import (
+    TOOL_REGISTRY,
     ToolAction,
     ToolResult,
     execute_tool,
@@ -522,7 +523,8 @@ class AgentRunResult:
     steps: list[StepResult]
     started_at: datetime
     finished_at: datetime
-    stopped_reason: str = "completed"  # completed | error | max_steps | verify_failed | parse_error
+    stopped_reason: str = "completed"
+    # completed | max_iterations | max_cost | parse_error | error | cancelled
     journal_dir: Path | None = None
 
     @property
@@ -1205,6 +1207,59 @@ def _prompt_review() -> str:
         print("Не понял. Ответь: y / n / a / s / d")
 
 
+def _prompt_tool_review(
+    action: ToolAction,
+    accept_all_ref: list[bool],
+) -> str:
+    """
+    Показывает панель с dangerous-инструментом и запрашивает подтверждение.
+
+    Возвращает: 'y' (apply) / 'n' (cancel) / 'a' (apply all) / 's' (skip).
+    'd' (diff) — показать args полностью и переспросить.
+    """
+    if accept_all_ref[0]:
+        return "y"
+
+    _console.print()
+
+    # Формируем отображение args
+    args_lines: list[str] = []
+    for k, v in action.args.items():
+        v_str = str(v)
+        if len(v_str) > 200:
+            v_str = v_str[:200] + "..."
+        args_lines.append(f"[bold]{k}:[/bold] {v_str}")
+
+    _console.print(
+        Panel.fit(
+            f"[bold cyan]{action.tool}[/bold cyan]\n" + "\n".join(args_lines),
+            title="Подтверждение инструмента",
+        )
+    )
+    if action.reason:
+        _console.print(f"[dim]Причина: {action.reason}[/dim]")
+
+    while True:
+        try:
+            answer = (
+                input("\nПрименить? yes(y) / no(n) / all(a) / skip(s) / diff(d): ").strip().lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return "n"
+
+        if answer in ("y", "n", "a", "s"):
+            return answer
+
+        if answer == "d":
+            _console.print("\n[bold]Полные args:[/bold]")
+            for k, v in action.args.items():
+                _console.print(f"  {k}: {v!r}")
+            continue
+
+        print("Не понял. Ответь: y / n / a / s / d")
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -1217,7 +1272,8 @@ def run_tool_loop(
     max_iterations: int = 20,
     max_cost_rub: float | None = None,
     journal: bool = True,
-    dry_run: bool = False,  # NEW
+    dry_run: bool = False,
+    interactive: bool = False,  # NEW
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -1259,6 +1315,7 @@ def run_tool_loop(
     stopped_reason = "completed"
     success = False
     summary = ""
+    accept_all_ref: list[bool] = [False]  # NEW: для --interactive
 
     client = LLMClient(cfg.api)
 
@@ -1351,6 +1408,27 @@ def run_tool_loop(
             if journal_dir is not None:
                 _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
             break
+
+        # --- NEW: interactive — подтверждение dangerous ---
+        if interactive:
+            spec, _ = TOOL_REGISTRY.get(action.tool, (None, None))
+            if spec is not None and spec.dangerous:
+                answer = _prompt_tool_review(action, accept_all_ref)
+                if answer == "n":
+                    stopped_reason = "cancelled"
+                    summary = "отменено пользователем"
+                    if journal_dir is not None:
+                        _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+                    break
+                if answer == "s":
+                    # пропустить — записать как "skipped"
+                    skip_result = ToolResult(ok=False, error="пропущено пользователем")
+                    history.append((action, skip_result))
+                    if journal_dir is not None:
+                        _save_tool_loop_step(journal_dir, iteration, action, skip_result, llm_resp)
+                    continue
+                if answer == "a":
+                    accept_all_ref[0] = True
 
         # --- исполнение инструмента ---
         tool_result = execute_tool(

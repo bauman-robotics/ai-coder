@@ -620,3 +620,143 @@ def test_run_tool_loop_dry_run_allows_read(sample_project, minimal_cfg, prompts_
 
     # read_file выполнился — output содержит "hello"
     assert "hello" in result.history[0][1].output
+
+
+def test_run_tool_loop_interactive_yes(sample_project, minimal_cfg, prompts_cfg):
+    """--interactive: y — инструмент выполняется."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent._prompt_tool_review", return_value="y"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="yes",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            interactive=True,
+        )
+
+    assert (sample_project / "test.py").read_text() == "x = 42\n"
+    assert result.success is True
+
+
+def test_run_tool_loop_interactive_no_cancels(sample_project, minimal_cfg, prompts_cfg):
+    """--interactive: n — стоп, файл не меняется."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent._prompt_tool_review", return_value="n"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}'
+        )
+
+        result = run_tool_loop(
+            goal="no",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            interactive=True,
+        )
+
+    assert (sample_project / "test.py").read_text() == "x = 1\n"
+    assert result.stopped_reason == "cancelled"
+    assert result.success is False
+
+
+def test_run_tool_loop_interactive_skip(sample_project, minimal_cfg, prompts_cfg):
+    """--interactive: s — пропустить шаг, продолжить."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "ok", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent._prompt_tool_review", return_value="s"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="skip",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            interactive=True,
+        )
+
+    assert (sample_project / "test.py").read_text() == "x = 1\n"
+    assert len(result.history) == 1
+    assert "пропущено" in result.history[0][1].error
+
+
+def test_run_tool_loop_interactive_all(sample_project, minimal_cfg, prompts_cfg):
+    """--interactive: a — без дальнейших вопросов."""
+    from unittest.mock import patch as _patch
+
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 42", "new": "x = 100"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        _patch("builtins.input", return_value="a") as mock_input,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="all",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            interactive=True,
+        )
+
+    assert (sample_project / "test.py").read_text() == "x = 100\n"
+    assert result.success is True
+    # input вызван ровно 1 раз — второй dangerous пошёл через accept_all
+    assert mock_input.call_count == 1
