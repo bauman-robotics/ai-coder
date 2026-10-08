@@ -692,6 +692,21 @@ def agent_cmd(
         "--only-path",
         help="Сканировать только указанный путь (можно несколько раз).",
     ),
+    commit: bool = typer.Option(
+        False,
+        "--commit/--no-commit",
+        help="Автокоммит после успешного --apply (git add + git commit).",
+    ),
+    require_clean: bool = typer.Option(
+        True,
+        "--require-clean/--no-require-clean",
+        help="Требовать чистое git-дерево перед --apply.",
+    ),
+    max_cost_rub: float | None = typer.Option(
+        None,
+        "--max-cost-rub",
+        help="Остановка при превышении стоимости (RUB).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -727,6 +742,12 @@ def agent_cmd(
 
     if no_phase1:
         cfg.agent.phase1_enabled = False
+
+    if commit:
+        cfg.git.auto_commit = True
+    if not require_clean:
+        cfg.git.require_clean = False
+    # max_cost_rub прокидывается в run_agent (отдельная правка в agent.py)
 
     if only_path:
         cfg.scanning.only_paths = list(only_path)
