@@ -1063,3 +1063,113 @@ def test_run_tool_loop_resume_no_history(sample_project, minimal_cfg, prompts_cf
     assert result.success is False
     assert result.stopped_reason == "resume_error"
     assert "history.json" in result.summary
+
+
+# ---------- кэш phase1 ----------
+
+
+def test_run_planner_phase1_cache_hit(sample_project, minimal_cfg, prompts_cfg):
+    """Второй вызов с той же goal — из кэша, LLM не вызывается."""
+    from ai_coder.agent import run_planner_phase1
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"target_files": ["ai_coder/cli.py"]}'
+        )
+
+        r1 = run_planner_phase1(
+            goal="cache test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=True,
+        )
+        assert r1.from_cache is False
+        assert MockClient.return_value.chat.call_count == 1
+
+        r2 = run_planner_phase1(
+            goal="cache test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=True,
+        )
+        assert r2.from_cache is True
+        assert r2.cost_rub == 0.0
+        assert r2.llm is None
+        # второй раз LLM не вызывался
+        assert MockClient.return_value.chat.call_count == 1
+        assert r2.target_files == r1.target_files
+
+
+def test_run_planner_phase1_cache_refresh(sample_project, minimal_cfg, prompts_cfg):
+    """refresh=True — игнорируем кэш, идём в LLM."""
+    from ai_coder.agent import run_planner_phase1
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"target_files": ["ai_coder/cli.py"]}'
+        )
+
+        r1 = run_planner_phase1(
+            goal="cache refresh",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=True,
+        )
+        assert r1.from_cache is False
+
+        r2 = run_planner_phase1(
+            goal="cache refresh",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=True,
+            refresh=True,
+        )
+        assert r2.from_cache is False
+        assert MockClient.return_value.chat.call_count == 2
+
+
+def test_run_planner_phase1_no_cache(sample_project, minimal_cfg, prompts_cfg):
+    """use_cache=False — не используем кэш."""
+    from ai_coder.agent import run_planner_phase1
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"target_files": ["ai_coder/cli.py"]}'
+        )
+
+        r1 = run_planner_phase1(
+            goal="no cache",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=False,
+        )
+        r2 = run_planner_phase1(
+            goal="no cache",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            use_cache=False,
+        )
+        assert r1.from_cache is False
+        assert r2.from_cache is False
+        assert MockClient.return_value.chat.call_count == 2

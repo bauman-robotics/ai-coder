@@ -172,6 +172,10 @@ def prompts_cfg() -> PromptsConfig:
                 system="Tool: {{tools}}",
                 user="Goal: {{goal}}, tree: {{tree}}, history: {{history}}",
             ),
+            "agent_plan_json_phase1": PromptEntry(
+                system="Phase1: {{goal}}",
+                user="Tree: {{tree}}, metadata: {{metadata}}",
+            ),
         }
     )
 

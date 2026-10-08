@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from dataclasses import dataclass, field
@@ -239,11 +240,12 @@ class PlannerPhase1Result:
     """Результат phase1: какие файлы затронет задача."""
 
     target_files: list[str]
-    llm: LLMResponse
+    llm: LLMResponse | None  # None при cache hit
     cost_rub: float
     cost_cny: float
     cost_usd: float
     parse_error: str | None = None
+    from_cache: bool = False
 
 
 def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
@@ -288,6 +290,62 @@ def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
     return sorted(set(paths)), None
 
 
+# ---------- кэш phase1 ----------
+
+
+def _phase1_cache_key(goal: str, tree: str, model: str) -> str:
+    """Хэш phase1: goal + tree + model. SHA256, первые 32 hex."""
+    h = hashlib.sha256()
+    h.update(b"ai-coder-phase1-v1\n")
+    h.update(f"model:{model}\n".encode("utf-8"))
+    h.update(f"goal:{goal}\n".encode("utf-8"))
+    h.update(b"---TREE---\n")
+    h.update(tree.encode("utf-8"))
+    return h.hexdigest()[:32]
+
+
+def _phase1_cache_dir(project_root: Path, cfg: AppConfig) -> Path:
+    """Папка для кэша phase1 — та же, что у apply.py."""
+    return project_root / cfg.output.dir / project_root.name / cfg.output.cache_dir_name
+
+
+def _phase1_from_cache(cache_dir: Path, key: str) -> list[str] | None:
+    """Читает target_files из кэша phase1. None — если нет/битый."""
+    p = cache_dir / f"phase1-{key}.json"
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    tf = data.get("target_files", [])
+    if not isinstance(tf, list):
+        return None
+    return [str(x) for x in tf if str(x).strip()]
+
+
+def _phase1_save_cache(cache_dir: Path, key: str, target_files: list[str]) -> None:
+    """Сохраняет target_files в кэш phase1."""
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        p = cache_dir / f"phase1-{key}.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "target_files": target_files,
+                    "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def run_planner_phase1(
     *,
     goal: str,
@@ -297,10 +355,15 @@ def run_planner_phase1(
     model: str | None = None,
     depth: str = "normal",
     extra_exclude: list[str] | None = None,
+    use_cache: bool = True,  # NEW
+    refresh: bool = False,  # NEW
 ) -> PlannerPhase1Result:
     """
     Первый проход планировщика: видит только дерево + метаданные,
     определяет target_files для phase2.
+
+    Кэш: если use_cache и не refresh — сначала проверяем кэш по
+    хэшу (goal + tree + model). При попадании — LLM не вызывается.
     """
     model = model or cfg.api.model
 
@@ -310,6 +373,27 @@ def run_planner_phase1(
         cfg.scanning,
         extra_exclude=extra_exclude,
     )
+
+    # --- NEW: кэш phase1 ---
+    cache_dir = _phase1_cache_dir(project_root, cfg)
+    cache_key: str | None = None
+    cache_enabled = use_cache and cfg.output.use_cache
+
+    if cache_enabled:
+        cache_key = _phase1_cache_key(goal, scan_meta.tree, model)
+        if not refresh:
+            cached = _phase1_from_cache(cache_dir, cache_key)
+            if cached is not None:
+                _console.print(f"[dim]Фаза 1: из кэша ({len(cached)} файл(ов))[/dim]")
+                return PlannerPhase1Result(
+                    target_files=cached,
+                    llm=None,
+                    cost_rub=0.0,
+                    cost_cny=0.0,
+                    cost_usd=0.0,
+                    parse_error=None,
+                    from_cache=True,
+                )
 
     # 2. промпт — scan обязателен как заглушка, {{tree}} переопределяется
     #    через extra (render_prompt: extra перезаписывает базовые values)
@@ -378,6 +462,10 @@ def run_planner_phase1(
         parent_action="agent",
     )
 
+    # --- NEW: сохраняем в кэш при успехе ---
+    if cache_enabled and cache_key is not None and parse_error is None:
+        _phase1_save_cache(cache_dir, cache_key, target_files)
+
     return PlannerPhase1Result(
         target_files=target_files,
         llm=llm_resp,
@@ -385,6 +473,7 @@ def run_planner_phase1(
         cost_cny=cost.cost_cny,
         cost_usd=cost.cost_usd,
         parse_error=parse_error,
+        from_cache=False,
     )
 
 
