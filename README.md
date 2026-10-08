@@ -26,6 +26,12 @@ AI-ассистированный анализ git-проектов через D
    ```
 5. Конфигурационные файлы `config/config.yaml` и `config/prompts.yaml` уже подготовлены. При необходимости измените модель, тарифы, сканирование и другие параметры.
 
+## Инструменты tool loop
+
+Полное описание 5 инструментов (`read_file`, `list_files`,
+`write_file`, `edit_file`, `run_shell`) — в
+[`docs/tools.md`](docs/tools.md).
+
 ## Быстрый старт
 
 ```bash
