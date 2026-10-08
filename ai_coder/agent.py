@@ -21,7 +21,12 @@ from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
 from .pricing import calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
-from .scanner import scan_project
+from .scanner import (
+    ScanResult,
+    render_metadata_block,
+    scan_project,
+    scan_project_metadata,
+)
 from .usage import append_usage
 
 if TYPE_CHECKING:
@@ -216,6 +221,160 @@ class PlannerResult:
     peak_window: str | None
     started_at: datetime
     finished_at: datetime
+
+
+@dataclass
+class PlannerPhase1Result:
+    """Результат phase1: какие файлы затронет задача."""
+
+    target_files: list[str]
+    llm: LLMResponse
+    cost_rub: float
+    cost_cny: float
+    cost_usd: float
+    parse_error: str | None = None
+
+
+def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
+    """
+    Парсит ответ phase1: ожидает {"explanation": ..., "target_files": [...]}.
+
+    Возвращает (target_files, parse_error).
+    Если парсинг не удался — target_files=[], parse_error="...".
+    """
+    text = content.strip()
+
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    if not text.startswith("{"):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start : end + 1]
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        return [], f"phase1 JSON parse error: {e}"
+
+    if not isinstance(data, dict):
+        return [], f"phase1: ожидался dict, получено {type(data).__name__}"
+
+    tf = data.get("target_files", [])
+    if not isinstance(tf, list):
+        return [], "phase1: 'target_files' должен быть списком"
+
+    paths: list[str] = []
+    for p in tf:
+        p_str = str(p).strip().lstrip("/")
+        if p_str:
+            paths.append(p_str)
+
+    return sorted(set(paths)), None
+
+
+def run_planner_phase1(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+) -> PlannerPhase1Result:
+    """
+    Первый проход планировщика: видит только дерево + метаданные,
+    определяет target_files для phase2.
+    """
+    model = model or cfg.api.model
+
+    # 1. metadata-scan (без содержимого)
+    scan_meta = scan_project_metadata(
+        project_root,
+        cfg.scanning,
+        extra_exclude=extra_exclude,
+    )
+
+    # 2. промпт — scan обязателен как заглушка, {{tree}} переопределяется
+    #    через extra (render_prompt: extra перезаписывает базовые values)
+    prompt_entry = prompts_cfg.get("agent_plan_json_phase1")
+    metadata_block = render_metadata_block(scan_meta)
+    empty_scan = ScanResult(root=project_root)
+    system, user = render_prompt(
+        prompt_entry,
+        depth=depth,
+        scan=empty_scan,
+        extra={
+            "goal": goal,
+            "tree": scan_meta.tree,
+            "metadata": metadata_block,
+        },
+    )
+
+    # 3. тариф и курсы
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    # 4. запрос
+    client = LLMClient(cfg.api)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.phase1_max_output_tokens,
+    )
+
+    # 5. парсим
+    target_files, parse_error = _parse_phase1_response(llm_resp.content)
+
+    # 6. стоимость
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+
+    # 7. учёт
+    output_root = project_root / cfg.output.dir
+    append_usage(
+        project_root=project_root,
+        output_root=output_root,
+        action="agent:plan1",
+        project_name=project_root.name,
+        model=model,
+        depth=depth,
+        files_count=scan_meta.total_files,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok" if parse_error is None else "parse_error",
+        usage_cfg=cfg.usage,
+        iteration=0,
+        parent_action="agent",
+    )
+
+    return PlannerPhase1Result(
+        target_files=target_files,
+        llm=llm_resp,
+        cost_rub=cost.cost_rub,
+        cost_cny=cost.cost_cny,
+        cost_usd=cost.cost_usd,
+        parse_error=parse_error,
+    )
 
 
 def run_planner(

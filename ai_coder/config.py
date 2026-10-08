@@ -189,6 +189,8 @@ class AgentConfig(BaseModel):
     step_max_output_tokens: int = 8000
     include_read_steps: bool = False
     auto_only_paths: bool = True
+    phase1_enabled: bool = True  # NEW
+    phase1_max_output_tokens: int = 2000  # NEW
 
 
 # ---------- root ----------

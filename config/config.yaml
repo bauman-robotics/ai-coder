@@ -120,6 +120,8 @@ agent:
   stop_on_verify_failure: true
   include_read_steps: false
   auto_only_paths: true
+  phase1_enabled: true              # NEW
+  phase1_max_output_tokens: 2000    # NEW
 
 output:
   dir: .ai-out

@@ -8,6 +8,7 @@ from ai_coder.agent import (
     AgentPlan,
     AgentStep,
     _extract_target_files,
+    _parse_phase1_response,
     _render_plan_summary,
     _select_step_only_paths,
     parse_agent_plan,
@@ -341,3 +342,31 @@ def test_select_only_paths_disabled():
         )
         is None
     )
+
+
+def test_parse_phase1_response_valid():
+    content = '{"explanation": "x", "target_files": ["a.py", "b.py"]}'
+    files, err = _parse_phase1_response(content)
+    assert err is None
+    assert files == ["a.py", "b.py"]
+
+
+def test_parse_phase1_response_strips_slash_and_dedup():
+    content = '{"target_files": ["/a.py", "  b.py  ", "a.py"]}'
+    files, err = _parse_phase1_response(content)
+    assert err is None
+    assert files == ["a.py", "b.py"]
+
+
+def test_parse_phase1_response_markdown_wrapper():
+    content = '```json\n{"target_files": ["x.py"]}\n```'
+    files, err = _parse_phase1_response(content)
+    assert err is None
+    assert files == ["x.py"]
+
+
+def test_parse_phase1_response_invalid_json():
+    files, err = _parse_phase1_response("not json at all")
+    assert files == []
+    assert err is not None
+    assert "parse error" in err.lower()
