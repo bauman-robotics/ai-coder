@@ -19,6 +19,9 @@ project_root, не запускают shell, не делают сетевых в
 
 from __future__ import annotations
 
+import re
+import shlex
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,6 +76,193 @@ def _safe_path(project_root: Path, rel_path: str) -> Path:
     except ValueError as e:
         raise ToolSecurityError(f"path escapes project root: {rel_path}") from e
     return abs_path
+
+
+# ---------- run_shell: whitelist и защита ----------
+
+# Разрешённые команды (первое слово в command).
+# Всё, что не здесь, — отклоняется.
+_SHELL_WHITELIST: frozenset[str] = frozenset(
+    {
+        "pytest",
+        "ruff",
+        "mypy",
+        "git",
+        "ls",
+        "cat",
+        "grep",
+        "find",
+        "head",
+        "tail",
+        "wc",
+        "python",
+        "python3",
+    }
+)
+
+# Запрещённые подкоманды git (опасные) — на случай, если модель попробует.
+_GIT_FORBIDDEN: frozenset[str] = frozenset(
+    {
+        "push",
+        "reset",
+        "clean",
+        "rebase",
+        "merge",
+        "cherry-pick",
+        "revert",
+        "filter-branch",
+    }
+)
+
+# Метасимволы shell, запрещённые в command.
+# Разрешаем только «простые» команды без пайпов и перенаправлений.
+_SHELL_METACHARS = re.compile(r"[;&|<>`$]|\$\(|\|\|")
+
+# Лимит вывода (символов).
+_SHELL_MAX_OUTPUT_CHARS = 10_000
+
+# Таймаут (секунд).
+_SHELL_DEFAULT_TIMEOUT = 30
+_SHELL_MAX_TIMEOUT = 120
+
+# Путь к логу команд (относительно project_root).
+_SHELL_LOG_REL = ".ai-out/commands.log"
+
+
+def _log_command(project_root: Path, command: str, result: ToolResult) -> None:
+    """Дописывает команду и результат в .ai-out/commands.log."""
+    log_path = project_root / _SHELL_LOG_REL
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+
+        ts = datetime.now().isoformat(timespec="seconds")
+        status = "OK" if result.ok else "FAIL"
+        line = f"{ts}\t{status}\t{command}\n"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass  # лог не критичен
+
+
+def _validate_command(command: str) -> str | None:
+    """
+    Проверяет команду против whitelist и метасимволов.
+
+    Returns:
+        None, если команда разрешена.
+        Сообщение об ошибке, если запрещена.
+    """
+    cmd = command.strip()
+    if not cmd:
+        return "empty command"
+
+    # метасимволы
+    if _SHELL_METACHARS.search(cmd):
+        return "shell metacharacters (;, &, |, <, >, `, $) are not allowed; use a single command"
+
+    # парсим на токены
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError as e:
+        return f"cannot parse command: {e}"
+
+    if not tokens:
+        return "empty command after parsing"
+
+    first = tokens[0]
+    if first not in _SHELL_WHITELIST:
+        return f"command not in whitelist: {first}"
+
+    # проверки для конкретных команд
+    if first in ("python", "python3"):
+        # разрешаем только python -m pytest / -m ruff / -m mypy
+        if len(tokens) < 3 or tokens[1] != "-m" or tokens[2] not in ("pytest", "ruff", "mypy"):
+            return "python allowed only as 'python -m pytest|ruff|mypy'"
+
+    if first == "git":
+        if len(tokens) < 2:
+            return "git requires a subcommand"
+        sub = tokens[1]
+        if sub in _GIT_FORBIDDEN:
+            return f"git subcommand forbidden: {sub}"
+        # разрешённые git-подкоманды
+        allowed_git = {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files"}
+        if sub not in allowed_git:
+            return f"git subcommand not in whitelist: {sub}"
+
+    return None
+
+
+def tool_run_shell(args: dict[str, Any], project_root: Path) -> ToolResult:
+    """
+    run_shell(command: str, timeout_sec: int = 30) → вывод команды.
+
+    Команда должна быть в whitelist, без shell-метасимволов.
+    Запускается в project_root, с timeout и лимитом вывода.
+    """
+    command = str(args.get("command", "")).strip()
+    timeout_sec = int(args.get("timeout_sec", _SHELL_DEFAULT_TIMEOUT))
+    if timeout_sec < 1:
+        timeout_sec = 1
+    if timeout_sec > _SHELL_MAX_TIMEOUT:
+        timeout_sec = _SHELL_MAX_TIMEOUT
+
+    err = _validate_command(command)
+    if err:
+        result = ToolResult(ok=False, error=f"run_shell rejected: {err}")
+        _log_command(project_root, command, result)
+        return result
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError as e:
+        result = ToolResult(ok=False, error=f"cannot parse command: {e}")
+        _log_command(project_root, command, result)
+        return result
+
+    try:
+        completed = subprocess.run(
+            tokens,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        result = ToolResult(
+            ok=False,
+            error=f"timeout after {timeout_sec}s",
+        )
+        _log_command(project_root, command, result)
+        return result
+    except OSError as e:
+        result = ToolResult(ok=False, error=f"exec error: {e}")
+        _log_command(project_root, command, result)
+        return result
+
+    # объединяем stdout + stderr
+    parts: list[str] = []
+    if completed.stdout:
+        parts.append(completed.stdout)
+    if completed.stderr:
+        parts.append("--- stderr ---\n" + completed.stderr)
+    output = "\n".join(parts).strip()
+
+    if len(output) > _SHELL_MAX_OUTPUT_CHARS:
+        output = (
+            output[:_SHELL_MAX_OUTPUT_CHARS] + f"\n... [обрезано, всего {len(output)} символов]"
+        )
+
+    ok = completed.returncode == 0
+    result = ToolResult(
+        ok=ok,
+        output=output or "(no output)",
+        error="" if ok else f"exit code: {completed.returncode}",
+    )
+    _log_command(project_root, command, result)
+    return result
 
 
 # ---------- инструменты ----------
@@ -277,6 +467,22 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, Callable[[dict[str, Any], Path], ToolRe
             dangerous=True,
         ),
         tool_edit_file,
+    ),
+    "run_shell": (
+        ToolSpec(
+            name="run_shell",
+            description=(
+                "Run a whitelisted shell command (pytest, ruff, mypy, git status/diff/log, "
+                "ls, cat, grep, find). No shell metacharacters (;, &, |, <, >, $)."
+            ),
+            args={
+                "command": "single command, e.g. 'pytest -q' or 'git status'",
+                "timeout_sec": "optional timeout, default 30, max 120",
+            },
+            returns="stdout+stderr (up to 10K chars); ok=False if exit code != 0",
+            dangerous=True,
+        ),
+        tool_run_shell,
     ),
 }
 
