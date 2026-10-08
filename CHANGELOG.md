@@ -25,6 +25,44 @@
 
 
 
+
+## [2026-10-08] iteration 8.7 — feat(agent): phase1 — metadata-планировщик
+
+### Добавлено
+- `scan_project_metadata()` в `scanner.py` — обход без содержимого:
+  только дерево + метаданные (`README`, `pyproject`, `requirements`).
+- `render_metadata_block()` — рендер метаданных для phase1-промпта.
+- `PlannerPhase1Result`, `_parse_phase1_response()`, `run_planner_phase1()`
+  в `agent.py` — первый проход планировщика.
+- `AgentConfig.phase1_enabled`, `phase1_max_output_tokens` (2000).
+- `run_planner(only_paths=...)` — per-call override.
+- `run_agent`: phase1 → phase2 → шаги.
+- CLI-флаг `--no-phase1`.
+- Промпт `agent_plan_json_phase1`.
+- 8 тестов: 4 на `scan_project_metadata`, 4 на `_parse_phase1_response`.
+
+### Как работает
+- **Phase1** — планировщик видит только дерево + метаданные,
+  возвращает `target_files`. Дёшево (~2K токенов).
+- **Phase2** — планировщик видит только `target_files` из phase1.
+- **Шаги** — как в 8.5/8.6 (шаг 1 сужен для одношагового плана).
+- **Fallback:** phase1 упал или пуст → phase2 идёт с полным контекстом.
+
+### Метрика (E2E: «поднять --cov-fail-under 40 → 70»)
+
+| | 8.5 | 8.6 | 8.7 |
+|---|---:|---:|---:|
+| Планировщик | 0.5505 RUB | 0.5312 RUB | **0.0250 RUB** (в 21 раз) |
+| Шаг 1 | 0.5358 RUB | 0.0249 RUB | 0.0257 RUB |
+| **Всего** | **1.0863 RUB** | **0.5561 RUB** | **0.0507 RUB** |
+
+**Экономия 8.7 vs 8.5 — 21x.**
+
+### Итого тестов
+- 162 passed.
+
+---
+
 ## [2026-10-08] iteration 8.6 — feat(agent): сузить шаг 1 для одношаговых планов
 
 ### Добавлено
