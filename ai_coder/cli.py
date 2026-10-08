@@ -683,7 +683,7 @@ def agent_cmd(
         False,
         "--interactive",
         "-i",
-        help="Подтверждать каждый шаг вручную (y/n/a/s/d)",
+        help="Подтверждать каждый шаг/инструмент вручную (y/n/a/s/d).",
     ),
     no_auto_only_paths: bool = typer.Option(
         False,
@@ -704,6 +704,11 @@ def agent_cmd(
         20,
         "--max-iterations",
         help="Лимит итераций tool loop.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Tool loop: dangerous-инструменты не выполняются (только логи).",
     ),
     only_path: list[str] = typer.Option(
         [],
@@ -790,6 +795,10 @@ def agent_cmd(
             )
         )
 
+        if dry_run and interactive:
+            console.print("[red]Нельзя одновременно --dry-run и --interactive[/red]")
+            raise typer.Exit(1)
+
         try:
             with console.status("[cyan]Tool loop работает..."):
                 loop_result = run_tool_loop(
@@ -803,6 +812,8 @@ def agent_cmd(
                     max_iterations=max_iterations,
                     max_cost_rub=max_cost_rub,
                     journal=journal,
+                    dry_run=dry_run,
+                    interactive=interactive,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
@@ -841,6 +852,17 @@ def agent_cmd(
                 console.print(f"[dim]Журнал: {rel}[/dim]")
             except ValueError:
                 console.print(f"[dim]Журнал: {loop_result.journal_dir}[/dim]")
+
+        if loop_result.backup_dir:
+            try:
+                rel = loop_result.backup_dir.relative_to(Path.cwd())
+                console.print(f"[dim]Бэкап: {rel}[/dim]")
+                console.print(f"[dim]Откат: ai-coder rollback {rel} .[/dim]")
+            except ValueError:
+                console.print(f"[dim]Бэкап: {loop_result.backup_dir}[/dim]")
+
+        if loop_result.dry_run:
+            console.print("[yellow]⚠️ Режим dry-run: изменения НЕ применялись.[/yellow]")
 
         raise typer.Exit(0 if loop_result.success else 1)
 
