@@ -103,6 +103,7 @@ class ScanningConfig(BaseModel):
     max_file_size_kb: int = 500
     max_total_tokens: int = 60000
     include_extensions: list[str] = Field(default_factory=list)
+    only_paths: list[str] = Field(default_factory=list)
 
     @field_validator("binary_extensions")
     @classmethod

@@ -22,6 +22,37 @@
 
 
 
+
+## [2026-10-08] iteration 8.4 — feat(scanner): --only-path
+
+### Добавлено
+- `ScanningConfig.only_paths` — сузить сканирование до файлов/директорий.
+- CLI-флаг `--only-path` в `run` и `agent` (можно несколько раз).
+- `_is_dir_relevant` / `_is_file_selected` в `scanner.py` —
+  раздельные проверки для директорий и файлов (раньше одна
+  `_matches_only_paths` ломала обход).
+- `_normalize_only_paths` — нормализация `./`, `\`, хвостовых слэшей.
+- 5 тестов в `test_scanner.py` на `only_paths`.
+
+### Исправлено
+- `--only-path ai_coder/cache.py` давал **0 файлов** вместо 1:
+  `_matches_only_paths` блокировала родительские директории
+  (`ai_coder/` отсеивалась, потому что не начинается с
+  `ai_coder/cache.py`).
+- Убран параметр `only_paths` из `scan_project` — один источник
+  правды (`cfg.scanning.only_paths`).
+
+### Метрики
+- `--only-path ai_coder/cache.py`: ~2200 prompt-токенов
+  вместо ~41054 (в 18 раз меньше).
+- `--only-path ai_coder/`: 13 файлов, ~41K токенов.
+- Тестов: 139 → 144.
+
+### Итого тестов
+- 144 passed.
+
+---
+
 ## [2026-10-08] iteration 8.3 — баги self-hosted E2E
 
 ### Исправлено

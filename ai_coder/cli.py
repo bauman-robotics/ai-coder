@@ -192,6 +192,12 @@ def run(
         "--verify-commands",
         help="Verify-команды через ';' (например, 'pytest -q;ruff check .')",
     ),
+    only_path: list[str] = typer.Option(
+        [],
+        "--only-path",
+        help="Сканировать только указанный путь (можно несколько раз). "
+        "Например: --only-path ai_coder/ --only-path config/",
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -213,6 +219,9 @@ def run(
     if verify_commands is not None:
         cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
         cfg.agent.verify_commands = cmds
+
+    if only_path:
+        cfg.scanning.only_paths = list(only_path)
 
     project_root = path.resolve()
     if not project_root.is_dir():
@@ -262,6 +271,7 @@ def run(
                 use_cache=not no_cache,
                 refresh=refresh,
                 web_assets_override=web_override,
+                # only_paths уже в cfg.scanning — не надо дублировать
             )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")
@@ -667,6 +677,11 @@ def agent_cmd(
         "-i",
         help="Подтверждать каждый шаг вручную (y/n/a/s/d)",
     ),
+    only_path: list[str] = typer.Option(
+        [],
+        "--only-path",
+        help="Сканировать только указанный путь (можно несколько раз).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -696,6 +711,9 @@ def agent_cmd(
     if interactive and not sys.stdin.isatty():
         console.print("[red]--interactive требует TTY (интерактивный терминал)[/red]")
         raise typer.Exit(1)
+
+    if only_path:
+        cfg.scanning.only_paths = list(only_path)
 
     project_root = path.resolve()
     if not project_root.is_dir():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pathspec
 
@@ -240,6 +240,8 @@ def scan_project(
     if not root.is_dir():
         raise NotADirectoryError(f"Не директория: {root}")
 
+    effective_only_paths = _normalize_only_paths(list(cfg.only_paths))
+
     # 1. specs из .gitignore
     gi_specs = _load_specs_recursive(root) if cfg.use_gitignore else []
 
@@ -281,7 +283,12 @@ def scan_project(
             if entry.is_dir():
                 if should_skip_dir(rel_dir, entry.name):
                     continue
+                if effective_only_paths and not _is_dir_relevant(rel, effective_only_paths):
+                    continue
                 walk(entry, rel)
+                continue
+
+            if effective_only_paths and not _is_file_selected(rel, effective_only_paths):
                 continue
 
             # --- файл ---
@@ -417,3 +424,58 @@ def render_files_block(result: ScanResult, max_file_chars: int = 20000) -> str:
             content = content[:max_file_chars] + f"\n... [обрезано, всего {len(content)} символов]"
         parts.append(f"### {rel}\n```\n{content}\n```\n")
     return "\n".join(parts)
+
+
+def _is_dir_relevant(rel_dir: str, only_paths: list[str]) -> bool:
+    """
+    Может ли внутри этой директории лежать что-то из only_paths?
+
+    Пример: only_paths=["ai_coder/cache.py"]
+      _is_dir_relevant("", ...)          -> True  (корень)
+      _is_dir_relevant("ai_coder", ...)  -> True  (cache.py внутри)
+      _is_dir_relevant("tests", ...)     -> False
+    """
+    rel_posix = rel_dir.strip("/")
+    if not rel_posix:
+        return True  # корень всегда релевантен
+    for p in only_paths:
+        p_norm = p.strip("/")
+        # only_path сам лежит внутри этой директории
+        if p_norm == rel_posix or p_norm.startswith(rel_posix + "/"):
+            return True
+        # эта директория лежит внутри only_path (если only_path — директория)
+        if rel_posix == p_norm or rel_posix.startswith(p_norm + "/"):
+            return True
+    return False
+
+
+def _is_file_selected(rel_file: str, only_paths: list[str]) -> bool:
+    """
+    Явно ли выбран этот файл через only_paths?
+
+    rel_file — путь относительно root (POSIX), например 'ai_coder/cache.py'.
+
+    Пример: only_paths=["ai_coder/"]
+      _is_file_selected("ai_coder/cache.py", ...) -> True
+      _is_file_selected("tests/test_x.py", ...)   -> False
+    """
+    rel_posix = rel_file.strip("/")
+    for p in only_paths:
+        p_norm = p.strip("/")
+        if rel_posix == p_norm:
+            return True
+        if rel_posix.startswith(p_norm + "/"):
+            return True
+    return False
+
+
+def _normalize_only_paths(paths: list[str]) -> list[str]:
+    out: list[str] = []
+    for p in paths:
+        p_norm = PurePosixPath(p.replace("\\", "/")).as_posix().strip("/")
+        # убрать ведущий "./"
+        while p_norm.startswith("./"):
+            p_norm = p_norm[2:]
+        if p_norm:
+            out.append(p_norm)
+    return out

@@ -107,3 +107,51 @@ def test_scan_skips_empty_files(sample_project: Path, minimal_cfg):
     assert "empty.py" not in res.files
     reasons = {s.reason for s in res.skipped if s.path == "empty.py"}
     assert "empty" in reasons
+
+
+def test_only_paths_selects_single_file(sample_project: Path, minimal_cfg):
+    """--only-path на конкретный файл: в контексте только он."""
+    minimal_cfg.scanning.only_paths = ["src/main.py"]
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert set(res.files.keys()) == {"src/main.py"}
+
+
+def test_only_paths_selects_directory(sample_project: Path, minimal_cfg):
+    """--only-path на директорию: в контексте всё её содержимое (кроме пустых)."""
+    minimal_cfg.scanning.only_paths = ["src/"]
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert set(res.files.keys()) == {"src/main.py", "src/utils.py"}
+
+
+def test_only_paths_nested_directory(sample_project: Path, minimal_cfg):
+    """--only-path на вложенный файл: родительские директории проходятся."""
+    (sample_project / "src" / "sub").mkdir()
+    (sample_project / "src" / "sub" / "deep.py").write_text("x = 1\n", encoding="utf-8")
+
+    minimal_cfg.scanning.only_paths = ["src/sub/deep.py"]
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert set(res.files.keys()) == {"src/sub/deep.py"}
+
+
+def test_only_paths_no_match(sample_project: Path, minimal_cfg):
+    """--only-path на несуществующий путь: пустой результат, без ошибок."""
+    minimal_cfg.scanning.only_paths = ["nonexistent/"]
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert res.files == {}
+
+
+def test_only_paths_normalizes_dot_slash(sample_project: Path, minimal_cfg):
+    """--only-path с ведущим './' должен нормализоваться."""
+    minimal_cfg.scanning.only_paths = ["./src/main.py"]
+
+    res = scan_project(sample_project, minimal_cfg.scanning)
+
+    assert "src/main.py" in res.files
