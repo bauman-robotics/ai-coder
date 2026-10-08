@@ -7,6 +7,7 @@ from unittest.mock import patch
 from ai_coder.agent import (
     AgentPlan,
     AgentStep,
+    _extract_target_files,
     _render_plan_summary,
     parse_agent_plan,
     run_planner,
@@ -263,3 +264,37 @@ def test_agent_config_step_max_output_tokens(minimal_cfg):
     """AgentConfig.step_max_output_tokens доступен (по умолчанию 8000)."""
     assert hasattr(minimal_cfg.agent, "step_max_output_tokens")
     assert minimal_cfg.agent.step_max_output_tokens == 8000
+
+
+def test_extract_target_files_empty_plan():
+    plan = AgentPlan(goal="x", steps=[])
+    assert _extract_target_files(plan) == []
+
+
+def test_extract_target_files_dedup_and_sort():
+    plan = AgentPlan(
+        goal="x",
+        steps=[
+            AgentStep(n=1, title="a", type="edit", details="d", target_files=["b.py", "a.py"]),
+            AgentStep(
+                n=2, title="b", type="edit", details="d", target_files=["a.py", "c.py"]
+            ),  # a.py — дубль
+        ],
+    )
+    assert _extract_target_files(plan) == ["a.py", "b.py", "c.py"]
+
+
+def test_extract_target_files_strips_leading_slash():
+    plan = AgentPlan(
+        goal="x",
+        steps=[
+            AgentStep(
+                n=1,
+                title="a",
+                type="edit",
+                details="d",
+                target_files=["/src/main.py", "  src/utils.py  ", ""],
+            ),
+        ],
+    )
+    assert _extract_target_files(plan) == ["src/main.py", "src/utils.py"]

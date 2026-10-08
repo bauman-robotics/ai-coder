@@ -88,6 +88,27 @@ def _is_diagnostic_step(title: str, details: str) -> bool:
     return any(marker in text for marker in _DIAGNOSTIC_MARKERS)
 
 
+def _extract_target_files(plan: AgentPlan) -> list[str]:
+    """
+    Извлекает уникальные пути файлов, которые план собирается править.
+
+    Источники:
+      - step.target_files (если модель их указала);
+      - (в будущем) write_plan.operations — пока плана операций нет,
+        ограничиваемся target_files.
+
+    Возвращает отсортированный список без дублей.
+    Используется для сужения контекста шагов 2+ (cfg.scanning.only_paths).
+    """
+    paths: set[str] = set()
+    for step in plan.steps:
+        for p in step.target_files:
+            p = p.strip().lstrip("/")
+            if p:
+                paths.add(p)
+    return sorted(paths)
+
+
 # ---------- парсинг плана ----------
 
 
@@ -337,6 +358,7 @@ def _run_agent_step(
     web_assets_override: bool | None = None,
     interactive: bool = False,  # NEW
     accept_all_ref: list[bool] | None = None,  # NEW
+    only_paths: list[str] | None = None,  # NEW
 ) -> StepResult:
     """
     Выполняет один шаг: запрос к LLM → парсинг плана → (опц.) применение → верификация.
@@ -356,6 +378,7 @@ def _run_agent_step(
         project_root,
         cfg.scanning,
         extra_exclude=effective_exclude or None,
+        only_paths=only_paths,  # NEW
     )
 
     # --- промпт шага ---
@@ -675,23 +698,34 @@ def run_agent(
             _save_agent_report(journal_dir, result, apply=False)
         return result
 
+    # --- NEW: автовыбор only_paths из плана ---
+    auto_targets: list[str] = []
+    if cfg.agent.auto_only_paths:
+        auto_targets = _extract_target_files(planner.plan)
+        if auto_targets:
+            _console.print(
+                f"[dim]Авто-контекст: шаги 2+ увидят только "
+                f"{len(auto_targets)} файл(ов) из плана[/dim]"
+            )
+        else:
+            _console.print(
+                "[dim yellow]Авто-контекст: планировщик не указал "
+                "target_files — шаги пойдут с полным контекстом[/dim yellow]"
+            )
+
     # --- цикл по шагам ---
     completed_titles: list[str] = []
     step_results: list[StepResult] = []
     accept_all_ref: list[bool] = [False]
 
-    for step in planner.plan.steps:
-        # --- проверка таймаута ---
-        elapsed_min = (datetime.now(ZoneInfo("UTC")) - started_at).total_seconds() / 60
-        if elapsed_min > max_minutes:
-            result.stopped_reason = "timeout"
-            break
-
-        if len(step_results) >= max_steps:
-            result.stopped_reason = "max_steps"
-            break
-
-        # --- выполняем шаг ---
+    for idx, step in enumerate(planner.plan.steps):
+        # --- NEW: шаг 1 — полный контекст, шаги 2+ — суженный ---
+        # planner уже отсмотрел всё; шаги 2+ видят только целевые файлы
+        if cfg.agent.auto_only_paths and idx > 0 and auto_targets:
+            step_only_paths = auto_targets
+        else:
+            step_only_paths = None  # None → берётся cfg.scanning.only_paths
+        ...
         step_result = _run_agent_step(
             goal=goal,
             step=step,
@@ -707,8 +741,9 @@ def run_agent(
             verify=verify,
             max_fix_attempts=max_fix_attempts,
             web_assets_override=web_assets_override,
-            interactive=interactive,  # NEW
-            accept_all_ref=accept_all_ref,  # NEW
+            interactive=interactive,
+            accept_all_ref=accept_all_ref,
+            only_paths=step_only_paths,  # NEW
         )
         step_results.append(step_result)
 

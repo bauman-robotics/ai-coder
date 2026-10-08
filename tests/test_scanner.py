@@ -155,3 +155,18 @@ def test_only_paths_normalizes_dot_slash(sample_project: Path, minimal_cfg):
     res = scan_project(sample_project, minimal_cfg.scanning)
 
     assert "src/main.py" in res.files
+
+
+def test_scan_project_only_paths_param_overrides_cfg(sample_project, minimal_cfg):
+    """Явный only_paths= в аргументе перебивает cfg.scanning.only_paths."""
+    minimal_cfg.scanning.only_paths = ["src/utils.py"]  # cfg
+    res = scan_project(sample_project, minimal_cfg.scanning, only_paths=["src/main.py"])  # аргумент
+    assert set(res.files.keys()) == {"src/main.py"}
+
+
+def test_scan_project_only_paths_empty_disables_filter(sample_project, minimal_cfg):
+    """only_paths=[] отключает фильтр, даже если cfg не пуст."""
+    minimal_cfg.scanning.only_paths = ["src/main.py"]
+    res = scan_project(sample_project, minimal_cfg.scanning, only_paths=[])
+    assert "src/utils.py" in res.files
+    assert "README.md" in res.files

@@ -119,6 +119,7 @@ agent:
   step_max_output_tokens: 8000
   stop_on_verify_failure: true
   include_read_steps: false
+  auto_only_paths: true
 
 output:
   dir: .ai-out

@@ -188,6 +188,7 @@ class AgentConfig(BaseModel):
     stop_on_verify_failure: bool = True
     step_max_output_tokens: int = 8000
     include_read_steps: bool = False
+    auto_only_paths: bool = True
 
 
 # ---------- root ----------

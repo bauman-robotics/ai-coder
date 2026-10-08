@@ -235,12 +235,17 @@ def scan_project(
     cfg: ScanningConfig,
     *,
     extra_exclude: list[str] | None = None,
+    only_paths: list[str] | None = None,
 ) -> ScanResult:
     root = root.resolve()
     if not root.is_dir():
         raise NotADirectoryError(f"Не директория: {root}")
 
-    effective_only_paths = _normalize_only_paths(list(cfg.only_paths))
+    # Приоритет: явный аргумент > cfg.scanning.only_paths.
+    # Аргумент используется агентом (авто-выбор из плана),
+    # cfg — ручным CLI-флагом --only-path.
+    raw_only = only_paths if only_paths is not None else list(cfg.only_paths)
+    effective_only_paths = _normalize_only_paths(raw_only)
 
     # 1. specs из .gitignore
     gi_specs = _load_specs_recursive(root) if cfg.use_gitignore else []

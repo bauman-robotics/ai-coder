@@ -677,6 +677,11 @@ def agent_cmd(
         "-i",
         help="Подтверждать каждый шаг вручную (y/n/a/s/d)",
     ),
+    no_auto_only_paths: bool = typer.Option(
+        False,
+        "--no-auto-only-paths",
+        help="Отключить авто-сужение контекста шагов 2+ из плана.",
+    ),
     only_path: list[str] = typer.Option(
         [],
         "--only-path",
@@ -711,6 +716,9 @@ def agent_cmd(
     if interactive and not sys.stdin.isatty():
         console.print("[red]--interactive требует TTY (интерактивный терминал)[/red]")
         raise typer.Exit(1)
+
+    if no_auto_only_paths:
+        cfg.agent.auto_only_paths = False
 
     if only_path:
         cfg.scanning.only_paths = list(only_path)
