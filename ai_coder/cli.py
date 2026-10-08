@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -660,6 +661,12 @@ def agent_cmd(
         "--verify-commands",
         help="Verify-команды через ';' (например, 'pytest -q;ruff check .'). Переопределяет config.yaml",
     ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Подтверждать каждый шаг вручную (y/n/a/s/d)",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -682,6 +689,14 @@ def agent_cmd(
         cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
         cfg.agent.verify_commands = cmds
 
+    if interactive and not apply:
+        console.print("[red]--interactive требует --apply[/red]")
+        raise typer.Exit(1)
+
+    if interactive and not sys.stdin.isatty():
+        console.print("[red]--interactive требует TTY (интерактивный терминал)[/red]")
+        raise typer.Exit(1)
+
     project_root = path.resolve()
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
@@ -699,7 +714,8 @@ def agent_cmd(
             f"[bold]Глубина:[/bold] {depth}\n"
             f"[bold]Режим:[/bold] {'apply' if apply else 'preview (без применения)'}"
             + ("\n[bold]Только план:[/bold] да (--preview-only)" if preview_only else "")
-            + f"\n[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}",
+            + f"\n[bold]Верификация:[/bold] {'вкл' if verify else 'выкл'}"
+            + ("\n[bold]Интерактив:[/bold] да" if interactive else ""),
             title="ai-coder agent",
         )
     )
@@ -722,6 +738,7 @@ def agent_cmd(
                 journal=journal,
                 preview_only=preview_only,
                 web_assets_override=web_override,
+                interactive=interactive,  # NEW
             )
     except Exception as e:
         console.print(f"[red]Ошибка агента:[/red] {e}")

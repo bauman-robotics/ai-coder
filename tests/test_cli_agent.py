@@ -249,3 +249,22 @@ def test_agent_verify_commands_flag(cli_env):
     call_kwargs = mock_agent.call_args.kwargs
     cfg = call_kwargs["cfg"]
     assert cfg.agent.verify_commands == ["pytest -q", "ruff check ."]
+
+
+def test_agent_interactive_requires_apply(cli_env):
+    """--interactive без --apply — ошибка."""
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+            "--interactive",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "требует --apply" in result.stdout

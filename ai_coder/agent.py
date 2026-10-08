@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from rich.console import Console
+from rich.panel import Panel
+
 from .apply import (
     WritePlan,
     apply_plan,
@@ -24,6 +27,8 @@ from .usage import append_usage
 if TYPE_CHECKING:
     from .apply import WritePlan
 # ---------- структуры ----------
+
+_console = Console()
 
 
 @dataclass
@@ -324,6 +329,8 @@ def _run_agent_step(
     verify: bool = True,
     max_fix_attempts: int = 0,
     web_assets_override: bool | None = None,
+    interactive: bool = False,  # NEW
+    accept_all_ref: list[bool] | None = None,  # NEW
 ) -> StepResult:
     """
     Выполняет один шаг: запрос к LLM → парсинг плана → (опц.) применение → верификация.
@@ -432,6 +439,32 @@ def _run_agent_step(
             result.skipped = True
             result.skip_reason = "план не содержит операций"
         return result
+
+    # --- interactive: подтверждение перед применением ---
+    if apply and interactive:
+        accept_all = accept_all_ref is not None and accept_all_ref[0]
+        if not accept_all:
+            while True:
+                _print_step_for_review(step, write_plan, step.n, len(plan.steps))
+                answer = _prompt_review()
+
+                if answer == "y":
+                    break  # применяем
+                if answer == "d":
+                    continue  # показываем diff снова
+                if answer == "n":
+                    result.skipped = True
+                    result.skip_reason = "отменено пользователем"
+                    result.errors.append("отменено пользователем")
+                    return result
+                if answer == "s":
+                    result.skipped = True
+                    result.skip_reason = "пропущено пользователем"
+                    return result
+                if answer == "a":
+                    if accept_all_ref is not None:
+                        accept_all_ref[0] = True
+                    break  # применяем, дальше без вопросов
 
     # --- применение ---
     if write_plan is None or not write_plan.valid:
@@ -550,6 +583,7 @@ def run_agent(
     journal: bool = True,
     preview_only: bool = False,
     web_assets_override: bool | None = None,
+    interactive: bool = False,  # NEW
 ) -> AgentRunResult:
     """
     Полный цикл агента: план → шаги → журнал.
@@ -617,6 +651,7 @@ def run_agent(
     # --- цикл по шагам ---
     completed_titles: list[str] = []
     step_results: list[StepResult] = []
+    accept_all_ref: list[bool] = [False]
 
     for step in planner.plan.steps:
         # --- проверка таймаута ---
@@ -640,11 +675,13 @@ def run_agent(
             model=model,
             depth=depth,
             extra_exclude=extra_exclude,
-            web_assets_override=web_assets_override,
             completed_titles=completed_titles,
             apply=apply,
             verify=verify,
             max_fix_attempts=max_fix_attempts,
+            web_assets_override=web_assets_override,
+            interactive=interactive,  # NEW
+            accept_all_ref=accept_all_ref,  # NEW
         )
         step_results.append(step_result)
 
@@ -779,3 +816,49 @@ def _save_agent_report(journal_dir: Path, result: AgentRunResult, apply: bool) -
             )
 
     (journal_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _print_step_for_review(step: AgentStep, plan, index: int, total: int) -> None:
+    """Показывает шаг и diff перед подтверждением."""
+    _console.print()
+    _console.print(
+        Panel.fit(
+            f"[bold]Шаг {index}/{total}:[/bold] {step.title}\n"
+            f"Операций: [cyan]{len(plan.operations)}[/cyan]",
+            title="Подтверждение",
+        )
+    )
+
+    if plan.explanation:
+        _console.print(f"\n[dim]{plan.explanation}[/dim]\n")
+
+    # Список операций
+    files_table_lines: list[str] = []
+    for i, op in enumerate(plan.operations, 1):
+        files_table_lines.append(f"  {i}. {op.type} {op.path}")
+    _console.print("\n".join(files_table_lines))
+
+    # Diff
+    if plan.diff:
+        _console.print("\n[bold]Diff:[/bold]\n")
+        _console.print("```diff", style="dim")
+        _console.print(plan.diff, style="dim")
+        _console.print("```", style="dim")
+
+
+def _prompt_review() -> str:
+    """
+    Спрашивает y/n/a/s/d. Возвращает одну из букв.
+    Цикл: если ответ неизвестен — переспрашиваем.
+    """
+    while True:
+        try:
+            answer = (
+                input("\nПрименить? yes(y) / no(n) / all(a) / skip(s) / diff(d): ").strip().lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return "n"
+        if answer in ("y", "n", "a", "s", "d"):
+            return answer
+        print("Не понял. Ответь: y / n / a / s / d")
