@@ -29,6 +29,46 @@
 
 
 
+
+## [2026-10-08] iteration 10.8 — fix: format_tool_history для больших файлов
+
+### Исправлено
+- **`format_tool_history` обрезал `read_file` до 3000 символов.**
+  Файл `docs/tools.md` (~8000 символов) не влезал → модель
+  шла в `grep` → зацикливалась (14× `read_file` подряд).
+
+### Добавлено
+- `AgentConfig.tool_loop_history_max_chars = 10_000`
+  (конфигурируемо) — лимит `read_file` в истории.
+- `AgentConfig.tool_loop_history_other_max_chars = 500` — для
+  остальных инструментов.
+- `format_tool_history(read_file_max_chars=10_000, other_max_chars=500)`.
+- `run_tool_loop` передаёт `cfg.agent.*`.
+- При обрезке — пометка «Используй `run_shell grep` для точного поиска».
+- `config.yaml`: те же поля в секции `agent:`.
+- **Правило 12** в `agent_tool_json`:
+  при `'old' not found` — использовать `grep`, не повторять `edit`.
+
+### Тесты
+- `test_format_tool_history_read_file_large_file`
+- `test_format_tool_history_read_file_small_file`
+- `test_format_tool_history_edit_file_uses_500`
+
+### Метрика E2E
+| | До 10.8 | После 10.8 |
+|---|---:|---:|
+| Итераций | 15 (max_iterations) | **1** |
+| `read_file` | 14× (зацикливание) | **1×** |
+| Результат | ❌ неуспех | **✅ успех** |
+| Стоимость | 1.82 RUB | **0.10 RUB** |
+
+**15× быстрее, 18× дешевле.**
+
+### Итого тестов
+- 283 passed (было 280, +3).
+
+---
+
 ## [2026-10-08] iteration 10.1–10.4 — feat: tool loop — автономность
 
 ### Добавлено (10.1 — автокоммит tool loop)
