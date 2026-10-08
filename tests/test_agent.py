@@ -870,3 +870,79 @@ def test_run_tool_loop_no_backup_in_dry_run(sample_project, minimal_cfg, prompts
         )
 
     assert result.backup_dir is None
+
+
+def test_run_tool_loop_auto_commit(git_repo, minimal_cfg, prompts_cfg):
+    """--commit: после finish(success) создаётся коммит."""
+    import subprocess
+
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (git_repo / "test.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init test.py"], cwd=git_repo, check=True)
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test commit",
+            project_root=git_repo,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            auto_commit=True,
+        )
+
+    assert result.commit_hash is not None
+    assert len(result.commit_hash) == 8
+    assert (git_repo / "test.py").read_text() == "x = 42\n"
+
+
+def test_run_tool_loop_auto_commit_skipped_in_dry_run(git_repo, minimal_cfg, prompts_cfg):
+    """--dry-run + --commit → коммит НЕ создаётся."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (git_repo / "test.py").write_text("x = 1\n", encoding="utf-8")
+    import subprocess
+
+    subprocess.run(["git", "add", "."], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=git_repo, check=True)
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="dry",
+            project_root=git_repo,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            dry_run=True,
+            auto_commit=True,
+        )
+
+    assert result.commit_hash is None
+    assert (git_repo / "test.py").read_text() == "x = 1\n"

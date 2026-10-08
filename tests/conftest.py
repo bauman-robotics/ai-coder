@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -258,3 +259,41 @@ def fake_action_result(tmp_path, fake_llm_response, fake_scan_result):
         )
 
     return _make
+
+
+# ---------- git-фикстуры ----------
+
+
+def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Хелпер для git-команд в тестах."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """
+    Создаёт временный git-репозиторий с одним коммитом.
+
+    Настраивает user.email/user.name/gpgsign локально, чтобы
+    git commit работал без глобального конфига.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    _run_git(["init", "-b", "main"], repo)
+    _run_git(["config", "user.email", "test@example.com"], repo)
+    _run_git(["config", "user.name", "Test User"], repo)
+    _run_git(["config", "commit.gpgsign", "false"], repo)
+
+    # первый коммит — чтобы был HEAD
+    (repo / "README.md").write_text("# test\n", encoding="utf-8")
+    _run_git(["add", "README.md"], repo)
+    _run_git(["commit", "-m", "initial"], repo)
+
+    return repo

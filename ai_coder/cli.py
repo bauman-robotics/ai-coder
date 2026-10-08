@@ -814,6 +814,7 @@ def agent_cmd(
                     journal=journal,
                     dry_run=dry_run,
                     interactive=interactive,
+                    auto_commit=commit,  # NEW
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
@@ -860,6 +861,11 @@ def agent_cmd(
                 console.print(f"[dim]Откат: ai-coder rollback {rel} .[/dim]")
             except ValueError:
                 console.print(f"[dim]Бэкап: {loop_result.backup_dir}[/dim]")
+
+        if loop_result.commit_hash:
+            console.print(f"[green]Коммит:[/green] {loop_result.commit_hash}")
+            console.print(f"[dim]Посмотреть: git show {loop_result.commit_hash}[/dim]")
+            console.print(f"[dim]Откатить: git revert {loop_result.commit_hash}[/dim]")
 
         if loop_result.dry_run:
             console.print("[yellow]⚠️ Режим dry-run: изменения НЕ применялись.[/yellow]")

@@ -546,7 +546,8 @@ class ToolLoopResult:
     stopped_reason: str = "completed"
     journal_dir: Path | None = None
     dry_run: bool = False
-    backup_dir: Path | None = None  # NEW
+    backup_dir: Path | None = None
+    commit_hash: str | None = None  # NEW
 
 
 # ---------- исполнитель одного шага ----------
@@ -1323,7 +1324,8 @@ def run_tool_loop(
     max_cost_rub: float | None = None,
     journal: bool = True,
     dry_run: bool = False,
-    interactive: bool = False,  # NEW
+    interactive: bool = False,
+    auto_commit: bool = False,  # NEW
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -1526,6 +1528,26 @@ def run_tool_loop(
         except OSError:
             pass
 
+    # --- NEW: автокоммит после успеха ---
+    commit_hash: str | None = None
+    if auto_commit and success and not dry_run and stopped_reason == "completed":
+        from .git import commit as git_commit
+        from .git import format_commit_message, status_porcelain
+
+        dirty = status_porcelain(project_root)
+        if dirty:
+            ops_total = len(history)
+            msg = format_commit_message(
+                goal=goal,
+                ops=ops_total,
+                cost_rub=total_cost_rub,
+            )
+            commit_hash = git_commit(project_root, msg)
+            if commit_hash:
+                _console.print(f"[green]Коммит:[/green] {commit_hash}")
+        else:
+            _console.print("[dim]Автокоммит: нечего коммитить (дерево чистое)[/dim]")
+
     # --- итоговый отчёт ---
     result = ToolLoopResult(
         success=success,
@@ -1538,7 +1560,8 @@ def run_tool_loop(
         stopped_reason=stopped_reason,
         journal_dir=journal_dir,
         dry_run=dry_run,
-        backup_dir=backup_dir,  # ← NEW
+        backup_dir=backup_dir,
+        commit_hash=commit_hash,  # NEW
     )
 
     if journal_dir is not None:
@@ -1606,6 +1629,8 @@ def _save_tool_loop_report(
         lines.append("- **Режим:** dry-run (dangerous-инструменты не выполнялись)")
     if result.backup_dir is not None:
         lines.append(f"- **Бэкап:** {result.backup_dir}")
+    if result.commit_hash is not None:
+        lines.append(f"- **Коммит:** {result.commit_hash}")
     lines.append(f"- **Summary:** {result.summary}\n")
     lines.append("## История\n")
     for i, (action, tool_result) in enumerate(result.history, 1):
