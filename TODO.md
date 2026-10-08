@@ -60,51 +60,48 @@
 (pytest, ruff, mypy, git) и **чинит по выводу**. Человек — только
 подтверждает и ревьюит.
 
-### Уровень A: verify_commands (следующая итерация, ~2 часа)
+### Уровень A: verify_commands (сделано, iteration 8.0)
 
-- [ ] Подключить `agent.verify_commands` из `config.yaml`:
-      после `apply_plan` запускать команды через `subprocess`,
-      собирать `stdout`/`stderr`, non-zero exit -> `verify_errors`.
-- [ ] Научить `run_fix_action` **видеть вывод команд** —
-      передавать в промпт `fix_errors_json` не только `py_compile`,
-      но и `pytest`/`ruff`/`mypy`.
-- [ ] Флаг CLI `--verify-commands "pytest -q;ruff check ."` —
-      переопределить список из CLI.
-- [ ] Безопасность: whitelist команд, `timeout` (30 сек),
-      лимит вывода (10K символов).
-- [ ] Тесты: 3–4 (`test_verify_commands`, `test_fix_from_pytest_output`).
-- [ ] Проверить на `ai-coder`: `agent "исправь тесты" --apply`
-      с `verify_commands: pytest -q`.
+- [x] `agent.verify_commands` из `config.yaml` через subprocess.
+- [x] `run_fix_action` видит вывод команд (pytest/ruff/mypy).
+- [x] Флаг CLI `--verify-commands "pytest -q;ruff check ."`.
+- [x] Whitelist, timeout (60 сек), лимит вывода (10K).
+- [x] Тесты `test_run_verify_commands_*` (4).
+- [x] Проверено E2E: агент сам чинит по pytest.
 
 **Что это даст:** агент правит код, запускает `pytest`, если упал —
 **сам чинит** до N попыток. Если не смог — откат.
 
-### Уровень B: --interactive (~2 часа)
+### Уровень B: --interactive (сделано, iteration 8.1)
 
-- [ ] Флаг `--interactive` в `agent`: перед применением каждого шага —
-      показывать diff и спрашивать `y/n/a/skip`.
-- [ ] «Принять все» (`a`), «skip» — пропустить шаг.
-- [ ] Логировать решения в журнал.
+- [x] Флаг `--interactive` в `agent`: diff + `y/n/a/s/d`.
+- [x] «Принять все» (`a`), «skip» (`s`), «diff» (`d`).
+- [x] Решения логируются в журнал.
 
-### Уровень C: tool loop (~2–3 дня)
+### Уровень C: tool loop (сделано, iterations 9.1–9.4)
 
-- [ ] Новый промпт `agent_tool_json`: модель возвращает
-      `{"tool": "run_shell", "args": {"command": "pytest -q"}}`.
-- [ ] Инструменты: `read_file`, `write_file`, `edit_file`,
-      `run_shell`, `list_files`.
-- [ ] Whitelist команд: pytest, ruff, mypy, git, make, ls, cat, grep, find.
-- [ ] Цикл tool loop: модель -> инструмент -> результат -> модель.
-      Лимит итераций (`--max-iterations 20`).
-- [ ] Безопасность: `timeout`, лимит вывода, `--dry-run`,
-      `commands.log`.
-- [ ] Совместимость с текущим пайплайном `agent`.
+- [x] Промпт `agent_tool_json`, парсер `parse_tool_action`.
+- [x] 5 инструментов: `read_file`, `list_files`, `write_file`,
+      `edit_file`, `run_shell`.
+- [x] Whitelist shell: pytest, ruff, mypy, git status/diff/log,
+      ls, cat, grep, find, head, tail, wc, `python -m pytest|ruff|mypy`.
+- [x] Запрет метасимволов (`;`, `&`, `|`, `<`, `>`, `$`).
+- [x] Цикл `run_tool_loop`: LLM → инструмент → результат → LLM.
+- [x] CLI: `--tool-loop`, `--max-iterations`, `--dry-run`, `--interactive`.
+- [x] Безопасность: `--dry-run`, `--interactive`, бэкап перед первым изменением.
+- [x] Совместимость с `ai-coder rollback` (манифест 1-в-1).
+- [x] 25 + 22 + 24 + 9 = ~80 тестов.
+- [x] E2E: `--dry-run` 2 итерации 0.039 RUB, `--interactive` 5 итераций 0.088 RUB, rollback работает.
 
 ### Уровень D: полная автономность (неделя+)
 
-- [ ] План -> правки -> тесты -> fix -> коммит -> PR.
-- [ ] Git-интеграция: ветка `ai-coder/<task>-<ts>`, автокоммит.
-- [ ] Лимиты: `--max-cost-rub`, `--max-minutes`, `--max-steps`.
-- [ ] MCP-интеграции (опционально).
+- [ ] **D.1:** git-интеграция для tool loop:
+      - ветка `ai-coder/<slug>-<ts>` перед `--tool-loop`;
+      - автокоммит после `finish(success=true)`;
+      - «дай задачу → получи PR».
+- [ ] **D.2:** `--max-cost-rub` для tool loop (уже есть, проверить).
+- [ ] **D.3:** MCP-интеграции (опционально).
+- [ ] **D.4:** поддержка multi-turn задач (агент возвращается к пользователю с уточнением).
 
 **Приоритет:** 🔴 высокий (стратегическое направление).
 

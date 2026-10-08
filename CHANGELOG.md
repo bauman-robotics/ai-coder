@@ -27,6 +27,75 @@
 
 
 
+
+## [2026-10-08] iteration 9.1–9.4 — feat: tool loop (Уровень C)
+
+### Добавлено (9.1 — tools)
+- `ai_coder/tools.py`: `ToolSpec`, `ToolResult`, `ToolSecurityError`.
+- Инструменты: `read_file`, `list_files`, `write_file`, `edit_file`.
+- `_safe_path` — защита от выхода за `project_root` (абсолютные пути, `..`).
+- `TOOL_REGISTRY`, `execute_tool`, `get_tool_specs`, `format_tools_for_prompt`.
+- 25 тестов.
+
+### Добавлено (9.2 — run_shell)
+- `run_shell` с whitelist: `pytest`, `ruff`, `mypy`, `git status/diff/log`,
+  `ls`, `cat`, `grep`, `find`, `head`, `tail`, `wc`,
+  `python -m pytest|ruff|mypy`.
+- Запрет shell-метасимволов (`;`, `&`, `|`, `<`, `>`, `$`, backticks, `$()`).
+- Запрет опасных git-подкоманд: `push`, `reset`, `clean`, `rebase`,
+  `merge`, `cherry-pick`, `revert`, `filter-branch`.
+- Timeout (30 default, max 120), лимит вывода 10K символов.
+- Лог команд в `.ai-out/commands.log`.
+- 22 теста.
+
+### Добавлено (9.3 — tool loop)
+- `ToolAction`, `parse_tool_action` — устойчивый парсер ответа модели
+  (markdown-обёртка, два JSON подряд через `json.JSONDecoder().raw_decode`,
+  мусор после JSON).
+- `format_tool_history` — рендер истории для промпта.
+- `ToolLoopResult`, `run_tool_loop` — цикл `LLM → инструмент → результат → LLM`.
+- CLI: `--tool-loop`, `--max-iterations`.
+- Журнал: `.ai-out/<project>/tool-loop-<ts>/` (`step-N.md`, `report.md`).
+- 6 тестов с мок LLM.
+
+### Добавлено (9.4 — безопасность tool loop)
+- `--dry-run` — dangerous-инструменты не выполняются, возвращают
+  `(dry-run) EDITED/WROTE/RAN (simulated OK, ...)`.
+- `--interactive` — панель + `y/n/a/s/d` перед каждым dangerous-инструментом.
+- Бэкап перед первым изменением файла → совместим с `ai-coder rollback`
+  (формат манифеста 1-в-1 как в `apply.py`).
+- Показ бэкапа в итоге + подсказка `ai-coder rollback <backup-dir> .`.
+- 3 теста backup, 4 теста interactive, 2 теста dry-run.
+
+### Исправлено по ходу
+- `parse_tool_action`: модель иногда возвращает два JSON подряд —
+  теперь используется `json.JSONDecoder().raw_decode()`, берётся первый объект.
+- `_save_tool_loop_step`: сохраняет `raw_json` при `parse_error` — видно
+  в журнале, что вернула модель.
+- `--dry-run` сообщение: раньше `would have called`, модель думала что
+  не сработало и перечитывала файл (упиралась в `max_iterations`).
+  Теперь `EDITED/WROTE/RAN (simulated OK)` — модель завершает.
+- `agent_tool_json` промпт: пункт «после успешного edit — не перечитывать,
+  сразу finish»; пункт «dry-run это УСПЕХ».
+- `--interactive` разрешён с `--tool-loop` без `--apply` (tool loop
+  применяет сам).
+
+### Метрика E2E («поднять --cov-fail-under 40 → 70»)
+- `--dry-run`: 2 итерации, **0.0386 RUB**, файл НЕ изменён.
+- `--interactive`: 5 итераций, **0.0883 RUB**, файл изменён, бэкап создан.
+- `rollback`: восстановил исходное значение (40).
+
+### Что это даёт
+- **Настоящая автономность:** модель сама вызывает инструменты до завершения.
+- **Безопасность:** whitelist, dry-run, interactive, бэкап, лимиты.
+- **Экономия:** tool loop + phase1 + only_paths — задача за <0.1 RUB.
+- **Готовность к Уровню D:** автокоммит после успеха, ветки, PR.
+
+### Итого тестов
+- 272 passed.
+
+---
+
 ## [2026-10-08] iteration 8.8 — feat(git): git-интеграция агента
 
 ### Добавлено
