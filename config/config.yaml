@@ -109,6 +109,12 @@ fix:
   max_attempts: 3
   prompt: fix_errors_json
 
+git:
+  enabled: true
+  require_clean: true       # предупреждать, если дерево не чистое
+  auto_commit: false        # коммитить после --apply (по умолчанию выкл)
+  commit_template: "ai-coder: {goal_short} ({ops} ops, {cost_rub:.2f} RUB)"
+
 agent:
   max_steps: 10
   max_minutes: 30

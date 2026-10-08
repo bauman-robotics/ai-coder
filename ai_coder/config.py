@@ -145,6 +145,15 @@ class FixConfig(BaseModel):
     prompt: str = "fix_errors_json"
 
 
+class GitConfig(BaseModel):
+    """Настройки git-интеграции агента."""
+
+    enabled: bool = True
+    require_clean: bool = True  # проверять чистоту перед --apply
+    auto_commit: bool = False  # коммитить после --apply (дефолт для флага)
+    commit_template: str = "ai-coder: {goal_short} ({ops} ops, {cost_rub:.2f} RUB)"
+
+
 # ---------- actions ----------
 
 ActionMode = Literal["read", "write"]
@@ -206,6 +215,7 @@ class AppConfig(BaseModel):
     usage: UsageConfig
     write: WriteConfig
     fix: FixConfig
+    git: GitConfig
     agent: AgentConfig  # ← NEW
     actions: dict[str, ActionConfig]
 

@@ -11,6 +11,7 @@ from ai_coder.config import (
     CurrencyConfig,
     CurrencyPair,
     FixConfig,
+    GitConfig,
     ModelPricing,
     OutputConfig,
     PeakSchedule,
@@ -94,6 +95,11 @@ def minimal_cfg(minimal_pricing) -> AppConfig:
             backup_dir_name="backup",
         ),
         fix=FixConfig(max_attempts=3, prompt="fix_errors_json"),
+        git=GitConfig(  # NEW
+            enabled=True,
+            require_clean=False,  # в тестах не требуем чистоты
+            auto_commit=False,
+        ),
         agent=AgentConfig(
             max_steps=10,
             max_minutes=30,
