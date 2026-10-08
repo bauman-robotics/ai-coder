@@ -780,6 +780,19 @@ def agent_cmd(
     if only_path:
         cfg.scanning.only_paths = list(only_path)
 
+    # --- WARN: backticks в промпте ---
+    if "`" in goal:
+        console.print(
+            "[yellow]⚠ В промпте есть обратные кавычки (backticks).[/yellow]\n"
+            "[dim]Bash мог выполнить их содержимое как команду, "
+            "и промпт дошёл обрезанным. Проверь, что goal целиком "
+            "виден в панели ниже. Если нет — передай задачу через файл:[/dim]\n"
+            "[dim]  cat > /tmp/task.txt <<'TASK'[/dim]\n"
+            "[dim]  ...[/dim]\n"
+            "[dim]  TASK[/dim]\n"
+            '[dim]  python -m ai_coder.cli agent "$(cat /tmp/task.txt)" . --tool-loop[/dim]'
+        )
+
     project_root = path.resolve()
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
