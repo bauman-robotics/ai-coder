@@ -946,3 +946,120 @@ def test_run_tool_loop_auto_commit_skipped_in_dry_run(git_repo, minimal_cfg, pro
 
     assert result.commit_hash is None
     assert (git_repo / "test.py").read_text() == "x = 1\n"
+
+
+def test_run_tool_loop_saves_history_json(sample_project, minimal_cfg, prompts_cfg, tmp_path):
+    """После tool loop history.json сохранён в журнал."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "read_file", "args": {"path": "test.py"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="save history",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=True,
+        )
+
+    assert result.journal_dir is not None
+    history_file = result.journal_dir / "history.json"
+    assert history_file.exists()
+
+    import json as _json
+
+    data = _json.loads(history_file.read_text(encoding="utf-8"))
+    assert len(data) == 1
+    assert data[0]["action"]["tool"] == "read_file"
+    assert data[0]["result"]["ok"] is True
+
+
+def test_run_tool_loop_resume_from_journal(sample_project, minimal_cfg, prompts_cfg, tmp_path):
+    """--resume: продолжает с сохранённой истории."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    # 1) Первый запуск: упирается в max_iterations=1
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"tool": "read_file", "args": {"path": "test.py"}}'
+        )
+
+        result1 = run_tool_loop(
+            goal="resume test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=1,
+        )
+
+    assert result1.stopped_reason == "max_iterations"
+    assert result1.journal_dir is not None
+    journal = result1.journal_dir
+    assert (journal / "history.json").exists()
+
+    # 2) Второй запуск: resume, теперь модель завершает
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result2 = run_tool_loop(
+            goal="resume test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=5,
+            resume_from=journal,
+        )
+
+    assert result2.success is True
+    # история включает 1 шаг из первой сессии
+    assert len(result2.history) >= 1
+    assert result2.history[0][0].tool == "read_file"
+
+
+def test_run_tool_loop_resume_no_history(sample_project, minimal_cfg, prompts_cfg, tmp_path):
+    """--resume с пустой папкой — ошибка."""
+    from ai_coder.agent import run_tool_loop
+
+    empty_dir = tmp_path / "empty_journal"
+    empty_dir.mkdir()
+
+    result = run_tool_loop(
+        goal="resume missing",
+        project_root=sample_project,
+        cfg=minimal_cfg,
+        prompts_cfg=prompts_cfg,
+        resume_from=empty_dir,
+    )
+
+    assert result.success is False
+    assert result.stopped_reason == "resume_error"
+    assert "history.json" in result.summary

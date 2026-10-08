@@ -720,6 +720,11 @@ def agent_cmd(
         "--commit/--no-commit",
         help="Автокоммит после успешного --apply (git add + git commit).",
     ),
+    resume: Path | None = typer.Option(
+        None,
+        "--resume",
+        help="Продолжить tool loop с журнала (tool-loop-<ts>/).",
+    ),
     require_clean: bool = typer.Option(
         True,
         "--require-clean/--no-require-clean",
@@ -814,7 +819,8 @@ def agent_cmd(
                     journal=journal,
                     dry_run=dry_run,
                     interactive=interactive,
-                    auto_commit=commit,  # NEW
+                    auto_commit=commit,
+                    resume_from=resume,  # NEW
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")

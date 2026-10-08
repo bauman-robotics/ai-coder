@@ -47,6 +47,7 @@ class ToolResult:
     ok: bool
     output: str = ""
     error: str = ""
+    dry_run: bool = False  # NEW: результат симуляции (dry-run)
 
 
 # ---------- безопасность ----------
@@ -538,7 +539,7 @@ def execute_tool(
         else:
             args_repr = ", ".join(f"{k}={v!r}" for k, v in args.items())
             preview = f"(dry-run) would have called {name}({args_repr})"
-        return ToolResult(ok=True, output=preview)
+        return ToolResult(ok=True, output=preview, dry_run=True)
 
     try:
         return fn(args, project_root)

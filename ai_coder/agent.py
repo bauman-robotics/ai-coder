@@ -1325,7 +1325,8 @@ def run_tool_loop(
     journal: bool = True,
     dry_run: bool = False,
     interactive: bool = False,
-    auto_commit: bool = False,  # NEW
+    auto_commit: bool = False,
+    resume_from: Path | None = None,  # NEW
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -1369,6 +1370,26 @@ def run_tool_loop(
     summary = ""
     accept_all_ref: list[bool] = [False]
 
+    # --- NEW: resume из журнала ---
+    start_iteration = 1
+    if resume_from is not None:
+        loaded_history, err = _load_tool_loop_history(resume_from)
+        if err is not None:
+            _console.print(f"[red]Resume: {err}[/red]")
+            return ToolLoopResult(
+                success=False,
+                summary=f"resume failed: {err}",
+                iterations=0,
+                stopped_reason="resume_error",
+            )
+        history = loaded_history
+        start_iteration = len(history) + 1
+        # журнал: используем существующий resume_from
+        journal_dir = resume_from
+        _console.print(
+            f"[dim]Resume: загружено {len(history)} итераций, продолжаем с {start_iteration}[/dim]"
+        )
+
     # --- NEW: бэкап перед первым изменением ---
     backup_dir: Path | None = None
     backed_up: set[str] = set()
@@ -1376,7 +1397,8 @@ def run_tool_loop(
 
     client = LLMClient(cfg.api)
 
-    for iteration in range(1, max_iterations + 1):
+    end_iteration = start_iteration + max_iterations
+    for iteration in range(start_iteration, end_iteration):
         # --- промпт с текущей историей ---
         history_block = format_tool_history(history)
         system, user = render_prompt(
@@ -1464,6 +1486,7 @@ def run_tool_loop(
             summary = action.summary or "(no summary)"
             if journal_dir is not None:
                 _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+                _save_tool_loop_history(journal_dir, history)
             break
 
         # --- NEW: interactive — подтверждение dangerous ---
@@ -1507,6 +1530,7 @@ def run_tool_loop(
 
         if journal_dir is not None:
             _save_tool_loop_step(journal_dir, iteration, action, tool_result, llm_resp)
+            _save_tool_loop_history(journal_dir, history)  # NEW
 
         # --- проверка бюджета ---
         if max_cost_rub is not None and total_cost_rub >= max_cost_rub:
@@ -1570,6 +1594,102 @@ def run_tool_loop(
     return result
 
 
+def _save_tool_loop_history(
+    journal_dir: Path,
+    history: list[tuple[ToolAction, ToolResult]],
+) -> None:
+    """
+    Сохраняет history.json — машиночитаемый список шагов.
+
+    Формат:
+      [
+        {
+          "iteration": 1,
+          "action": {"tool": "read_file", "args": {...}, "finish": false, ...},
+          "result": {"ok": true, "output": "...", "error": "", "dry_run": false}
+        },
+        ...
+      ]
+    """
+    items: list[dict] = []
+    for i, (action, result) in enumerate(history, 1):
+        items.append(
+            {
+                "iteration": i,
+                "action": {
+                    "tool": action.tool,
+                    "args": action.args,
+                    "reason": action.reason,
+                    "finish": action.finish,
+                    "summary": action.summary,
+                    "success": action.success,
+                    "parse_error": action.parse_error,
+                },
+                "result": {
+                    "ok": result.ok,
+                    "output": result.output,
+                    "error": result.error,
+                    "dry_run": result.dry_run,
+                },
+            }
+        )
+    try:
+        (journal_dir / "history.json").write_text(
+            json.dumps(items, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _load_tool_loop_history(
+    resume_from: Path,
+) -> tuple[list[tuple[ToolAction, ToolResult]], str | None]:
+    """
+    Загружает history.json для продолжения tool loop.
+
+    Returns:
+        (history, error). error=None при успехе.
+    """
+    history_path = resume_from / "history.json"
+    if not history_path.exists():
+        return [], f"history.json не найден в {resume_from}"
+
+    try:
+        items = json.loads(history_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        return [], f"не удалось прочитать history.json: {e}"
+
+    if not isinstance(items, list):
+        return [], "history.json: ожидался список"
+
+    history: list[tuple[ToolAction, ToolResult]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        a_data = item.get("action", {})
+        r_data = item.get("result", {})
+
+        action = ToolAction(
+            tool=str(a_data.get("tool", "")),
+            args=dict(a_data.get("args", {})),
+            reason=str(a_data.get("reason", "")),
+            finish=bool(a_data.get("finish", False)),
+            summary=str(a_data.get("summary", "")),
+            success=bool(a_data.get("success", True)),
+            parse_error=a_data.get("parse_error"),
+        )
+        result = ToolResult(
+            ok=bool(r_data.get("ok", False)),
+            output=str(r_data.get("output", "")),
+            error=str(r_data.get("error", "")),
+            dry_run=bool(r_data.get("dry_run", False)),
+        )
+        history.append((action, result))
+
+    return history, None
+
+
 def _save_tool_loop_step(
     journal_dir: Path,
     iteration: int,
@@ -1611,6 +1731,7 @@ def _save_tool_loop_step(
             lines.append("```")
 
     (journal_dir / f"step-{iteration}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # history.json обновляется отдельно в run_tool_loop
 
 
 def _save_tool_loop_report(
