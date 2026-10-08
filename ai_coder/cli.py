@@ -695,6 +695,16 @@ def agent_cmd(
         "--no-phase1",
         help="Отключить phase1 (metadata-планировщик) — видеть весь проект.",
     ),
+    tool_loop: bool = typer.Option(
+        False,
+        "--tool-loop",
+        help="Использовать tool loop (модель сама вызывает инструменты).",
+    ),
+    max_iterations: int = typer.Option(
+        20,
+        "--max-iterations",
+        help="Лимит итераций tool loop.",
+    ),
     only_path: list[str] = typer.Option(
         [],
         "--only-path",
@@ -764,6 +774,75 @@ def agent_cmd(
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
+
+    # --- tool loop: отдельная ветка ---
+    if tool_loop:
+        from .agent import run_tool_loop
+
+        console.print(
+            Panel.fit(
+                f"[bold]Цель:[/bold] {goal}\n"
+                f"[bold]Проект:[/bold] {project_root}\n"
+                f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
+                f"[bold]Режим:[/bold] tool loop\n"
+                f"[bold]Max итераций:[/bold] {max_iterations}",
+                title="ai-coder agent --tool-loop",
+            )
+        )
+
+        try:
+            with console.status("[cyan]Tool loop работает..."):
+                loop_result = run_tool_loop(
+                    goal=goal,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=pr_cfg,
+                    model=model,
+                    depth=depth,
+                    extra_exclude=list(exclude) or None,
+                    max_iterations=max_iterations,
+                    max_cost_rub=max_cost_rub,
+                    journal=journal,
+                )
+        except Exception as e:
+            console.print(f"[red]Ошибка tool loop:[/red] {e}")
+            raise typer.Exit(1)
+
+        console.print()
+        status = "[green]✅ успех[/green]" if loop_result.success else "[red]❌ неуспех[/red]"
+        console.print(
+            Panel.fit(
+                f"{status}\n"
+                f"[bold]Итераций:[/bold] {loop_result.iterations}\n"
+                f"[bold]Причина:[/bold] {loop_result.stopped_reason}\n"
+                f"[bold]Стоимость:[/bold] {loop_result.total_cost_rub:.4f} RUB\n"
+                f"[bold]Summary:[/bold] {loop_result.summary}",
+                title="Tool Loop — итог",
+            )
+        )
+
+        if loop_result.history:
+            console.print()
+            table = Table(title="История")
+            table.add_column("#", justify="right")
+            table.add_column("Инструмент", style="cyan")
+            table.add_column("Результат", style="magenta")
+            table.add_column("Превью", style="dim")
+            for i, (act, res) in enumerate(loop_result.history, 1):
+                tool = "finish" if act.finish else act.tool
+                st = "✅" if res.ok else "❌"
+                snippet = (res.output or res.error or "")[:60].replace("\n", " ")
+                table.add_row(str(i), tool, st, snippet)
+            console.print(table)
+
+        if loop_result.journal_dir:
+            try:
+                rel = loop_result.journal_dir.relative_to(Path.cwd())
+                console.print(f"[dim]Журнал: {rel}[/dim]")
+            except ValueError:
+                console.print(f"[dim]Журнал: {loop_result.journal_dir}[/dim]")
+
+        raise typer.Exit(0 if loop_result.success else 1)
 
     if preview_only and apply:
         console.print("[red]Нельзя одновременно --preview-only и --apply[/red]")
