@@ -27,6 +27,14 @@ from .scanner import (
     scan_project,
     scan_project_metadata,
 )
+from .tools import (
+    ToolAction,
+    ToolResult,
+    execute_tool,
+    format_tool_history,
+    format_tools_for_prompt,
+    parse_tool_action,
+)
 from .usage import append_usage
 
 if TYPE_CHECKING:
@@ -520,6 +528,21 @@ class AgentRunResult:
     @property
     def total_cost_rub(self) -> float:
         return self.planner_cost_rub + sum(s.cost_rub for s in self.steps)
+
+
+@dataclass
+class ToolLoopResult:
+    """Результат tool loop."""
+
+    success: bool
+    summary: str
+    iterations: int
+    history: list[tuple[ToolAction, ToolResult]] = field(default_factory=list)
+    total_cost_rub: float = 0.0
+    total_cost_cny: float = 0.0
+    total_cost_usd: float = 0.0
+    stopped_reason: str = "completed"  # completed | max_iterations | max_cost | parse_error | error
+    journal_dir: Path | None = None
 
 
 # ---------- исполнитель одного шага ----------
@@ -1181,3 +1204,245 @@ def _prompt_review() -> str:
         if answer in ("y", "n", "a", "s", "d"):
             return answer
         print("Не понял. Ответь: y / n / a / s / d")
+
+
+def run_tool_loop(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+    max_iterations: int = 20,
+    max_cost_rub: float | None = None,
+    journal: bool = True,
+) -> ToolLoopResult:
+    """
+    Tool loop: модель сама вызывает инструменты до завершения.
+
+    Каждая итерация:
+      1. Рендер промпта (goal, tools, tree, history).
+      2. Запрос к LLM.
+      3. parse_tool_action.
+      4. finish → выходим.
+      5. execute_tool → результат в history.
+      6. Проверка бюджета.
+    """
+    started_at = datetime.now(ZoneInfo("UTC"))
+    model = model or cfg.api.model
+
+    # --- журнал ---
+    journal_dir: Path | None = None
+    if journal:
+        ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
+        journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
+        journal_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- metadata-scan для дерева ---
+    scan_meta = scan_project_metadata(
+        project_root,
+        cfg.scanning,
+        extra_exclude=extra_exclude,
+    )
+
+    # --- промпт ---
+    prompt_entry = prompts_cfg.get("agent_tool_json")
+    tools_block = format_tools_for_prompt()
+
+    # --- история и стоимость ---
+    history: list[tuple[ToolAction, ToolResult]] = []
+    total_cost_rub = 0.0
+    total_cost_cny = 0.0
+    total_cost_usd = 0.0
+    stopped_reason = "completed"
+    success = False
+    summary = ""
+
+    client = LLMClient(cfg.api)
+
+    for iteration in range(1, max_iterations + 1):
+        # --- промпт с текущей историей ---
+        history_block = format_tool_history(history)
+        system, user = render_prompt(
+            prompt_entry,
+            depth=depth,
+            scan=ScanResult(root=project_root),  # заглушка, используется extra
+            extra={
+                "goal": goal,
+                "tools": tools_block,
+                "tree": scan_meta.tree,
+                "history": history_block,
+                "max_iterations": str(max_iterations),
+            },
+        )
+
+        # --- тариф ---
+        is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+        cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+        usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+        # --- запрос ---
+        try:
+            llm_resp = client.chat(
+                system=system,
+                user=user,
+                model=model,
+                json_mode=True,
+                max_tokens=cfg.agent.step_max_output_tokens,
+            )
+        except Exception as e:
+            stopped_reason = "error"
+            summary = f"LLM call failed: {type(e).__name__}: {e}"
+            break
+
+        # --- стоимость ---
+        cost = calculate_cost(
+            pricing=cfg.api.pricing_for(model),
+            is_peak=is_peak,
+            peak_window=peak_window,
+            prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+            prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+            completion_tokens=llm_resp.completion_tokens,
+            cny_to_rub=cny_to_rub,
+            usd_to_rub=usd_to_rub,
+        )
+        total_cost_rub += cost.cost_rub
+        total_cost_cny += cost.cost_cny
+        total_cost_usd += cost.cost_usd
+
+        # --- учёт ---
+        output_root = project_root / cfg.output.dir
+        append_usage(
+            project_root=project_root,
+            output_root=output_root,
+            action=f"agent:tool{iteration}",
+            project_name=project_root.name,
+            model=model,
+            depth=depth,
+            files_count=0,
+            prompt_tokens=llm_resp.prompt_tokens,
+            completion_tokens=llm_resp.completion_tokens,
+            total_tokens=llm_resp.total_tokens,
+            cost=cost,
+            duration_ms=llm_resp.duration_ms,
+            status="ok",
+            usage_cfg=cfg.usage,
+            iteration=iteration,
+            parent_action="agent",
+        )
+
+        # --- парсинг ---
+        action = parse_tool_action(llm_resp.content)
+        if action.parse_error:
+            stopped_reason = "parse_error"
+            summary = f"parse error at iteration {iteration}: {action.parse_error}"
+            # добавляем в историю, чтобы модель видела свою ошибку
+            history.append((action, ToolResult(ok=False, error=action.parse_error)))
+            if journal_dir is not None:
+                _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+            break
+
+        # --- finish ---
+        if action.finish:
+            success = action.success
+            summary = action.summary or "(no summary)"
+            if journal_dir is not None:
+                _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+            break
+
+        # --- исполнение инструмента ---
+        tool_result = execute_tool(action.tool, action.args, project_root)
+        history.append((action, tool_result))
+
+        if journal_dir is not None:
+            _save_tool_loop_step(journal_dir, iteration, action, tool_result, llm_resp)
+
+        # --- проверка бюджета ---
+        if max_cost_rub is not None and total_cost_rub >= max_cost_rub:
+            stopped_reason = "max_cost"
+            summary = f"budget exceeded: {total_cost_rub:.4f} RUB >= {max_cost_rub:.4f} RUB"
+            break
+    else:
+        # цикл завершился без break — max_iterations
+        stopped_reason = "max_iterations"
+        summary = f"reached max_iterations={max_iterations}"
+
+    # --- итоговый отчёт ---
+    result = ToolLoopResult(
+        success=success,
+        summary=summary,
+        iterations=len(history),
+        history=history,
+        total_cost_rub=total_cost_rub,
+        total_cost_cny=total_cost_cny,
+        total_cost_usd=total_cost_usd,
+        stopped_reason=stopped_reason,
+        journal_dir=journal_dir,
+    )
+
+    if journal_dir is not None:
+        _save_tool_loop_report(journal_dir, result, goal)
+
+    return result
+
+
+def _save_tool_loop_step(
+    journal_dir: Path,
+    iteration: int,
+    action: ToolAction,
+    tool_result: ToolResult | None,
+    llm: LLMResponse,
+) -> None:
+    """Сохраняет шаг tool loop в журнал."""
+    lines: list[str] = []
+    lines.append(f"# Итерация {iteration}\n")
+    lines.append(f"- **Модель:** {llm.model}")
+    lines.append(f"- **Токены:** prompt {llm.prompt_tokens} / completion {llm.completion_tokens}")
+    lines.append(f"- **finish_reason:** {llm.finish_reason}")
+    lines.append("")
+
+    if action.parse_error:
+        lines.append(f"## ❌ parse_error\n\n{action.parse_error}\n")
+    elif action.finish:
+        lines.append(f"## ✅ finish (success={action.success})\n")
+        lines.append(f"{action.summary}\n")
+    else:
+        lines.append(f"## Инструмент: `{action.tool}`\n")
+        lines.append(f"- **Причина:** {action.reason or '(нет)'}")
+        lines.append(f"- **Args:** `{action.args}`\n")
+        if tool_result is not None:
+            status = "✅ ok" if tool_result.ok else "❌ FAIL"
+            lines.append(f"## Результат: {status}\n")
+            output = tool_result.output or tool_result.error
+            lines.append("```")
+            lines.append(output[:5000])
+            if len(output) > 5000:
+                lines.append(f"... [обрезано, всего {len(output)} символов]")
+            lines.append("```")
+
+    (journal_dir / f"step-{iteration}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _save_tool_loop_report(
+    journal_dir: Path,
+    result: ToolLoopResult,
+    goal: str,
+) -> None:
+    """Сохраняет итоговый отчёт tool loop."""
+    lines: list[str] = []
+    lines.append(f"# Tool Loop — {goal}\n")
+    lines.append(f"- **Успех:** {result.success}")
+    lines.append(f"- **Причина остановки:** {result.stopped_reason}")
+    lines.append(f"- **Итераций:** {result.iterations}")
+    lines.append(f"- **Стоимость:** {result.total_cost_rub:.6f} RUB")
+    lines.append(f"- **Summary:** {result.summary}\n")
+    lines.append("## История\n")
+    for i, (action, tool_result) in enumerate(result.history, 1):
+        if action.finish:
+            lines.append(f"{i}. finish(success={action.success})")
+        else:
+            status = "ok" if tool_result.ok else "FAIL"
+            lines.append(f"{i}. {action.tool}({action.args}) → {status}")
+    (journal_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

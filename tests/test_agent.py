@@ -13,8 +13,10 @@ from ai_coder.agent import (
     _select_step_only_paths,
     parse_agent_plan,
     run_planner,
+    run_tool_loop,
 )
 from ai_coder.llm import LLMResponse
+from ai_coder.pricing import Rate
 
 # ---------- parse_agent_plan ----------
 
@@ -370,3 +372,180 @@ def test_parse_phase1_response_invalid_json():
     assert files == []
     assert err is not None
     assert "parse error" in err.lower()
+
+
+# ---------- run_tool_loop ----------
+
+
+def _make_llm_response(content: str, finish_reason: str = "stop") -> LLMResponse:
+    return LLMResponse(
+        content=content,
+        model="test-model",
+        prompt_tokens=100,
+        prompt_cache_hit_tokens=0,
+        prompt_cache_miss_tokens=100,
+        completion_tokens=50,
+        total_tokens=150,
+        duration_ms=100,
+        finish_reason=finish_reason,
+    )
+
+
+def test_run_tool_loop_finish_immediately(sample_project, minimal_cfg, prompts_cfg):
+    """Модель сразу возвращает finish."""
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="test goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.success is True
+    assert result.summary == "done"
+    assert result.stopped_reason == "completed"
+    assert result.iterations == 0  # finish на первой итерации — history пуст
+
+
+def test_run_tool_loop_one_tool_then_finish(sample_project, minimal_cfg, prompts_cfg):
+    """Модель вызывает list_files, потом finish."""
+
+    responses = [
+        '{"tool": "list_files", "args": {"dir": "."}}',
+        '{"finish": true, "summary": "seen", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.success is True
+    assert len(result.history) == 1
+    assert result.history[0][0].tool == "list_files"
+    assert result.history[0][1].ok is True
+
+
+def test_run_tool_loop_max_iterations(sample_project, minimal_cfg, prompts_cfg):
+    """Модель бесконечно вызывает list_files — упрёмся в max_iterations."""
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"tool": "list_files", "args": {"dir": "."}}'
+        )
+
+        result = run_tool_loop(
+            goal="loop",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=3,
+            journal=False,
+        )
+
+    assert result.stopped_reason == "max_iterations"
+    assert result.success is False
+    assert len(result.history) == 3
+
+
+def test_run_tool_loop_parse_error_stops(sample_project, minimal_cfg, prompts_cfg):
+    """Невалидный JSON — parse_error, стоп."""
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response("not json")
+
+        result = run_tool_loop(
+            goal="bad",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.stopped_reason == "parse_error"
+    assert result.success is False
+
+
+def test_run_tool_loop_max_cost(sample_project, minimal_cfg, prompts_cfg):
+    """Бюджет исчерпан — стоп после первой итерации."""
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        # каждый вызов — list_files, стоимость > 0
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"tool": "list_files", "args": {"dir": "."}}'
+        )
+
+        result = run_tool_loop(
+            goal="cost",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=10,
+            max_cost_rub=0.0000001,  # крошечный бюджет
+            journal=False,
+        )
+
+    assert result.stopped_reason == "max_cost"
+    assert result.success is False
+
+
+def test_run_tool_loop_finish_with_failure(sample_project, minimal_cfg, prompts_cfg):
+    """Модель завершает с success=false."""
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "gave up", "success": false}'
+        )
+
+        result = run_tool_loop(
+            goal="fail",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.success is False
+    assert result.summary == "gave up"

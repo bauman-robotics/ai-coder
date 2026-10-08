@@ -167,6 +167,10 @@ def prompts_cfg() -> PromptsConfig:
         prompts={
             "greet": PromptEntry(system="S", user="U"),
             "fix": PromptEntry(system="S", user="U"),
+            "agent_tool_json": PromptEntry(
+                system="Tool: {{tools}}",
+                user="Goal: {{goal}}, tree: {{tree}}, history: {{history}}",
+            ),
         }
     )
 
