@@ -752,8 +752,8 @@ def agent_cmd(
         cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
         cfg.agent.verify_commands = cmds
 
-    if interactive and not apply:
-        console.print("[red]--interactive требует --apply[/red]")
+    if interactive and not apply and not tool_loop:
+        console.print("[red]--interactive требует --apply (или --tool-loop)[/red]")
         raise typer.Exit(1)
 
     if interactive and not sys.stdin.isatty():
