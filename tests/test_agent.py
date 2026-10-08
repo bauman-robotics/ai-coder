@@ -760,3 +760,113 @@ def test_run_tool_loop_interactive_all(sample_project, minimal_cfg, prompts_cfg)
     assert result.success is True
     # input вызван ровно 1 раз — второй dangerous пошёл через accept_all
     assert mock_input.call_count == 1
+
+
+def test_run_tool_loop_backup_created(sample_project, minimal_cfg, prompts_cfg):
+    """После edit_file создаётся бэкап с manifest.json."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="backup",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    # файл изменился
+    assert (sample_project / "test.py").read_text() == "x = 42\n"
+    # бэкап создан
+    assert result.backup_dir is not None
+    assert (result.backup_dir / "manifest.json").exists()
+    # исходное содержимое в бэкапе
+    backup_file = result.backup_dir / "test.py"
+    assert backup_file.exists()
+    assert backup_file.read_text() == "x = 1\n"
+
+
+def test_run_tool_loop_backup_not_overwritten(sample_project, minimal_cfg, prompts_cfg):
+    """Два edit одного файла — в бэкапе ИСХОДНОЕ состояние."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 42", "new": "x = 100"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="backup twice",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert (sample_project / "test.py").read_text() == "x = 100\n"
+    # в бэкапе — ИСХОДНОЕ
+    assert (result.backup_dir / "test.py").read_text() == "x = 1\n"
+    # одна операция в манифесте (дедуп)
+    import json
+
+    manifest = json.loads((result.backup_dir / "manifest.json").read_text())
+    assert len(manifest["operations"]) == 1
+
+
+def test_run_tool_loop_no_backup_in_dry_run(sample_project, minimal_cfg, prompts_cfg):
+    """dry-run — бэкап не создаётся."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="dry backup",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            dry_run=True,
+        )
+
+    assert result.backup_dir is None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,7 @@ from .tools import (
     TOOL_REGISTRY,
     ToolAction,
     ToolResult,
+    _safe_path,
     execute_tool,
     format_tool_history,
     format_tools_for_prompt,
@@ -543,7 +545,8 @@ class ToolLoopResult:
     total_cost_usd: float = 0.0
     stopped_reason: str = "completed"
     journal_dir: Path | None = None
-    dry_run: bool = False  # NEW
+    dry_run: bool = False
+    backup_dir: Path | None = None  # NEW
 
 
 # ---------- исполнитель одного шага ----------
@@ -1260,6 +1263,53 @@ def _prompt_tool_review(
         print("Не понял. Ответь: y / n / a / s / d")
 
 
+def _backup_file_for_tool_loop(
+    *,
+    action: ToolAction,
+    project_root: Path,
+    backup_dir: Path | None,  # ← принимает
+    backed_up: set[str],
+    backup_manifest: dict,
+) -> Path | None:  # ← возвращает (может создать)
+    """
+    Делает бэкап файла перед изменением.
+    Возвращает backup_dir (созданный или существующий).
+    """
+    rel = str(action.args.get("path", "")).strip()
+    if not rel or rel in backed_up:
+        return backup_dir
+
+    try:
+        target = _safe_path(project_root, rel)
+    except Exception:
+        return backup_dir
+
+    # создаём backup_dir при первом вызове
+    if backup_dir is None:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_dir = project_root / ".ai-out" / project_root.name / f"tool-loop-backup-{ts}"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_manifest["timestamp"] = datetime.now().isoformat(timespec="seconds")
+        backup_manifest["project_root"] = str(project_root.resolve())
+        backup_manifest["operations"] = []
+
+    if target.exists():
+        rel_posix = target.relative_to(project_root.resolve()).as_posix()
+        dst = backup_dir / rel_posix
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(target, dst)
+        except OSError:
+            return backup_dir
+        backup_manifest["operations"].append({"type": "edit_file", "path": rel_posix})
+        backed_up.add(rel)
+    else:
+        backup_manifest["operations"].append({"type": "create_file", "path": rel})
+        backed_up.add(rel)
+
+    return backup_dir
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -1315,7 +1365,12 @@ def run_tool_loop(
     stopped_reason = "completed"
     success = False
     summary = ""
-    accept_all_ref: list[bool] = [False]  # NEW: для --interactive
+    accept_all_ref: list[bool] = [False]
+
+    # --- NEW: бэкап перед первым изменением ---
+    backup_dir: Path | None = None
+    backed_up: set[str] = set()
+    backup_manifest: dict = {}
 
     client = LLMClient(cfg.api)
 
@@ -1421,7 +1476,6 @@ def run_tool_loop(
                         _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
                     break
                 if answer == "s":
-                    # пропустить — записать как "skipped"
                     skip_result = ToolResult(ok=False, error="пропущено пользователем")
                     history.append((action, skip_result))
                     if journal_dir is not None:
@@ -1429,6 +1483,16 @@ def run_tool_loop(
                     continue
                 if answer == "a":
                     accept_all_ref[0] = True
+
+        # --- NEW: бэкап перед изменением файла ---
+        if not dry_run and action.tool in ("write_file", "edit_file"):
+            backup_dir = _backup_file_for_tool_loop(
+                action=action,
+                project_root=project_root,
+                backup_dir=backup_dir,  # ← передаём текущий
+                backed_up=backed_up,
+                backup_manifest=backup_manifest,
+            )
 
         # --- исполнение инструмента ---
         tool_result = execute_tool(
@@ -1452,6 +1516,16 @@ def run_tool_loop(
         stopped_reason = "max_iterations"
         summary = f"reached max_iterations={max_iterations}"
 
+    # --- NEW: сохранить манифест бэкапа ---
+    if backup_dir is not None and not dry_run:
+        try:
+            (backup_dir / "manifest.json").write_text(
+                json.dumps(backup_manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
     # --- итоговый отчёт ---
     result = ToolLoopResult(
         success=success,
@@ -1463,7 +1537,8 @@ def run_tool_loop(
         total_cost_usd=total_cost_usd,
         stopped_reason=stopped_reason,
         journal_dir=journal_dir,
-        dry_run=dry_run,  # NEW
+        dry_run=dry_run,
+        backup_dir=backup_dir,  # ← NEW
     )
 
     if journal_dir is not None:
@@ -1523,6 +1598,8 @@ def _save_tool_loop_report(
     lines.append(f"- **Стоимость:** {result.total_cost_rub:.6f} RUB")
     if result.dry_run:
         lines.append("- **Режим:** dry-run (dangerous-инструменты не выполнялись)")
+    if result.backup_dir is not None:
+        lines.append(f"- **Бэкап:** {result.backup_dir}")
     lines.append(f"- **Summary:** {result.summary}\n")
     lines.append("## История\n")
     for i, (action, tool_result) in enumerate(result.history, 1):
