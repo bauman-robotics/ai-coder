@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_coder.scanner import build_tree, render_files_block, scan_project
+from ai_coder.scanner import (
+    build_tree,
+    render_files_block,
+    render_metadata_block,
+    scan_project,
+    scan_project_metadata,
+)
 
 
 def test_scan_ignores_git_venv_pycache(sample_project: Path, minimal_cfg):
@@ -170,3 +176,41 @@ def test_scan_project_only_paths_empty_disables_filter(sample_project, minimal_c
     res = scan_project(sample_project, minimal_cfg.scanning, only_paths=[])
     assert "src/utils.py" in res.files
     assert "README.md" in res.files
+
+
+def test_scan_project_metadata_returns_tree_and_metadata(sample_project, minimal_cfg):
+    """Metadata-scan возвращает дерево и содержимое README."""
+    res = scan_project_metadata(sample_project, minimal_cfg.scanning)
+
+    assert "src" in res.tree
+    assert "main.py" in res.tree
+    assert "README.md" in res.metadata
+    assert "# sample" in res.metadata["README.md"]
+
+
+def test_scan_project_metadata_no_content_in_tree(sample_project, minimal_cfg):
+    """В дереве — только имена, без содержимого."""
+    res = scan_project_metadata(sample_project, minimal_cfg.scanning)
+
+    assert "def hello" not in res.tree
+    assert "def add" not in res.tree
+    assert "main.py" in res.tree
+    assert "utils.py" in res.tree
+
+
+def test_scan_project_metadata_respects_only_paths(sample_project, minimal_cfg):
+    """only_paths сужает metadata-scan."""
+    res = scan_project_metadata(sample_project, minimal_cfg.scanning, only_paths=["src/main.py"])
+
+    assert "main.py" in res.tree
+    assert "utils.py" not in res.tree
+    assert res.metadata == {}
+
+
+def test_render_metadata_block(sample_project, minimal_cfg):
+    """render_metadata_block формирует блок с README."""
+    res = scan_project_metadata(sample_project, minimal_cfg.scanning)
+    block = render_metadata_block(res)
+
+    assert "### README.md" in block
+    assert "# sample" in block

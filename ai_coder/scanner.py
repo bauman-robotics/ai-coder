@@ -484,3 +484,165 @@ def _normalize_only_paths(paths: list[str]) -> list[str]:
         if p_norm:
             out.append(p_norm)
     return out
+
+
+# ---------- metadata-only сканирование (для phase1 агента) ----------
+
+# Файлы-метаданные, содержимое которых полезно для phase1.
+# Небольшие, информативные, часто определяют структуру проекта.
+_METADATA_FILES: frozenset[str] = frozenset(
+    {
+        "README.md",
+        "README.rst",
+        "README.txt",
+        "readme.md",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "Pipfile",
+        "poetry.lock",
+        "Makefile",
+        "makefile",
+        "Dockerfile",
+        "docker-compose.yml",
+    }
+)
+
+
+@dataclass
+class MetadataScanResult:
+    """Результат metadata-only сканирования (phase1 планировщика)."""
+
+    root: Path
+    tree: str = ""
+    metadata: dict[str, str] = field(default_factory=dict)
+    total_files: int = 0
+    estimated_tokens: int = 0
+
+
+def scan_project_metadata(
+    root: Path,
+    cfg: ScanningConfig,
+    *,
+    extra_exclude: list[str] | None = None,
+    only_paths: list[str] | None = None,
+    metadata_max_chars: int = 3000,
+) -> MetadataScanResult:
+    """
+    Сканирует проект БЕЗ содержимого файлов — только дерево + метаданные.
+
+    Используется первым проходом планировщика агента (phase1):
+    планировщик видит структуру и понимает, каких файлов коснётся задача,
+    не получая 40K токенов содержимого всех файлов.
+
+    Отличия от scan_project:
+      - не читает содержимое файлов (кроме metadata_files);
+      - не проверяет секреты в содержимом;
+      - не соблюдает max_total_tokens (метаданные маленькие);
+      - возвращает дерево + несколько ключевых файлов.
+    """
+    root = root.resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(f"Не директория: {root}")
+
+    raw_only = only_paths if only_paths is not None else list(cfg.only_paths)
+    effective_only_paths = _normalize_only_paths(raw_only)
+
+    gi_specs = _load_specs_recursive(root) if cfg.use_gitignore else []
+    extra_patterns = _expand_dir_patterns(list(cfg.extra_ignore) + (extra_exclude or []))
+    secret_patterns = _expand_dir_patterns(list(cfg.secret_ignore))
+    extra_spec = _compile_spec(extra_patterns)
+    secret_spec = _compile_spec(secret_patterns)
+    binary_ext = set(cfg.binary_extensions)
+
+    all_paths: list[str] = []
+
+    def should_skip_dir(rel_dir: str, name: str) -> bool:
+        if name in _SERVICE_DIRS:
+            return True
+        rel_posix = f"{rel_dir}/{name}" if rel_dir else name
+        if _match_any(rel_posix, extra_spec):
+            return True
+        if _match_any(rel_posix, secret_spec):
+            return True
+        if cfg.use_gitignore and _is_gitignored(rel_posix, gi_specs, root):
+            return True
+        return False
+
+    def walk(dir_path: Path, rel_dir: str) -> None:
+        try:
+            entries = sorted(dir_path.iterdir(), key=lambda p: (p.is_file(), p.name))
+        except OSError:
+            return
+
+        for entry in entries:
+            rel = f"{rel_dir}/{entry.name}" if rel_dir else entry.name
+
+            if entry.is_dir():
+                if should_skip_dir(rel_dir, entry.name):
+                    continue
+                if effective_only_paths and not _is_dir_relevant(rel, effective_only_paths):
+                    continue
+                walk(entry, rel)
+                continue
+
+            if effective_only_paths and not _is_file_selected(rel, effective_only_paths):
+                continue
+
+            if cfg.use_gitignore and _is_gitignored(rel, gi_specs, root):
+                continue
+            if _match_any(rel, extra_spec):
+                continue
+            if _match_any(rel, secret_spec):
+                continue
+
+            ext = entry.suffix.lower()
+            if ext in binary_ext:
+                continue
+
+            all_paths.append(rel)
+
+    walk(root, "")
+
+    # метаданные — читаем только известные файлы
+    metadata: dict[str, str] = {}
+    for rel in all_paths:
+        name = Path(rel).name
+        if name not in _METADATA_FILES:
+            continue
+        abs_path = root / rel
+        try:
+            text = abs_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if len(text) > metadata_max_chars:
+            text = text[:metadata_max_chars] + f"\n... [обрезано, всего {len(text)} символов]"
+        metadata[rel] = text
+
+    tree = build_tree(sorted(all_paths))
+
+    tree_tokens = _estimate_tokens(tree)
+    meta_tokens = sum(_estimate_tokens(t) for t in metadata.values())
+    total_tokens = tree_tokens + meta_tokens
+
+    return MetadataScanResult(
+        root=root,
+        tree=tree,
+        metadata=metadata,
+        total_files=len(all_paths),
+        estimated_tokens=total_tokens,
+    )
+
+
+def render_metadata_block(result: MetadataScanResult) -> str:
+    """
+    Рендерит блок метаданных для phase1-промпта.
+    Только содержимое metadata-файлов, без остальных.
+    """
+    parts: list[str] = []
+    for rel in sorted(result.metadata.keys()):
+        content = result.metadata[rel]
+        parts.append(f"### {rel}\n```\n{content}\n```\n")
+    return "\n".join(parts)
