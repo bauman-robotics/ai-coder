@@ -682,6 +682,11 @@ def agent_cmd(
         "--no-auto-only-paths",
         help="Отключить авто-сужение контекста шагов 2+ из плана.",
     ),
+    no_phase1: bool = typer.Option(
+        False,
+        "--no-phase1",
+        help="Отключить phase1 (metadata-планировщик) — видеть весь проект.",
+    ),
     only_path: list[str] = typer.Option(
         [],
         "--only-path",
@@ -719,6 +724,9 @@ def agent_cmd(
 
     if no_auto_only_paths:
         cfg.agent.auto_only_paths = False
+
+    if no_phase1:
+        cfg.agent.phase1_enabled = False
 
     if only_path:
         cfg.scanning.only_paths = list(only_path)

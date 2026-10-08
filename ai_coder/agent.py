@@ -387,6 +387,7 @@ def run_planner(
     depth: str = "normal",
     extra_exclude: list[str] | None = None,
     max_steps: int | None = None,
+    only_paths: list[str] | None = None,  # NEW
 ) -> PlannerResult:
     """
     Один запрос к LLM: получаем план шагов для достижения цели.
@@ -395,8 +396,13 @@ def run_planner(
     if max_steps is None:
         max_steps = cfg.agent.max_steps
 
-    # 1. сканируем проект
-    scan = scan_project(project_root, cfg.scanning, extra_exclude=extra_exclude)
+    # 1. сканируем проект (с учётом only_paths от phase1)
+    scan = scan_project(
+        project_root,
+        cfg.scanning,
+        extra_exclude=extra_exclude,
+        only_paths=only_paths,  # NEW
+    )
 
     # 2. промпт планировщика
     prompt_entry = prompts_cfg.get("agent_plan_json")
@@ -831,7 +837,46 @@ def run_agent(
         journal_dir = project_root / cfg.output.dir / project_root.name / f"agent-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- планировщик ---
+    # --- NEW: phase1 — планировщик видит только дерево + метаданные ---
+    phase1_targets: list[str] = []
+    phase1_result = None
+    if cfg.agent.phase1_enabled:
+        try:
+            phase1_result = run_planner_phase1(
+                goal=goal,
+                project_root=project_root,
+                cfg=cfg,
+                prompts_cfg=prompts_cfg,
+                model=model,
+                depth=depth,
+                extra_exclude=extra_exclude,
+            )
+            phase1_targets = phase1_result.target_files
+            if phase1_result.parse_error:
+                _console.print(
+                    f"[yellow]Фаза 1: parse_error ({phase1_result.parse_error}), "
+                    f"phase2 пойдёт без сужения[/yellow]"
+                )
+                phase1_targets = []
+            elif phase1_targets:
+                _console.print(
+                    f"[dim]Фаза 1: определены {len(phase1_targets)} файл(ов): "
+                    f"{', '.join(phase1_targets[:3])}"
+                    f"{'...' if len(phase1_targets) > 3 else ''}[/dim]"
+                )
+            else:
+                _console.print(
+                    "[dim yellow]Фаза 1: target_files пуст — "
+                    "phase2 пойдёт с полным контекстом[/dim yellow]"
+                )
+        except Exception as e:
+            _console.print(
+                f"[yellow]Фаза 1: ошибка ({type(e).__name__}: {e}), "
+                f"phase2 пойдёт без сужения[/yellow]"
+            )
+            phase1_targets = []
+
+    # --- планировщик (phase2) ---
     planner = run_planner(
         goal=goal,
         project_root=project_root,
@@ -841,6 +886,7 @@ def run_agent(
         depth=depth,
         extra_exclude=extra_exclude,
         max_steps=max_steps,
+        only_paths=phase1_targets or None,  # NEW: сужение если phase1 дал файлы
     )
 
     if journal_dir is not None:
