@@ -472,3 +472,52 @@ def test_format_tool_history_limits_to_max():
     assert "f15.py" in text  # первый из показанных остался
     assert "f14.py" not in text  # отрезан
     assert "f0.py" not in text  # отрезан
+
+
+def test_execute_tool_dry_run_skips_dangerous(tmp_path: Path):
+    """dry_run=True — dangerous не выполняются."""
+    (tmp_path / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    r = execute_tool(
+        "edit_file",
+        {"path": "test.py", "old": "x = 1", "new": "x = 42"},
+        tmp_path,
+        dry_run=True,
+    )
+    assert r.ok
+    assert "dry-run" in r.output
+    # файл не изменился
+    assert (tmp_path / "test.py").read_text() == "x = 1\n"
+
+
+def test_execute_tool_dry_run_allows_safe(tmp_path: Path):
+    """dry_run=True — read_file выполняется."""
+    (tmp_path / "test.py").write_text("hello\n", encoding="utf-8")
+    r = execute_tool("read_file", {"path": "test.py"}, tmp_path, dry_run=True)
+    assert r.ok
+    assert "hello" in r.output
+
+
+def test_execute_tool_dry_run_write_file(tmp_path: Path):
+    """dry_run=True — write_file не создаёт файл."""
+    r = execute_tool(
+        "write_file",
+        {"path": "new.py", "content": "x = 1\n"},
+        tmp_path,
+        dry_run=True,
+    )
+    assert r.ok
+    assert "dry-run" in r.output
+    assert not (tmp_path / "new.py").exists()
+
+
+def test_execute_tool_dry_run_run_shell(tmp_path: Path):
+    """dry_run=True — run_shell не выполняется."""
+    r = execute_tool(
+        "run_shell",
+        {"command": "ls"},
+        tmp_path,
+        dry_run=True,
+    )
+    assert r.ok
+    assert "dry-run" in r.output

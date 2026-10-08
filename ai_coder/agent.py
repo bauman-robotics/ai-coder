@@ -532,8 +532,6 @@ class AgentRunResult:
 
 @dataclass
 class ToolLoopResult:
-    """Результат tool loop."""
-
     success: bool
     summary: str
     iterations: int
@@ -541,8 +539,9 @@ class ToolLoopResult:
     total_cost_rub: float = 0.0
     total_cost_cny: float = 0.0
     total_cost_usd: float = 0.0
-    stopped_reason: str = "completed"  # completed | max_iterations | max_cost | parse_error | error
+    stopped_reason: str = "completed"
     journal_dir: Path | None = None
+    dry_run: bool = False  # NEW
 
 
 # ---------- исполнитель одного шага ----------
@@ -1218,6 +1217,7 @@ def run_tool_loop(
     max_iterations: int = 20,
     max_cost_rub: float | None = None,
     journal: bool = True,
+    dry_run: bool = False,  # NEW
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -1353,7 +1353,12 @@ def run_tool_loop(
             break
 
         # --- исполнение инструмента ---
-        tool_result = execute_tool(action.tool, action.args, project_root)
+        tool_result = execute_tool(
+            action.tool,
+            action.args,
+            project_root,
+            dry_run=dry_run,
+        )
         history.append((action, tool_result))
 
         if journal_dir is not None:
@@ -1380,6 +1385,7 @@ def run_tool_loop(
         total_cost_usd=total_cost_usd,
         stopped_reason=stopped_reason,
         journal_dir=journal_dir,
+        dry_run=dry_run,  # NEW
     )
 
     if journal_dir is not None:
@@ -1437,6 +1443,8 @@ def _save_tool_loop_report(
     lines.append(f"- **Причина остановки:** {result.stopped_reason}")
     lines.append(f"- **Итераций:** {result.iterations}")
     lines.append(f"- **Стоимость:** {result.total_cost_rub:.6f} RUB")
+    if result.dry_run:
+        lines.append("- **Режим:** dry-run (dangerous-инструменты не выполнялись)")
     lines.append(f"- **Summary:** {result.summary}\n")
     lines.append("## История\n")
     for i, (action, tool_result) in enumerate(result.history, 1):

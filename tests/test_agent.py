@@ -549,3 +549,74 @@ def test_run_tool_loop_finish_with_failure(sample_project, minimal_cfg, prompts_
 
     assert result.success is False
     assert result.summary == "gave up"
+
+
+def test_run_tool_loop_dry_run_skips_edit(sample_project, minimal_cfg, prompts_cfg):
+    """--dry-run: edit_file не выполняется, возвращает would have."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="dry",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            dry_run=True,
+        )
+
+    # файл не изменился
+    assert (sample_project / "test.py").read_text() == "x = 1\n"
+    # в истории — would have
+    assert len(result.history) == 1
+    assert result.history[0][1].ok is True
+    assert "dry-run" in result.history[0][1].output
+    assert result.dry_run is True
+
+
+def test_run_tool_loop_dry_run_allows_read(sample_project, minimal_cfg, prompts_cfg):
+    """--dry-run: read_file выполняется (не dangerous)."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("hello\n", encoding="utf-8")
+
+    responses = [
+        '{"tool": "read_file", "args": {"path": "test.py"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="dry read",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            dry_run=True,
+        )
+
+    # read_file выполнился — output содержит "hello"
+    assert "hello" in result.history[0][1].output

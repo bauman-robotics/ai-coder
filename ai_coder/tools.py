@@ -497,16 +497,33 @@ def execute_tool(
     name: str,
     args: dict[str, Any],
     project_root: Path,
+    *,
+    dry_run: bool = False,
 ) -> ToolResult:
     """
     Выполняет инструмент по имени.
+
+    Args:
+        name: имя инструмента.
+        args: аргументы.
+        project_root: корень проекта.
+        dry_run: если True — dangerous-инструменты НЕ выполняются,
+                 возвращают "(dry-run) would have ...".
 
     Returns:
         ToolResult. Если инструмент не найден или упал — ok=False.
     """
     if name not in TOOL_REGISTRY:
         return ToolResult(ok=False, error=f"unknown tool: {name}")
-    _, fn = TOOL_REGISTRY[name]
+
+    spec, fn = TOOL_REGISTRY[name]
+
+    # dry-run: пропускаем dangerous, но сообщаем, что бы сделали
+    if dry_run and spec.dangerous:
+        args_repr = ", ".join(f"{k}={v!r}" for k, v in args.items())
+        preview = f"(dry-run) would have called {name}({args_repr})"
+        return ToolResult(ok=True, output=preview)
+
     try:
         return fn(args, project_root)
     except Exception as e:
