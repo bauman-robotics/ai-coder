@@ -28,6 +28,75 @@
 
 
 
+
+## [2026-10-08] iteration 10.1–10.4 — feat: tool loop — автономность
+
+### Добавлено (10.1 — автокоммит tool loop)
+- `run_tool_loop(auto_commit=False)`: после `finish(success=true)`
+  и `not dry_run` — `git add -A` + `git commit`.
+- Сообщение: `ai-coder: <goal> (N ops, X.XX RUB)` — совместимо
+  с `run_agent --commit`.
+- `ToolLoopResult.commit_hash` — поле.
+- CLI: `--commit` для tool loop (общий с `run_agent`).
+- Показ коммита в итоге + подсказки `git show` / `git revert`.
+- `git_repo` фикстура перенесена в `conftest.py`.
+- 2 теста (успех, dry-run skip).
+
+### Добавлено (10.2 — --resume)
+- `_save_tool_loop_history`: `history.json` (машиночитаемый).
+- `_load_tool_loop_history`: загрузка при resume.
+- `run_tool_loop(resume_from=journal_dir)`: продолжает с N+1 итерации.
+- `start_iteration`/`end_iteration` — корректный лимит.
+- CLI: `--resume <journal-dir>`.
+- `ToolResult.dry_run` — поле (для `history.json`).
+- 3 теста: save history, resume, resume-no-history.
+
+### Добавлено (10.4 — кэш phase1)
+- `_phase1_cache_key`: SHA256(goal + tree + model), 32 hex.
+- `_phase1_cache_dir` / `_from_cache` / `_save_cache`.
+- `run_planner_phase1(use_cache=True, refresh=False)`:
+  при cache hit LLM не вызывается (cost=0).
+- `PlannerPhase1Result.llm: LLMResponse | None` (None при cache hit).
+- `PlannerPhase1Result.from_cache: bool`.
+- `conftest`: промпт `agent_plan_json_phase1` в `prompts_cfg`.
+- 3 теста: cache_hit, cache_refresh, no_cache.
+
+### Исправлено (10.5 — промпт + format_tool_history)
+- `format_tool_history`: `read_file` → **3000 символов** (было 200).
+  Модель видит содержимое файла в истории, не перечитывает
+  и не использует `run_shell grep`.
+- Остальные инструменты: 500 символов, многострочный вывод.
+- `agent_tool_json`: примеры `edit_file` для YAML/Markdown/Python
+  (уникальность `old`, контекст 2-3 строки).
+- Пункт 11 «ЭФФЕКТИВНОСТЬ»: read → edit → finish (3 итерации),
+  не перечитывать, не использовать grep для прочитанного.
+
+### Метрика E2E (задача «поднять --cov-fail-under 40 → 70»)
+- **10.5:** 5 итераций → **2 итерации** (`read_file` → `edit_file` → `finish`).
+  Стоимость: 0.0709 → 0.0643 RUB.
+- **10.4 (кэш phase1):**
+  - запуск 1: `agent:plan1` 0.0345 RUB + `agent:plan` 0.0269 + `agent:step1` 0.0250.
+  - запуск 2: **`agent:plan1` НЕТ** в `usage.jsonl` (cache hit),
+    только `agent:plan` 0.0111 RUB.
+  - **Экономия: ~0.06 RUB на повторной задаче.**
+- **10.1 (автокоммит):** tool loop 4 итерации, 0.0483 RUB,
+  коммит `35ea575` в `git log`.
+- **10.2 (resume):** 2 итерации (0.0351) + resume 1 итерация (0.0090) = 0.0441 RUB.
+
+### Что это даёт
+- **Tool loop — production-ready:**
+  - автокоммит в `git log` (история задач + стоимость);
+  - `--resume` — не терять работу;
+  - кэш phase1 — экономия на повторных;
+  - 2 итерации на атомарную задачу (5 → 2);
+  - безопасность: dry-run, interactive, бэкап, rollback.
+- **Готовность к Уровню D:** автокоммит уже есть, ветки/PR — отложены.
+
+### Итого тестов
+- 280 passed (было 272, +8).
+
+---
+
 ## [2026-10-08] iteration 9.1–9.4 — feat: tool loop (Уровень C)
 
 ### Добавлено (9.1 — tools)
