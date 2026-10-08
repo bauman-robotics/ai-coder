@@ -84,6 +84,7 @@ scanning:
   max_file_size_kb: 500
   max_total_tokens: 60000
   include_extensions: []            # пусто = все текстовые
+  only_paths: []      # NEW: например, ["ai_coder/"]
 
 write:
   max_operations: 20
