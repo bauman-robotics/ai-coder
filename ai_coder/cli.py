@@ -14,6 +14,14 @@ from .agent import run_agent
 from .apply import apply_plan, check_python_files, list_backups, run_verify_commands
 from .apply import rollback as do_rollback
 from .config import WEB_ASSET_EXTENSIONS, load_config, load_prompts
+from .git import (
+    commit as git_commit,
+)
+from .git import (
+    format_commit_message,
+    is_git_repo,
+    status_porcelain,
+)
 from .output import save_report
 
 app = typer.Typer(
@@ -775,6 +783,28 @@ def agent_cmd(
         )
     )
 
+    # --- git-проверка чистоты ---
+
+    if apply and cfg.git.enabled and cfg.git.require_clean:
+        if is_git_repo(project_root):
+            dirty = status_porcelain(project_root)
+            if dirty:
+                console.print("[yellow]⚠️ Рабочее дерево не чистое:[/yellow]")
+                for line in dirty.strip().splitlines()[:10]:
+                    console.print(f"  [dim]{line}[/dim]")
+                if len(dirty.strip().splitlines()) > 10:
+                    console.print(f"  [dim]... ещё {len(dirty.strip().splitlines()) - 10}[/dim]")
+                console.print(
+                    "\n[yellow]Совет:[/yellow] git stash / git commit — "
+                    "чтобы агентские правки не смешивались с твоими."
+                )
+                proceed = typer.confirm("Продолжить всё равно?", default=False)
+                if not proceed:
+                    console.print("[yellow]Отменено.[/yellow]")
+                    raise typer.Exit(0)
+        else:
+            console.print("[dim]ℹ Не git-репозиторий — проверка чистоты пропущена.[/dim]")
+
     try:
         with console.status("[cyan]Планирую и выполняю..."):
             result = run_agent(
@@ -794,6 +824,7 @@ def agent_cmd(
                 preview_only=preview_only,
                 web_assets_override=web_override,
                 interactive=interactive,  # NEW
+                max_cost_rub=max_cost_rub,
             )
     except Exception as e:
         console.print(f"[red]Ошибка агента:[/red] {e}")
@@ -809,6 +840,32 @@ def agent_cmd(
 
     # --- итог ---
     _print_agent_summary(result)
+
+    # --- git-коммит после успеха ---
+    if apply and cfg.git.enabled and cfg.git.auto_commit:
+        if not is_git_repo(project_root):
+            console.print("[dim]ℹ Не git-репозиторий — коммит пропущен.[/dim]")
+        elif result.stopped_reason != "completed":
+            console.print(
+                f"[yellow]Коммит пропущен: stopped_reason = {result.stopped_reason}[/yellow]"
+            )
+        else:
+            dirty = status_porcelain(project_root)
+            if not dirty:
+                console.print("[dim]ℹ Нечего коммитить — дерево чистое.[/dim]")
+            else:
+                ops_total = sum(s.applied_count for s in result.steps)
+                msg = format_commit_message(
+                    goal=goal,
+                    ops=ops_total,
+                    cost_rub=result.total_cost_rub,
+                )
+                h = git_commit(project_root, msg)
+                if h:
+                    console.print(f"[green]Коммит:[/green] {h}")
+                    console.print(f"[dim]Посмотреть: git show {h}[/dim]")
+                else:
+                    console.print("[yellow]Не удалось создать коммит (см. вывод git).[/yellow]")
 
 
 @app.command("rollback")

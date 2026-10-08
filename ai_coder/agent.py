@@ -819,6 +819,7 @@ def run_agent(
     preview_only: bool = False,
     web_assets_override: bool | None = None,
     interactive: bool = False,  # NEW
+    max_cost_rub: float | None = None,  # NEW
 ) -> AgentRunResult:
     """
     Полный цикл агента: план → шаги → журнал.
@@ -961,7 +962,27 @@ def run_agent(
         step_only_paths = auto_targets if use_only_paths else None
         # None → берётся cfg.scanning.only_paths
 
-        ...
+        # --- проверка таймаута ---
+        elapsed_min = (datetime.now(ZoneInfo("UTC")) - started_at).total_seconds() / 60
+        if elapsed_min > max_minutes:
+            result.stopped_reason = "timeout"
+            break
+
+        if len(step_results) >= max_steps:
+            result.stopped_reason = "max_steps"
+            break
+
+        # --- проверка бюджета ---
+        if max_cost_rub is not None:
+            cost_so_far = result.planner_cost_rub + sum(s.cost_rub for s in step_results)
+            if cost_so_far >= max_cost_rub:
+                _console.print(
+                    f"[yellow]Бюджет исчерпан: {cost_so_far:.4f} RUB "
+                    f">= {max_cost_rub:.4f} RUB[/yellow]"
+                )
+                result.stopped_reason = "max_cost"
+                break
+
         step_result = _run_agent_step(
             goal=goal,
             step=step,
