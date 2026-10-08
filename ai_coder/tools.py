@@ -708,7 +708,24 @@ def format_tool_history(history: list[tuple[ToolAction, ToolResult]], max_items:
             desc = f"{action.tool}({args_short})"
 
         status = "ok" if result.ok else "FAIL"
-        snippet = (result.output or result.error or "")[:200].replace("\n", " ")
+        full_output = result.output or result.error or ""
+
+        # Для read_file показываем БОЛЬШЕ (до 3000 символов) — модель
+        # должна видеть содержимое файла, чтобы не перечитывать.
+        # Для остальных — 500 символов достаточно.
+        if action.tool == "read_file":
+            max_chars = 3000
+        else:
+            max_chars = 500
+
+        if len(full_output) > max_chars:
+            snippet = (
+                full_output[:max_chars]
+                + f"\n     ... [обрезано, всего {len(full_output)} символов]"
+            )
+        else:
+            snippet = full_output
+
         lines.append(f"#{i}. {desc} → {status}")
         if snippet:
             lines.append(f"     {snippet}")
