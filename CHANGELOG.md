@@ -26,6 +26,44 @@
 
 
 
+
+## [2026-10-08] iteration 8.8 — feat(git): git-интеграция агента
+
+### Добавлено
+- `ai_coder/git.py` — враппер над git CLI (subprocess):
+  `is_git_repo`, `status_porcelain`, `current_branch`, `commit`,
+  `slugify`, `format_commit_message`.
+- `GitConfig` — `enabled`, `require_clean`, `auto_commit`,
+  `commit_template`.
+- Секция `git:` в `config.yaml`.
+- CLI-флаги для `agent`:
+  - `--commit/--no-commit` (по умолчанию выкл);
+  - `--require-clean/--no-require-clean` (по умолчанию вкл);
+  - `--max-cost-rub N` — остановка при превышении бюджета.
+- `run_agent(max_cost_rub=...)` — проверка бюджета в цикле шагов.
+- Проверка чистоты дерева перед `--apply` (`git status --porcelain`).
+- Автокоммит после успеха (`ai-coder: <goal> (N ops, X.XX RUB)`).
+- 24 теста на временном git-репозитории.
+
+### Как работает
+- Перед `--apply` — проверка `git status --porcelain`.
+  Грязно → предупреждение + вопрос.
+- После успеха + `--commit` → `git add` + `git commit` в **текущую**
+  ветку (обычно `main`).
+- Ветки **не создаются** — одна `main`.
+- Никаких `push`, `merge`, `branch -D`, `reset --hard`.
+
+### Что это даёт
+- История задач агента в `git log`.
+- Стоимость каждой задачи в сообщении коммита.
+- Откат через `git revert HEAD` — надёжнее `.ai-out/backup-*`.
+- Фундамент для tool loop (Уровень C): агент будет сам коммитить.
+
+### Итого тестов
+- 186 passed.
+
+---
+
 ## [2026-10-08] iteration 8.7 — feat(agent): phase1 — metadata-планировщик
 
 ### Добавлено

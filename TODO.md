@@ -275,14 +275,11 @@
 
 ### Git-интеграция
 
-- [ ] Ветки `ai-coder/<action>-<ts>` перед `--apply`.
-      Флаг `--branch` (по умолчанию выкл) или конфиг `write.use_branch: true`.
-      Проверка: `git status --porcelain` чистый перед стартом.
-
-- [ ] Автокоммит после успешного `--apply`.
-      Флаг `--commit` с шаблоном сообщения
-      `ai-coder: <action> (<N> ops, <X> RUB)`.
-
+- [x] Проверка `git status --porcelain` перед `--apply` (8.8).
+- [x] Автокоммит после успешного `--apply` (флаг `--commit`, 8.8).
+      Шаблон: `ai-coder: <goal> (N ops, X.XX RUB)`.
+- [x] `--max-cost-rub N` — остановка при превышении бюджета (8.8).
+- [ ] Ветки `ai-coder/<action>-<ts>` перед `--apply` (отложено — одна `main`).
 - [ ] Команда `ai-coder diff` — сравнить текущее состояние с HEAD.
 
 ### Agent v2
