@@ -6,11 +6,15 @@ import pytest
 
 from ai_coder.tools import (
     TOOL_REGISTRY,
+    ToolAction,
+    ToolResult,
     ToolSecurityError,
     _safe_path,
     execute_tool,
+    format_tool_history,
     format_tools_for_prompt,
     get_tool_specs,
+    parse_tool_action,
 )
 
 # ---------- безопасность ----------
@@ -328,3 +332,143 @@ def test_run_shell_rejects_sudo(tmp_path: Path):
 def test_run_shell_rejects_sh_c(tmp_path: Path):
     r = execute_tool("run_shell", {"command": "sh -c 'rm -rf /'"}, tmp_path)
     assert not r.ok
+
+
+# ---------- parse_tool_action ----------
+
+
+def test_parse_tool_action_simple():
+    content = '{"tool": "read_file", "args": {"path": "a.py"}, "reason": "inspect"}'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.tool == "read_file"
+    assert a.args == {"path": "a.py"}
+    assert a.reason == "inspect"
+    assert a.finish is False
+
+
+def test_parse_tool_action_finish_success():
+    content = '{"finish": true, "summary": "done", "success": true}'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.finish is True
+    assert a.summary == "done"
+    assert a.success is True
+    assert a.tool == ""
+
+
+def test_parse_tool_action_finish_failure():
+    content = '{"finish": true, "summary": "gave up", "success": false}'
+    a = parse_tool_action(content)
+    assert a.finish is True
+    assert a.success is False
+
+
+def test_parse_tool_action_finish_default_success():
+    """Если success не указан — True по умолчанию."""
+    content = '{"finish": true, "summary": "ok"}'
+    a = parse_tool_action(content)
+    assert a.finish is True
+    assert a.success is True
+
+
+def test_parse_tool_action_markdown_wrapper():
+    content = '```json\n{"tool": "list_files", "args": {"dir": "."}}\n```'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.tool == "list_files"
+
+
+def test_parse_tool_action_json_with_text_around():
+    content = 'Here is the action:\n{"tool": "read_file", "args": {"path": "x.py"}}\nEnd.'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.tool == "read_file"
+
+
+def test_parse_tool_action_invalid_json():
+    a = parse_tool_action("not json at all")
+    assert a.parse_error is not None
+    assert "parse error" in a.parse_error
+
+
+def test_parse_tool_action_missing_tool():
+    a = parse_tool_action('{"args": {"path": "a.py"}}')
+    assert a.parse_error is not None
+    assert "tool" in a.parse_error.lower()
+
+
+def test_parse_tool_action_unknown_tool():
+    a = parse_tool_action('{"tool": "evil_command", "args": {}}')
+    assert a.parse_error is not None
+    assert "unknown tool" in a.parse_error
+
+
+def test_parse_tool_action_args_not_dict():
+    a = parse_tool_action('{"tool": "read_file", "args": "a.py"}')
+    assert a.parse_error is not None
+    assert "args" in a.parse_error
+
+
+def test_parse_tool_action_empty_tool():
+    a = parse_tool_action('{"tool": "", "args": {}}')
+    assert a.parse_error is not None
+
+
+def test_parse_tool_action_finish_wins_over_tool():
+    """Если оба поля — finish=true побеждает."""
+    content = '{"finish": true, "success": true, "tool": "read_file", "args": {"path": "x"}}'
+    a = parse_tool_action(content)
+    assert a.finish is True
+    assert a.tool == ""  # tool проигнорирован
+
+
+# ---------- format_tool_history ----------
+
+
+def test_format_tool_history_empty():
+    assert format_tool_history([]) == "(нет)"
+
+
+def test_format_tool_history_with_items():
+    a1 = ToolAction(tool="read_file", args={"path": "a.py"})
+    r1 = ToolResult(ok=True, output="x = 1\n")
+    a2 = ToolAction(tool="edit_file", args={"path": "a.py", "old": "x", "new": "y"})
+    r2 = ToolResult(ok=True, output="edited a.py")
+    text = format_tool_history([(a1, r1), (a2, r2)])
+    assert "#1." in text
+    assert "#2." in text
+    assert "read_file" in text
+    assert "edit_file" in text
+    assert "ok" in text
+
+
+def test_format_tool_history_shows_failures():
+    a = ToolAction(tool="run_shell", args={"command": "pytest -q"})
+    r = ToolResult(ok=False, error="exit code: 1")
+    text = format_tool_history([(a, r)])
+    assert "FAIL" in text
+    assert "exit code: 1" in text
+
+
+def test_format_tool_history_finish_marker():
+    a = ToolAction(finish=True, success=True, summary="done")
+    r = ToolResult(ok=True, output="")
+    text = format_tool_history([(a, r)])
+    assert "finish" in text
+    assert "success=True" in text
+
+
+def test_format_tool_history_limits_to_max():
+    """Больше max_items — показывает только последние."""
+    items = []
+    for i in range(20):
+        a = ToolAction(tool="read_file", args={"path": f"f{i}.py"})
+        r = ToolResult(ok=True, output=f"content {i}")
+        items.append((a, r))
+    text = format_tool_history(items, max_items=5)
+    # последние 5 — это f15..f19
+    assert "f19.py" in text  # последний остался
+    assert "f15.py" in text  # первый из показанных остался
+    assert "f14.py" not in text  # отрезан
+    assert "f0.py" not in text  # отрезан

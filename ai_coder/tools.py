@@ -19,11 +19,12 @@ project_root, не запускают shell, не делают сетевых в
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -529,4 +530,133 @@ def format_tools_for_prompt() -> str:
         lines.append(f"  {spec.description}")
         lines.append(f"  returns: {spec.returns}")
         lines.append("")
+    return "\n".join(lines)
+
+
+# ---------- парсинг ответа модели (tool loop) ----------
+
+
+@dataclass
+class ToolAction:
+    """
+    Разобранное действие модели в tool loop.
+
+    Ровно одно из двух:
+      - вызов инструмента: tool != "", finish == False
+      - завершение:        finish == True, tool == ""
+
+    Если parse_error не None — действие невалидно, ничего выполнять нельзя.
+    """
+
+    tool: str = ""
+    args: dict[str, Any] = field(default_factory=dict)
+    reason: str = ""
+    finish: bool = False
+    summary: str = ""
+    success: bool = True
+    parse_error: str | None = None
+    raw_json: str = ""
+
+
+def _strip_json_wrapper(text: str) -> str:
+    """
+    Снимает markdown-обёртку ```json ... ``` или вырезает {...}.
+
+    Используется в parse_tool_action и parse_agent_plan (тот же паттерн).
+    """
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    if not text.startswith("{"):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start : end + 1]
+    return text
+
+
+def parse_tool_action(content: str) -> ToolAction:
+    """
+    Парсит ответ модели на tool loop.
+
+    Ожидает JSON одного из видов:
+      {"tool": "<name>", "args": {...}, "reason": "..."}
+      {"finish": true, "summary": "...", "success": true|false}
+
+    Возвращает ToolAction. При ошибке — parse_error != None, tool="" и finish=False.
+    """
+    action = ToolAction(raw_json=content)
+    text = _strip_json_wrapper(content)
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        action.parse_error = f"tool JSON parse error: {e}"
+        return action
+
+    if not isinstance(data, dict):
+        action.parse_error = f"expected dict, got {type(data).__name__}"
+        return action
+
+    # --- finish ---
+    if data.get("finish") is True:
+        action.finish = True
+        action.summary = str(data.get("summary", "")).strip()
+        action.success = bool(data.get("success", True))
+        return action
+
+    # --- tool ---
+    tool = data.get("tool")
+    if not isinstance(tool, str) or not tool.strip():
+        action.parse_error = "missing or invalid 'tool' field (and no 'finish' flag)"
+        return action
+    tool = tool.strip()
+
+    if tool not in TOOL_REGISTRY:
+        action.parse_error = f"unknown tool: {tool}"
+        return action
+
+    args = data.get("args", {})
+    if not isinstance(args, dict):
+        action.parse_error = f"'args' must be a dict, got {type(args).__name__}"
+        return action
+
+    action.tool = tool
+    action.args = args
+    action.reason = str(data.get("reason", "")).strip()
+    return action
+
+
+def format_tool_history(history: list[tuple[ToolAction, ToolResult]], max_items: int = 10) -> str:
+    """
+    Формирует текстовый лог предыдущих действий для промпта.
+
+    Берёт последние max_items. Каждый пункт:
+        #1. read_file(path='a.py') → ok, 12 chars
+        #2. edit_file(path='a.py') → ok, 'edited a.py'
+        #3. run_shell('pytest -q') → FAIL (exit code: 1)
+          first 200 chars of output/error
+
+    Если истории нет — возвращает "(нет)".
+    """
+    if not history:
+        return "(нет)"
+
+    items = history[-max_items:]
+    lines: list[str] = []
+    for i, (action, result) in enumerate(items, 1):
+        if action.finish:
+            desc = f"finish(success={action.success})"
+        else:
+            args_short = ", ".join(f"{k}={v!r}" for k, v in action.args.items())
+            desc = f"{action.tool}({args_short})"
+
+        status = "ok" if result.ok else "FAIL"
+        snippet = (result.output or result.error or "")[:200].replace("\n", " ")
+        lines.append(f"#{i}. {desc} → {status}")
+        if snippet:
+            lines.append(f"     {snippet}")
     return "\n".join(lines)
