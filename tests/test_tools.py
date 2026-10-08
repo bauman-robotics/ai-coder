@@ -551,3 +551,34 @@ def test_parse_tool_action_garbage_after_json():
     a = parse_tool_action(content)
     assert a.parse_error is None
     assert a.tool == "list_files"
+
+
+def test_format_tool_history_read_file_large_file():
+    """read_file с большим файлом — в истории до 10000 символов."""
+    big_content = "x = 1\n" * 2000
+    a = ToolAction(tool="read_file", args={"path": "big.py"})
+    r = ToolResult(ok=True, output=big_content)
+    text = format_tool_history([(a, r)], read_file_max_chars=10000)
+    assert len(text) > 9000
+    assert "обрезано" in text
+    assert "grep" in text.lower()
+
+
+def test_format_tool_history_read_file_small_file():
+    """read_file с маленьким файлом — целиком."""
+    small_content = "x = 1\n"
+    a = ToolAction(tool="read_file", args={"path": "small.py"})
+    r = ToolResult(ok=True, output=small_content)
+    text = format_tool_history([(a, r)], read_file_max_chars=10000)
+    assert "x = 1" in text
+    assert "обрезано" not in text
+
+
+def test_format_tool_history_edit_file_uses_500():
+    """edit_file — обрезается до 500 символов."""
+    long_output = "y" * 1000
+    a = ToolAction(tool="edit_file", args={"path": "a.py"})
+    r = ToolResult(ok=True, output=long_output)
+    text = format_tool_history([(a, r)], other_max_chars=500)
+    assert "обрезано" in text
+    assert "grep" in text.lower()

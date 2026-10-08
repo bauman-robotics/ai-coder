@@ -683,7 +683,12 @@ def parse_tool_action(content: str) -> ToolAction:
     return action
 
 
-def format_tool_history(history: list[tuple[ToolAction, ToolResult]], max_items: int = 10) -> str:
+def format_tool_history(
+    history: list[tuple[ToolAction, ToolResult]],
+    max_items: int = 10,
+    read_file_max_chars: int = 10_000,
+    other_max_chars: int = 500,
+) -> str:
     """
     Формирует текстовый лог предыдущих действий для промпта.
 
@@ -714,14 +719,15 @@ def format_tool_history(history: list[tuple[ToolAction, ToolResult]], max_items:
         # должна видеть содержимое файла, чтобы не перечитывать.
         # Для остальных — 500 символов достаточно.
         if action.tool == "read_file":
-            max_chars = 3000
+            max_chars = read_file_max_chars
         else:
-            max_chars = 500
+            max_chars = other_max_chars
 
         if len(full_output) > max_chars:
             snippet = (
                 full_output[:max_chars]
-                + f"\n     ... [обрезано, всего {len(full_output)} символов]"
+                + f"\n     ... [обрезано, всего {len(full_output)} символов. "
+                + "Используй run_shell grep для точного поиска.]"
             )
         else:
             snippet = full_output

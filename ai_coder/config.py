@@ -200,6 +200,8 @@ class AgentConfig(BaseModel):
     auto_only_paths: bool = True
     phase1_enabled: bool = True  # NEW
     phase1_max_output_tokens: int = 2000  # NEW
+    tool_loop_history_max_chars: int = 10_000
+    tool_loop_history_other_max_chars: int = 500
 
 
 # ---------- root ----------

@@ -1489,7 +1489,11 @@ def run_tool_loop(
     end_iteration = start_iteration + max_iterations
     for iteration in range(start_iteration, end_iteration):
         # --- промпт с текущей историей ---
-        history_block = format_tool_history(history)
+        history_block = format_tool_history(
+            history,
+            read_file_max_chars=cfg.agent.tool_loop_history_max_chars,
+            other_max_chars=cfg.agent.tool_loop_history_other_max_chars,
+        )
         system, user = render_prompt(
             prompt_entry,
             depth=depth,
