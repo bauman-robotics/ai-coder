@@ -21,6 +21,31 @@
 
 
 
+
+## [2026-10-08] iteration 8.3 — баги self-hosted E2E
+
+### Исправлено
+- `agent._run_agent_step`: при невалидном плане `parse_error`
+  и `problems` теперь попадают в `result.errors` — видно в консоли.
+- `agent._run_agent_step`: `finish_reason == "length"` —
+  явное сообщение в `errors` («Ответ модели обрезан...»).
+- `AgentConfig.step_max_output_tokens` (8000) —
+  конфигурируемо, передаётся в `client.chat`
+  в `run_planner` и `_run_agent_step`.
+- `config/config.yaml`: `agent.step_max_output_tokens: 8000`.
+
+### Замечено (TODO)
+- Модель слабо правит **YAML** (шаг 2 в self-hosted E2E не применился,
+  хотя `old` уникален). Для YAML — править вручную или усилить
+  промпт.
+- Стоимость self-hosted E2E: 3.52 RUB за 2 шага.
+- `flash` max output = 8192, `8000` — у потолка.
+
+### Итого тестов
+- 139 passed.
+
+---
+
 ## [2026-10-08] iteration 8.2 — self-hosted E2E + cov-fail-under=70
 
 ### Изменено
