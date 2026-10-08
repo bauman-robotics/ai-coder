@@ -16,15 +16,19 @@ def compute_hash(
     prompt_user: str,
     model: str,
     depth: str,
+    write_blacklist_paths: list[str] | None = None,
+    write_blacklist_files: list[str] | None = None,
+    write_max_operations: int | None = None,
 ) -> str:
     """
-    Считает sha256 от содержимого файлов, шаблонов промптов, модели и глубины.
-    Файлы сортируются по пути, чтобы хэш не зависел от порядка обхода.
+    Считает sha256 от содержимого файлов, шаблонов промптов, модели, глубины
+    и настроек write (blacklist, max_operations).
+    Файлы и списки сортируются, чтобы хэш не зависел от порядка обхода.
     """
     h = hashlib.sha256()
 
     # версия схемы — если поменяем алгоритм, старые кэши не подойдут
-    h.update(b"ai-coder-cache-v1\n")
+    h.update(b"ai-coder-cache-v2\n")
 
     h.update(f"model:{model}\n".encode())
     h.update(f"depth:{depth}\n".encode())
@@ -34,6 +38,14 @@ def compute_hash(
     h.update(prompt_system.encode("utf-8"))
     h.update(b"\n---USER---\n")
     h.update(prompt_user.encode("utf-8"))
+
+    # настройки write (blacklist/max_operations) — влияют на валидность плана
+    h.update(b"\n---WRITE---\n")
+    for p in sorted(write_blacklist_paths or []):
+        h.update(f"blacklist_path:{p}\n".encode("utf-8"))
+    for f in sorted(write_blacklist_files or []):
+        h.update(f"blacklist_file:{f}\n".encode("utf-8"))
+    h.update(f"max_operations:{write_max_operations}\n".encode("utf-8"))
 
     # файлы
     h.update(b"\n---FILES---\n")

@@ -147,3 +147,67 @@ def test_cache_miss(tmp_path: Path):
         scan=scan,
     )
     assert result is None
+
+
+def test_compute_hash_changes_with_write_settings():
+    """Разные write_* дают разный хэш (review 1.1)."""
+    scan = _scan({"a.py": "x = 1\n"})
+
+    h_base = cache_mod.compute_hash(scan, "S", "U", "m", "shallow")
+    h_paths = cache_mod.compute_hash(
+        scan,
+        "S",
+        "U",
+        "m",
+        "shallow",
+        write_blacklist_paths=["*.md"],
+    )
+    h_files = cache_mod.compute_hash(
+        scan,
+        "S",
+        "U",
+        "m",
+        "shallow",
+        write_blacklist_files=["pyproject.toml"],
+    )
+    h_ops = cache_mod.compute_hash(
+        scan,
+        "S",
+        "U",
+        "m",
+        "shallow",
+        write_max_operations=50,
+    )
+
+    assert h_base != h_paths
+    assert h_base != h_files
+    assert h_base != h_ops
+    assert h_paths != h_files
+    assert h_paths != h_ops
+    assert h_files != h_ops
+
+
+def test_compute_hash_order_does_not_matter():
+    """Порядок в списках write_* не влияет на хэш (sorted)."""
+    scan = _scan({"a.py": "x = 1\n"})
+
+    h1 = cache_mod.compute_hash(
+        scan,
+        "S",
+        "U",
+        "m",
+        "shallow",
+        write_blacklist_paths=["a", "b", "c"],
+        write_blacklist_files=["x", "y", "z"],
+    )
+    h2 = cache_mod.compute_hash(
+        scan,
+        "S",
+        "U",
+        "m",
+        "shallow",
+        write_blacklist_paths=["c", "b", "a"],
+        write_blacklist_files=["z", "y", "x"],
+    )
+
+    assert h1 == h2

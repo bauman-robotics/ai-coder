@@ -91,6 +91,9 @@ def run_action(
             prompt_user=prompt_entry.user,
             model=model,
             depth=depth,
+            write_blacklist_paths=cfg.write.blacklist_paths,
+            write_blacklist_files=cfg.write.blacklist_files,
+            write_max_operations=cfg.write.max_operations,
         )
         if not refresh:
             cached = cache_mod.from_cache(
@@ -291,6 +294,9 @@ def run_fix_action(
             prompt_user=prompt_entry.user,
             model=model,
             depth=depth,
+            write_blacklist_paths=cfg.write.blacklist_paths,
+            write_blacklist_files=cfg.write.blacklist_files,
+            write_max_operations=cfg.write.max_operations,
         )
         cached = cache_mod.from_cache(
             project_root=project_root,
