@@ -1564,6 +1564,12 @@ def _save_tool_loop_step(
 
     if action.parse_error:
         lines.append(f"## ❌ parse_error\n\n{action.parse_error}\n")
+        lines.append("\n### Сырой ответ модели\n")
+        lines.append("```")
+        lines.append(action.raw_json[:5000])
+        if len(action.raw_json) > 5000:
+            lines.append(f"... [обрезано, всего {len(action.raw_json)} символов]")
+        lines.append("```\n")
     elif action.finish:
         lines.append(f"## ✅ finish (success={action.success})\n")
         lines.append(f"{action.summary}\n")

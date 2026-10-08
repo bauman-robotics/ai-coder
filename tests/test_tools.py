@@ -389,7 +389,8 @@ def test_parse_tool_action_json_with_text_around():
 def test_parse_tool_action_invalid_json():
     a = parse_tool_action("not json at all")
     assert a.parse_error is not None
-    assert "parse error" in a.parse_error
+    # новое сообщение: "tool JSON no '{' found"
+    assert "json" in a.parse_error.lower()
 
 
 def test_parse_tool_action_missing_tool():
@@ -521,3 +522,32 @@ def test_execute_tool_dry_run_run_shell(tmp_path: Path):
     )
     assert r.ok
     assert "dry-run" in r.output
+
+
+def test_parse_tool_action_two_objects_back_to_back():
+    """Модель вернула два JSON подряд — берём первый."""
+    content = '{"tool": "read_file", "args": {"path": "a.py"}}\n{"finish": true, "summary": "done"}'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.tool == "read_file"
+    assert a.args == {"path": "a.py"}
+
+
+def test_parse_tool_action_finish_with_trailing_json():
+    """finish + лишний JSON после — берём finish."""
+    content = (
+        '{"finish": true, "summary": "done", "success": true}\n'
+        '{"tool": "read_file", "args": {"path": "a.py"}}'
+    )
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.finish is True
+    assert a.summary == "done"
+
+
+def test_parse_tool_action_garbage_after_json():
+    """JSON + текстовый мусор — работает."""
+    content = '{"tool": "list_files", "args": {"dir": "."}}\n\nSome explanation here.'
+    a = parse_tool_action(content)
+    assert a.parse_error is None
+    assert a.tool == "list_files"

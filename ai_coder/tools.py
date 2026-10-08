@@ -576,23 +576,44 @@ class ToolAction:
 
 
 def _strip_json_wrapper(text: str) -> str:
-    """
-    Снимает markdown-обёртку ```json ... ``` или вырезает {...}.
-
-    Используется в parse_tool_action и parse_agent_plan (тот же паттерн).
-    """
+    """Снимает markdown-обёртку ```json ... ```."""
     text = text.strip()
     if text.startswith("```"):
         lines = text.splitlines()[1:]
         if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
         text = "\n".join(lines).strip()
+    return text
+
+
+def _parse_first_json_object(text: str) -> tuple[dict | None, str | None]:
+    """
+    Парсит ПЕРВЫЙ JSON-объект из текста, игнорируя хвост.
+
+    Полезно, когда модель возвращает два JSON подряд:
+      {"tool": "..."}
+      {"finish": true}
+    — берём первый.
+
+    Returns:
+        (data, error). data=None при ошибке.
+    """
+    text = text.strip()
     if not text.startswith("{"):
         start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            text = text[start : end + 1]
-    return text
+        if start == -1:
+            return None, "no '{' found"
+        text = text[start:]
+
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(text)
+    except json.JSONDecodeError as e:
+        return None, f"JSON parse error: {e}"
+
+    if not isinstance(data, dict):
+        return None, f"expected dict, got {type(data).__name__}"
+    return data, None
 
 
 def parse_tool_action(content: str) -> ToolAction:
@@ -608,14 +629,12 @@ def parse_tool_action(content: str) -> ToolAction:
     action = ToolAction(raw_json=content)
     text = _strip_json_wrapper(content)
 
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        action.parse_error = f"tool JSON parse error: {e}"
+    data, err = _parse_first_json_object(text)
+    if err is not None:
+        action.parse_error = f"tool JSON {err}"
         return action
-
-    if not isinstance(data, dict):
-        action.parse_error = f"expected dict, got {type(data).__name__}"
+    if data is None:
+        action.parse_error = "tool JSON empty data"
         return action
 
     # --- finish ---
