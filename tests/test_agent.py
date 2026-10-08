@@ -9,6 +9,7 @@ from ai_coder.agent import (
     AgentStep,
     _extract_target_files,
     _render_plan_summary,
+    _select_step_only_paths,
     parse_agent_plan,
     run_planner,
 )
@@ -298,3 +299,45 @@ def test_extract_target_files_strips_leading_slash():
         ],
     )
     assert _extract_target_files(plan) == ["src/main.py", "src/utils.py"]
+
+
+def test_select_only_paths_single_step_plan():
+    """Одношаговый план: шаг 1 сужен."""
+    assert _select_step_only_paths(
+        idx=0, is_single_step=True, auto_targets=["a.py"], auto_enabled=True
+    ) == ["a.py"]
+
+
+def test_select_only_paths_multi_step_first():
+    """Многошаговый план: шаг 1 — полный контекст."""
+    assert (
+        _select_step_only_paths(
+            idx=0, is_single_step=False, auto_targets=["a.py"], auto_enabled=True
+        )
+        is None
+    )
+
+
+def test_select_only_paths_multi_step_second():
+    """Многошаговый план: шаг 2 — сужен."""
+    assert _select_step_only_paths(
+        idx=1, is_single_step=False, auto_targets=["a.py"], auto_enabled=True
+    ) == ["a.py"]
+
+
+def test_select_only_paths_no_targets():
+    """target_files пусты — полный контекст всегда."""
+    assert (
+        _select_step_only_paths(idx=0, is_single_step=True, auto_targets=[], auto_enabled=True)
+        is None
+    )
+
+
+def test_select_only_paths_disabled():
+    """auto_only_paths=False — полный контекст."""
+    assert (
+        _select_step_only_paths(
+            idx=1, is_single_step=False, auto_targets=["a.py"], auto_enabled=False
+        )
+        is None
+    )

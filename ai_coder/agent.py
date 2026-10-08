@@ -109,6 +109,26 @@ def _extract_target_files(plan: AgentPlan) -> list[str]:
     return sorted(paths)
 
 
+def _select_step_only_paths(
+    *,
+    idx: int,
+    is_single_step: bool,
+    auto_targets: list[str],
+    auto_enabled: bool,
+) -> list[str] | None:
+    """
+    Возвращает only_paths для шага или None (полный контекст).
+
+    Одношаговый план: сужаем шаг 1 (idx == 0).
+    Многошаговый: шаг 1 — полный, шаги 2+ — сужены.
+    """
+    if not auto_enabled or not auto_targets:
+        return None
+    if idx > 0 or is_single_step:
+        return auto_targets
+    return None
+
+
 # ---------- парсинг плана ----------
 
 
@@ -700,13 +720,20 @@ def run_agent(
 
     # --- NEW: автовыбор only_paths из плана ---
     auto_targets: list[str] = []
+    single_step_plan = len(planner.plan.steps) == 1
     if cfg.agent.auto_only_paths:
         auto_targets = _extract_target_files(planner.plan)
         if auto_targets:
-            _console.print(
-                f"[dim]Авто-контекст: шаги 2+ увидят только "
-                f"{len(auto_targets)} файл(ов) из плана[/dim]"
-            )
+            if single_step_plan:
+                _console.print(
+                    f"[dim]Авто-контекст: одношаговый план — "
+                    f"сужен до {len(auto_targets)} файл(ов)[/dim]"
+                )
+            else:
+                _console.print(
+                    f"[dim]Авто-контекст: шаги 2+ увидят только "
+                    f"{len(auto_targets)} файл(ов) из плана[/dim]"
+                )
         else:
             _console.print(
                 "[dim yellow]Авто-контекст: планировщик не указал "
@@ -719,12 +746,16 @@ def run_agent(
     accept_all_ref: list[bool] = [False]
 
     for idx, step in enumerate(planner.plan.steps):
-        # --- NEW: шаг 1 — полный контекст, шаги 2+ — суженный ---
-        # planner уже отсмотрел всё; шаги 2+ видят только целевые файлы
-        if cfg.agent.auto_only_paths and idx > 0 and auto_targets:
-            step_only_paths = auto_targets
-        else:
-            step_only_paths = None  # None → берётся cfg.scanning.only_paths
+        # --- NEW: селективный контекст ---
+        # Одношаговый план: шаг 1 сужен до target_files.
+        # Многошаговый: шаг 1 видит всё (может «доисследовать»),
+        # шаги 2+ сужены до target_files.
+        use_only_paths = (
+            cfg.agent.auto_only_paths and auto_targets and (idx > 0 or single_step_plan)
+        )
+        step_only_paths = auto_targets if use_only_paths else None
+        # None → берётся cfg.scanning.only_paths
+
         ...
         step_result = _run_agent_step(
             goal=goal,
