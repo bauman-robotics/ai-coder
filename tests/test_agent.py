@@ -257,3 +257,9 @@ def test_run_agent_interactive_accept_all(sample_project, minimal_cfg, monkeypat
 
     sig = inspect.signature(run_agent)
     assert "interactive" in sig.parameters
+
+
+def test_agent_config_step_max_output_tokens(minimal_cfg):
+    """AgentConfig.step_max_output_tokens доступен (по умолчанию 8000)."""
+    assert hasattr(minimal_cfg.agent, "step_max_output_tokens")
+    assert minimal_cfg.agent.step_max_output_tokens == 8000

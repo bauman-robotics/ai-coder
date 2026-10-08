@@ -218,7 +218,13 @@ def run_planner(
 
     # 4. запрос
     client = LLMClient(cfg.api)
-    llm_resp = client.chat(system=system, user=user, model=model, json_mode=True)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.step_max_output_tokens,
+    )
     finished_at = datetime.now(ZoneInfo("UTC"))
 
     # 5. парсим
@@ -380,7 +386,13 @@ def _run_agent_step(
 
     # --- запрос ---
     client = LLMClient(cfg.api)
-    llm_resp = client.chat(system=system, user=user, model=model, json_mode=True)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.step_max_output_tokens,
+    )
 
     # --- план операций ---
     write_plan = build_plan(llm_resp.content, project_root, cfg)
@@ -433,6 +445,14 @@ def _run_agent_step(
         from_cache=False,
     )
 
+    # --- проверка finish_reason: если модель обрезалась — это важно увидеть
+    if llm_resp.finish_reason == "length":
+        result.errors.append(
+            f"⚠️ Ответ модели обрезан по max_output_tokens "
+            f"(completion={llm_resp.completion_tokens}). "
+            f"Увеличь step_max_output_tokens или разбей задачу."
+        )
+
     if not apply:
         # Даже без применения — если план пустой, помечаем как skipped
         if write_plan is not None and not write_plan.operations:
@@ -468,9 +488,16 @@ def _run_agent_step(
 
     # --- применение ---
     if write_plan is None or not write_plan.valid:
-        result.errors.append("План невалиден, применение отменено")
+        if write_plan is None:
+            result.errors.append("План не сгенерирован (write_plan is None)")
+        else:
+            if write_plan.parse_error:
+                result.errors.append(f"parse_error: {write_plan.parse_error}")
+            for p in write_plan.problems:
+                result.errors.append(p)
+            if not write_plan.parse_error and not write_plan.problems:
+                result.errors.append("План невалиден (без деталей)")
         return result
-
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_dir = (
         project_root / cfg.output.dir / project_root.name / f"agent-backup-{ts}-step{step.n}"

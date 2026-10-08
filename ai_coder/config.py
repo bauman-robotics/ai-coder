@@ -185,6 +185,7 @@ class AgentConfig(BaseModel):
     verify_timeout_sec: int = 60
     verify_max_output_chars: int = 10_000
     stop_on_verify_failure: bool = True
+    step_max_output_tokens: int = 8000
     include_read_steps: bool = False
 
 

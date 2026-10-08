@@ -115,6 +115,7 @@ agent:
     - "python -m pytest -q"
   verify_timeout_sec: 60
   verify_max_output_chars: 10000
+  step_max_output_tokens: 8000
   stop_on_verify_failure: true
   include_read_steps: false
 
