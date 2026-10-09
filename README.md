@@ -61,6 +61,31 @@ ai-coder run write_readme . --apply
 ai-coder run suggest_improvements . --dry-run
 ```
 
+## Действия
+
+### Read (анализ)
+
+- **`greet`** — обзор проекта: стек, структура, точки входа.
+- **`inventory`** — инвентарь классов и функций.
+- **`suggest_improvements`** — приоритизированные предложения.
+- **`explain`** — объяснить файл / функцию / класс.
+
+### Write (правки)
+
+- **`write_readme`** — сгенерировать README.md.
+- **`add_docstrings`** — добавить докстринги.
+- **`refactor`** — предложения рефакторинга.
+
+### Пример
+
+    ai-coder run inventory . --depth normal
+    ai-coder run write_readme . --apply --yes
+    ai-coder run explain . --only-path ai_coder/agent.py
+
+Полный обзор — в `docs/scenarios.md` (12 сценариев).
+
+---
+
 ## Использование (примеры)
 
 ### Действия (actions)
@@ -123,6 +148,79 @@ ai-coder run write_readme . --apply --no-verify
 - `--refresh` – игнорировать кэш и выполнить запрос заново.
 - `--no-auto-fix` – отключить авто-исправление ошибок.
 - `--max-fix-attempts N` – количество попыток авто-исправления.
+
+## Агент — флаги
+
+`ai-coder agent "<goal>" . [флаги]` — LLM строит план и выполняет.
+
+### Основные режимы
+
+- **`--apply`** — применять правки.
+- **`--tool-loop`** — модель сама вызывает инструменты до `finish`.
+- **`--decompose`** — разбить задачу на подзадачи (5+ файлов).
+- **`--decompose-replan`** — перепланировать при провале.
+- **`--interactive`** (`-i`) — подтверждение каждого dangerous (y/n/a/s/d).
+
+### Безопасность и бюджет
+
+- **`--max-iterations N`** — лимит итераций tool loop.
+- **`--max-cost-rub N`** — остановка при превышении стоимости.
+- **`--decompose-max-cost-rub N`** — бюджет decompose.
+- **`--dry-run`** — dangerous не выполняются.
+- **`--require-clean`** / **`--no-require-clean`** — чистое git-дерево.
+
+### Git
+
+- **`--commit`** — автокоммит после успеха.
+
+### Контекст
+
+- **`--only-path <dir>`** — сузить сканирование.
+- **`--exclude-web`** / **`--include-web`** — вёрстка.
+- **`--no-phase1`** — отключить metadata-планировщик.
+- **`--no-auto-only-paths`** — отключить авто-сужение.
+
+### Верификация и resume
+
+- **`--verify-commands "pytest -q;ruff check ."`** — свои проверки.
+- **`--resume <journal-dir>`** — продолжить прерванный tool loop.
+
+### Превью
+
+- **`--preview-only`** — только план без выполнения.
+
+---
+
+## Команды CLI
+
+| Команда | Что делает |
+|---|---|
+| `ai-coder actions` | список действий из конфига |
+| `ai-coder actions --verbose` | + оценка стоимости |
+| `ai-coder run <action> [path]` | выполнить действие |
+| `ai-coder agent "<goal>" [path]` | агент: план + шаги |
+| `ai-coder fix [path]` | авто-починка: verify → fix |
+| `ai-coder usage` | расходы |
+| `ai-coder backups [path]` | список бэкапов |
+| `ai-coder rollback <backup> [path]` | откат |
+
+### Примеры
+
+    # Tool loop — исправить баг в одном файле
+    ai-coder agent "исправь баг в cache.py" . --tool-loop --apply
+
+    # Decompose — задача на несколько файлов
+    ai-coder agent "добавь поле X" . --tool-loop --decompose --apply
+
+    # Fix — авто-починка
+    ai-coder fix . --verify "pytest -q;ruff check ."
+
+    # Explain — объяснить файл
+    ai-coder run explain . --only-path ai_coder/agent.py
+
+Больше примеров — в `docs/examples.md`.
+
+---
 
 ## Структура проекта
 
