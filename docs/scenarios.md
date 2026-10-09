@@ -17,6 +17,7 @@
 | 8 | Tool loop | `agent "<goal>" --tool-loop --apply` | 🟢 | ~0.05–0.5 RUB |
 | 9 | Decompose (5+ файлов) | `... --decompose` | 🟢 | ~0.6–2 RUB |
 | 10 | Replan при fail | `... --decompose-replan` | 🟢 | +0.5 RUB/replan |
+| 11 | Авто-починка | `fix --max-attempts N` | 🟢 | ~0.3–1.5 RUB |
 
 **Легенда автономности:**
 - ⚪ — один запрос, отчёт.
@@ -211,6 +212,43 @@
 **Когда:** сложные задачи с риском fail.
 
 **Стоимость:** +0.5 RUB за replan.
+
+---
+
+## 11. Авто-починка ошибок
+
+**Что:** цикл `verify → fix (tool loop) → verify → ...` до `success`
+или `--max-attempts`. Не строит план заранее — реагирует на конкретные
+ошибки от pytest/ruff/mypy.
+
+**Команда:**
+
+    ai-coder fix . --verify "python -m pytest -q;ruff check ."
+
+**Когда:** после правок (своих или агента) тесты/линтер падают,
+и надо, чтобы агент сам починил до N раз. Или — как «страховка»
+после ручного рефакторинга.
+
+**Стоимость:** ~0.3–1.5 RUB. Сильно зависит от числа попыток;
+ограничивается `--max-cost-rub N`.
+
+**Флаги:**
+- `--verify "cmd1;cmd2"` — переопределить `config.agent.verify_commands`.
+- `--max-attempts N` — сколько попыток (по умолчанию 3).
+- `--max-cost-rub N` — бюджет всего цикла (10.14.4).
+- `--interactive` — подтверждение каждого dangerous-инструмента.
+- `--journal/--no-journal` — писать журнал `autofix-<ts>/`.
+- `--model`, `--depth`, `--exclude` — как у остальных команд.
+
+**Итог:** `attempts`, `stopped_reason` (`completed` | `max_attempts`
+| `max_cost` | `loop_failed`), `total_cost_rub`, `final_errors`,
+путь к журналу.
+
+**Журнал:** `autofix-<ts>/report.md` + `attempt-N/tool-loop-<ts>/`.
+
+**Отличия от `agent --tool-loop`:** `fix` не планирует — сразу
+запускает цикл по ошибкам verify. Полезно, когда уже понятно,
+что именно надо править (ошибки от pytest/ruff/mypy).
 
 ---
 
