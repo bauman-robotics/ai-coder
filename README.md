@@ -26,6 +26,23 @@ AI-ассистированный анализ git-проектов через D
    ```
 5. Конфигурационные файлы `config/config.yaml` и `config/prompts.yaml` уже подготовлены. При необходимости измените модель, тарифы, сканирование и другие параметры.
 
+## Документация
+
+- **[docs/scenarios.md](docs/scenarios.md)** — 12 сценариев
+  использования (от `run greet` до `decompose-replan`).
+- **[docs/examples.md](docs/examples.md)** — 9 практических
+  примеров с командами и стоимостью (из живых прогонов).
+- **[docs/tools.md](docs/tools.md)** — 5 инструментов tool loop,
+  безопасность, «Как формулировать задачу агенту».
+- **[docs/state.md](docs/state.md)** — текущее состояние проекта.
+- **[docs/experiments.md](docs/experiments.md)** — журнал
+  экспериментов (что пробовали, что вышло).
+- **[docs/reviews/](docs/reviews/)** — внешние обзоры проекта.
+- **[CHANGELOG.md](CHANGELOG.md)** — история изменений по итерациям.
+- **[TODO.md](TODO.md)** — что осталось сделать.
+
+---
+
 ## Инструменты tool loop
 
 Полное описание 5 инструментов (`read_file`, `list_files`,
