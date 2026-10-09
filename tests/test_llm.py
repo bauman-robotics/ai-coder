@@ -180,3 +180,72 @@ def test_chat_retries_on_rate_limit(minimal_cfg, monkeypatch):
 
     assert result.content == "ok after retry"
     assert client._client.chat.completions.create.call_count == 2
+
+
+def test_chat_raises_after_all_retries_exhausted(minimal_cfg, monkeypatch):
+    """Все попытки падают — наружу уходит оригинальное исключение."""
+    from unittest.mock import MagicMock, patch
+
+    from openai import RateLimitError
+
+    from ai_coder.llm import LLMClient
+
+    minimal_cfg.api.retries = 2
+    monkeypatch.setenv(minimal_cfg.api.api_key_env, "sk-test-dummy")
+
+    with patch("ai_coder.llm.OpenAI") as MockOpenAI:
+        MockOpenAI.return_value = MagicMock()
+        client = LLMClient(minimal_cfg.api)
+
+    fake_err = RateLimitError("rate limited", response=MagicMock(), body=None)
+    client._client.chat.completions.create.side_effect = fake_err
+
+    with patch("ai_coder.llm.time.sleep"), pytest.raises(RateLimitError):
+        client.chat(system="s", user="u", model="m")
+
+    assert client._client.chat.completions.create.call_count == 2
+
+
+def test_chat_retries_on_timeout(minimal_cfg, monkeypatch):
+    """APITimeoutError тоже ловится и ретраится."""
+    from unittest.mock import MagicMock, patch
+
+    from openai import APITimeoutError
+
+    from ai_coder.llm import LLMClient
+
+    minimal_cfg.api.retries = 2
+    monkeypatch.setenv(minimal_cfg.api.api_key_env, "sk-test-dummy")
+
+    with patch("ai_coder.llm.OpenAI") as MockOpenAI:
+        MockOpenAI.return_value = MagicMock()
+        client = LLMClient(minimal_cfg.api)
+
+    fake_err = APITimeoutError(request=MagicMock())
+    client._client.chat.completions.create.side_effect = [
+        fake_err,
+        _fake_response(content="ok after timeout retry"),
+    ]
+
+    with patch("ai_coder.llm.time.sleep"):
+        result = client.chat(system="s", user="u", model="m")
+
+    assert result.content == "ok after timeout retry"
+    assert client._client.chat.completions.create.call_count == 2
+
+
+def test_chat_zero_retries_raises_runtime_error(minimal_cfg, monkeypatch):
+    """retries=0 — цикл не выполняется, наружу RuntimeError (страховка)."""
+    from unittest.mock import MagicMock, patch
+
+    from ai_coder.llm import LLMClient
+
+    minimal_cfg.api.retries = 0
+    monkeypatch.setenv(minimal_cfg.api.api_key_env, "sk-test-dummy")
+
+    with patch("ai_coder.llm.OpenAI") as MockOpenAI:
+        MockOpenAI.return_value = MagicMock()
+        client = LLMClient(minimal_cfg.api)
+
+    with pytest.raises(RuntimeError, match="after retries"):
+        client.chat(system="s", user="u", model="m")

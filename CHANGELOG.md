@@ -36,6 +36,89 @@
 
 
 
+## [2026-10-09] iteration 10.14.8 — test(llm): покрытие 100%
+
+### Добавлено
+- 3 теста в `tests/test_llm.py`:
+  - `test_chat_raises_after_all_retries_exhausted` — все retry
+    исчерпаны → наружу уходит оригинальное `RateLimitError`;
+  - `test_chat_retries_on_timeout` — `APITimeoutError` тоже
+    ловится и ретраится;
+  - `test_chat_zero_retries_raises_runtime_error` — `retries=0`,
+    цикл не выполняется → `RuntimeError("... after retries")`.
+- Покрытие `ai_coder/llm.py` — **96% → 100%** (51/51 statements).
+
+### Зачем
+- `llm.py` — точка входа в API DeepSeek. Ошибка в разборе
+  токенов/cache hit/miss → неверная стоимость; ошибка в retry →
+  зависание или необработанное исключение.
+- Непокрытыми оставались: `raise` после исчерпания retries;
+  страховочный `RuntimeError` при `retries=0`;
+  ветка `APITimeoutError`.
+
+### Итого тестов
+- 303 → 306 passed (+3).
+
+---
+
+## [2026-10-09] iteration 10.14.7 — test(decompose): replan покрыт unit-тестами
+
+### Добавлено
+- 3 теста `run_agent_decompose(replan=True)` в `tests/test_agent.py`:
+  - `test_run_agent_decompose_replan_skip` — подзадача падает,
+    replan=skip → цикл идёт дальше, `skipped_subtasks` заполнен;
+  - `test_run_agent_decompose_replan_stop` — replan=stop →
+    `parse_error` установлен, оркестратор останавливается;
+  - `test_run_agent_decompose_replan_modify` — replan=modify →
+    `subtasks` пересобирается, новая подзадача выполняется.
+- Моки: `run_planner_decompose`, `run_tool_loop` (side_effect),
+  `run_planner_replan`, `append_usage`.
+
+### Зачем (проблема 15)
+- Replan в оркестраторе `run_agent_decompose` **не был покрыт**
+  тестами. Были только тесты на `run_planner_replan` (планировщик)
+  и `parse_replan_response` (парсер).
+- В E2E replan **не срабатывал** — правило 14 + `grep` при
+  `'old' not found` предотвращали fail подзадачи.
+- **Вывод:** replan не мёртвый код, а рабочий механизм.
+  В E2E не срабатывал по объективным причинам.
+  Оставляем в кодовой базе.
+
+### Итого тестов
+- 300 → 303 passed (+3).
+
+---
+
+## [2026-10-09] iteration 10.14.6 — fix(cache): хэш по отрендеренному промпту
+
+### Исправлено (review 3.2)
+- `actions.run_fix_action`: `cache_mod.compute_hash` получал
+  синтетическую склейку `prompt_entry.system + "\nERRORS:\n" +
+  errors + "\nPREV:\n" + previous_plan` и **сырой**
+  `prompt_entry.user` (с плейсхолдерами `{{errors}}`, `{{files}}`,
+  `{{tree}}`).
+- Реальный промпт при этом рендерился через `render_prompt(...)`
+  отдельно — хэш и промпт считались по разным формулам.
+- **Фикс:** `compute_hash(prompt_system=system, prompt_user=user)` —
+  по **уже отрендеренному** промпту. Хэш и запрос совпадают 1-в-1.
+
+### Что это даёт
+- Правка подстановок (`{{files}}`, `{{tree}}`, `{{depth_hint}}`) →
+  инвалидация кэша (раньше — нет).
+- Правка структуры шаблона вокруг `{{errors}}`/`{{previous_plan}}`
+  → инвалидация (раньше — нет).
+- Никаких «загадочных» cache hit'ов после правки промпта.
+
+### Тесты
+- `test_run_fix_action_prompt_change_invalidates_cache` — смена
+  шаблона user → кэш промахивается, LLM зовётся снова.
+- `test_run_fix_action_hash_uses_rendered_prompt` — регрессионный:
+  в `compute_hash` уходит отрендеренный system/user **без**
+  плейсхолдеров `{{...}}`.
+- Всего: 298 → 300 passed (+2).
+
+---
+
 ## [2026-10-09] iteration 10.14.5 — docs: сценарий fix
 
 ### Добавлено
