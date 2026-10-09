@@ -472,6 +472,7 @@ def run_agent_decompose(
     dry_run: bool = False,
     interactive: bool = False,
     replan: bool = False,
+    rollback_on_fail: bool = False,
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -498,6 +499,16 @@ def run_agent_decompose(
 
     _console.print(f"[dim]Декомпозиция: {len(dec_result.subtasks)} подзадач[/dim]")
 
+    # --- NEW: decompose-журнал ---
+    decompose_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    decompose_dir: Path | None = None
+    if journal:
+        decompose_dir = (
+            project_root / cfg.output.dir / project_root.name / f"decompose-{decompose_ts}"
+        )
+        decompose_dir.mkdir(parents=True, exist_ok=True)
+        dec_result.journal_dir = decompose_dir
+
     # 2. Выполнить каждую подзадачу через tool loop
     subtasks = list(dec_result.subtasks)
     i = 0
@@ -511,6 +522,10 @@ def run_agent_decompose(
             )
         )
 
+        subtask_subdir: Path | None = None
+        if decompose_dir is not None:
+            subtask_subdir = decompose_dir / f"subtask-{st.n}"
+
         loop_result = run_tool_loop(
             goal=st.goal,
             project_root=project_root,
@@ -523,11 +538,26 @@ def run_agent_decompose(
             dry_run=dry_run,
             interactive=interactive,
             journal=journal,
+            journal_subdir=subtask_subdir,
         )
 
         dec_result.cost_rub += loop_result.total_cost_rub
         dec_result.cost_cny += loop_result.total_cost_cny
         dec_result.cost_usd += loop_result.total_cost_usd
+
+        # --- NEW: записать результат подзадачи ---
+        dec_result.subtask_results.append(
+            {
+                "n": st.n,
+                "goal": st.goal,
+                "files": st.files,
+                "success": loop_result.success,
+                "stopped_reason": loop_result.stopped_reason,
+                "cost_rub": loop_result.total_cost_rub,
+                "backup_dir": str(loop_result.backup_dir) if loop_result.backup_dir else None,
+                "journal_dir": str(loop_result.journal_dir) if loop_result.journal_dir else None,
+            }
+        )
 
         # --- NEW: retry через v4-pro при fail ---
         if not loop_result.success and not dry_run:
@@ -550,10 +580,27 @@ def run_agent_decompose(
                     dry_run=dry_run,
                     interactive=interactive,
                     journal=journal,
+                    journal_subdir=subtask_subdir,
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub
                 dec_result.cost_cny += loop_result.total_cost_cny
                 dec_result.cost_usd += loop_result.total_cost_usd
+
+                if dec_result.subtask_results:
+                    dec_result.subtask_results[-1] = {
+                        "n": st.n,
+                        "goal": st.goal,
+                        "files": st.files,
+                        "success": loop_result.success,
+                        "stopped_reason": loop_result.stopped_reason,
+                        "cost_rub": loop_result.total_cost_rub,
+                        "backup_dir": str(loop_result.backup_dir)
+                        if loop_result.backup_dir
+                        else None,
+                        "journal_dir": str(loop_result.journal_dir)
+                        if loop_result.journal_dir
+                        else None,
+                    }
 
         if not loop_result.success:
             # --- NEW: replan ---
@@ -600,8 +647,25 @@ def run_agent_decompose(
                     dec_result.parse_error = f"subtask {st.n} failed, replan=stop"
                     return dec_result
 
+            # --- NEW: откат при fail ---
+            if rollback_on_fail and not dry_run:
+                _console.print("[yellow]Откат всех успешных подзадач...[/yellow]")
+                from .apply import rollback as do_rollback
+
+                for prev in dec_result.subtask_results:
+                    if prev.get("success") and prev.get("backup_dir"):
+                        try:
+                            do_rollback(Path(prev["backup_dir"]), project_root)
+                            _console.print(f"  [dim]Откат subtask-{prev['n']} ✅[/dim]")
+                        except Exception as e:
+                            _console.print(f"  [red]Ошибка отката subtask-{prev['n']}: {e}[/red]")
+                dec_result.rolled_back = True
+
             _console.print(f"[red]Подзадача {st.n} не выполнена — стоп.[/red]")
             dec_result.parse_error = f"subtask {st.n} failed"
+
+            if decompose_dir is not None:
+                _save_decompose_report(decompose_dir, dec_result, goal)
             return dec_result
 
         i += 1
@@ -620,7 +684,56 @@ def run_agent_decompose(
         )
     )
 
+    if decompose_dir is not None:
+        _save_decompose_report(decompose_dir, dec_result, goal)
+        try:
+            rel = decompose_dir.relative_to(Path.cwd())
+            _console.print(f"[dim]Журнал decompose: {rel}[/dim]")
+        except ValueError:
+            _console.print(f"[dim]Журнал decompose: {decompose_dir}[/dim]")
+
     return dec_result
+
+
+def _save_decompose_report(
+    decompose_dir: Path,
+    result: DecomposeResult,
+    goal: str,
+) -> None:
+    """Сохраняет отчёт decompose."""
+    lines: list[str] = []
+    lines.append(f"# Decompose — {goal}\n")
+    status = "✅ успех" if result.parse_error is None else "❌ неуспех"
+    lines.append(f"**Статус:** {status}")
+    lines.append(f"**Стоимость:** {result.cost_rub:.4f} RUB")
+    if result.rolled_back:
+        lines.append("**Откат:** все успешные подзадачи откачены")
+    lines.append("")
+
+    if result.explanation:
+        lines.append(f"**Explanation:** {result.explanation}\n")
+
+    lines.append("## Подзадачи\n")
+    lines.append("| # | Goal | Статус | Стоимость | Журнал |")
+    lines.append("|---|---|---|---|---|")
+    for r in result.subtask_results:
+        st_status = "✅" if r.get("success") else "❌"
+        jrel = Path(r["journal_dir"]).name if r.get("journal_dir") else "—"
+        lines.append(
+            f"| {r['n']} | {r['goal'][:60]} | {st_status} | {r['cost_rub']:.4f} | {jrel} |"
+        )
+    lines.append("")
+
+    if result.skipped_subtasks:
+        lines.append(f"**Пропущено:** {len(result.skipped_subtasks)}\n")
+        for s in result.skipped_subtasks:
+            lines.append(f"- {s.n}. {s.goal}")
+        lines.append("")
+
+    if result.parse_error:
+        lines.append(f"## Ошибка\n\n```\n{result.parse_error}\n```\n")
+
+    (decompose_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_replan_response(content: str) -> ReplanResult:
@@ -1162,6 +1275,9 @@ class DecomposeResult:
     cost_cny: float = 0.0
     cost_usd: float = 0.0
     skipped_subtasks: list[Subtask] = field(default_factory=list)
+    journal_dir: Path | None = None
+    subtask_results: list[dict] = field(default_factory=list)
+    rolled_back: bool = False
 
 
 # ---------- исполнитель одного шага ----------
@@ -1941,6 +2057,7 @@ def run_tool_loop(
     interactive: bool = False,
     auto_commit: bool = False,
     resume_from: Path | None = None,  # NEW
+    journal_subdir: Path | None = None,  # NEW: куда писать журнал
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -1960,7 +2077,10 @@ def run_tool_loop(
     journal_dir: Path | None = None
     if journal:
         ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
-        journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
+        if journal_subdir is not None:
+            journal_dir = journal_subdir / f"tool-loop-{ts}"
+        else:
+            journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)
 
     # --- metadata-scan для дерева ---

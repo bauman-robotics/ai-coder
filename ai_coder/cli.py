@@ -745,6 +745,11 @@ def agent_cmd(
         "--decompose-replan/--no-decompose-replan",
         help="При провале подзадачи — перепланировать (skip/modify/stop).",
     ),
+    decompose_rollback_on_fail: bool = typer.Option(
+        False,
+        "--decompose-rollback-on-fail/--no-decompose-rollback-on-fail",
+        help="При провале — откатить все успешные подзадачи.",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -845,6 +850,7 @@ def agent_cmd(
                     dry_run=dry_run,
                     interactive=interactive,
                     replan=decompose_replan,
+                    rollback_on_fail=decompose_rollback_on_fail,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка decompose:[/red] {e}")

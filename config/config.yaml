@@ -132,6 +132,7 @@ agent:
   tool_loop_history_other_max_chars: 500
   decompose_model: "deepseek-v4-pro"
   decompose_replan: false
+  decompose_rollback_on_fail: false
 
 output:
   dir: .ai-out
