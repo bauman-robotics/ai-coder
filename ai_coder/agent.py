@@ -2373,6 +2373,7 @@ def run_tool_loop(
         dry_run=dry_run,
         backup_dir=backup_dir,
         commit_hash=commit_hash,  # NEW
+        verify_errors=verify_errors,
     )
 
     if journal_dir is not None:
