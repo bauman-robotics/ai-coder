@@ -1174,6 +1174,109 @@ def backups_cmd(
     console.print(table)
 
 
+@app.command("fix")
+def fix_cmd(
+    path: Path = typer.Argument(Path("."), help="Путь к проекту"),
+    config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
+    prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Модель для fix"),
+    depth: str = typer.Option("normal", "--depth", "-d", help="shallow|normal|deep"),
+    verify_commands: str | None = typer.Option(
+        None,
+        "--verify",
+        help="Команды через ';' (например, 'pytest -q;ruff check .'). "
+        "По умолчанию — из config.yaml.",
+    ),
+    max_attempts: int = typer.Option(3, "--max-attempts", help="Максимум попыток fix"),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="Подтверждать каждый dangerous-инструмент"
+    ),
+    journal: bool = typer.Option(True, "--journal/--no-journal"),
+    exclude: list[str] = typer.Option([], "--exclude", "-x"),
+):
+    """Автоматическое исправление: verify → fix → verify → ..."""
+    from .agent import run_auto_fix
+
+    cfg, pr_cfg = _load(config, prompts)
+
+    project_root = path.resolve()
+    if not project_root.is_dir():
+        console.print(f"[red]Не директория:[/red] {project_root}")
+        raise typer.Exit(1)
+
+    # Команды verify: CLI > config
+    cmds: list[str] = []
+    if verify_commands:
+        cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
+    else:
+        cmds = list(cfg.agent.verify_commands)
+
+    if not cmds:
+        console.print(
+            "[red]Нет verify_commands. Задай --verify или config.agent.verify_commands[/red]"
+        )
+        raise typer.Exit(1)
+
+    if interactive and not sys.stdin.isatty():
+        console.print("[red]--interactive требует TTY[/red]")
+        raise typer.Exit(1)
+
+    console.print(
+        Panel.fit(
+            f"[bold]Проект:[/bold] {project_root}\n"
+            f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
+            f"[bold]Попыток:[/bold] {max_attempts}\n"
+            f"[bold]Проверки:[/bold]\n" + "\n".join(f"  - {c}" for c in cmds),
+            title="ai-coder fix",
+        )
+    )
+
+    try:
+        result = run_auto_fix(
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=pr_cfg,
+            verify_commands=cmds,
+            max_attempts=max_attempts,
+            model=model,
+            depth=depth,
+            extra_exclude=list(exclude) or None,
+            journal=journal,
+            interactive=interactive,
+        )
+    except Exception as e:
+        console.print(f"[red]Ошибка:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print()
+    status = "[green]✅ успех[/green]" if result.success else "[red]❌ неуспех[/red]"
+    console.print(
+        Panel.fit(
+            f"{status}\n"
+            f"[bold]Попыток:[/bold] {result.attempts}\n"
+            f"[bold]Причина:[/bold] {result.stopped_reason}\n"
+            f"[bold]Стоимость:[/bold] {result.total_cost_rub:.4f} RUB",
+            title="Auto-fix — итог",
+        )
+    )
+
+    if result.final_errors:
+        console.print("[red]Оставшиеся ошибки:[/red]")
+        for err in result.final_errors[:5]:
+            console.print(f"  [red]✗[/red] {err}")
+        if len(result.final_errors) > 5:
+            console.print(f"  [dim]... ещё {len(result.final_errors) - 5}[/dim]")
+
+    if result.journal_dir:
+        try:
+            rel = result.journal_dir.relative_to(Path.cwd())
+            console.print(f"[dim]Журнал: {rel}[/dim]")
+        except ValueError:
+            console.print(f"[dim]Журнал: {result.journal_dir}[/dim]")
+
+    raise typer.Exit(0 if result.success else 1)
+
+
 @app.command("usage")
 def usage_show(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
