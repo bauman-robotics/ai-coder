@@ -67,6 +67,7 @@ ai-coder run suggest_improvements . --dry-run
 
 - `ai-coder actions` – показать список действий из конфига.
 - `ai-coder actions --verbose` – показать оценку стоимости для текущего проекта.
+- `ai-coder run explain` – действие explain: пояснить назначение и логику кода в выбранных файлах проекта.
 
 ### Выполнение действия (run)
 
