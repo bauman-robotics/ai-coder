@@ -31,3 +31,6 @@ dist/
 .coverage
 coverage.xml
 htmlcov/
+
+# Next-chat bundle (локальный, не в git)
+next-chat/
