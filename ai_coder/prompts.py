@@ -26,6 +26,7 @@ def render_prompt(
     depth: str,
     scan: ScanResult,
     extra: dict[str, str] | None = None,
+    hint: str | None = None,
 ) -> tuple[str, str]:
     """
     Возвращает (system, user) с подставленными переменными.
@@ -53,6 +54,8 @@ def render_prompt(
 
     system = _VAR_RE.sub(_sub, entry.system)
     user = _VAR_RE.sub(_sub, entry.user)
+    if hint:
+        user = user + "\n\n[УТОЧНЕНИЕ]\n" + hint + "\n"
     return system, user
 
 

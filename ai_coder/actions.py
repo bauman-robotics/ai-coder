@@ -47,6 +47,7 @@ def run_action(
     use_cache: bool = True,
     refresh: bool = False,
     web_assets_override: bool | None = None,
+    hint: str | None = None,
 ) -> ActionResult:
     if depth not in VALID_DEPTHS:
         raise ValueError(f"depth должен быть один из {sorted(VALID_DEPTHS)}, получено '{depth}'")
@@ -154,7 +155,7 @@ def run_action(
                         from_cache=True,
                     )
     # 4. рендер и запрос к LLM (как было)
-    system, user = render_prompt(prompt_entry, depth=depth, scan=scan)
+    system, user = render_prompt(prompt_entry, depth=depth, scan=scan, hint=hint)
     started_at = datetime.now(ZoneInfo("UTC"))
     is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
     cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")

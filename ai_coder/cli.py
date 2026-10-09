@@ -206,6 +206,11 @@ def run(
         help="Сканировать только указанный путь (можно несколько раз). "
         "Например: --only-path ai_coder/ --only-path config/",
     ),
+    hint: str | None = typer.Option(
+        None,
+        "--hint",
+        help="Доп. указание к промпту (добавляется в конец user).",
+    ),
 ):
     """Выполнить действие над проектом."""
     cfg, pr_cfg = _load(config, prompts)
@@ -279,6 +284,7 @@ def run(
                 use_cache=not no_cache,
                 refresh=refresh,
                 web_assets_override=web_override,
+                hint=hint,
                 # only_paths уже в cfg.scanning — не надо дублировать
             )
     except Exception as e:
