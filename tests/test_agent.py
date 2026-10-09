@@ -1758,3 +1758,42 @@ def _fail_loop_with_cost(cost: float) -> "object":
         stopped_reason="completed",
         total_cost_rub=cost,
     )
+
+
+def test_run_agent_decompose_max_cost(sample_project, minimal_cfg, prompts_cfg):
+    """Стоимость превысила max_cost_rub — stopped_reason=max_cost.
+
+    Фича 10.14.16: флаг --decompose-max-cost-rub.
+    После подзадачи, если dec_result.cost_rub >= max_cost_rub,
+    run_agent_decompose останавливается с parse_error="max_cost exceeded".
+    """
+    from ai_coder.agent import DecomposeResult, ToolLoopResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None  # без retry
+
+    dec = DecomposeResult(
+        explanation="two subtasks",
+        subtasks=[_subtask(1, "first"), _subtask(2, "second")],
+    )
+    # Дорогая первая подзадача (5 RUB) при лимите 1 RUB
+    expensive = ToolLoopResult(success=True, summary="done", iterations=1, total_cost_rub=5.0)
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            max_cost_rub=1.0,
+        )
+
+    assert result.parse_error is not None
+    assert "max_cost exceeded" in result.parse_error
+    # Вторая подзадача не выполнялась
+    assert len(result.subtask_results) == 1
+    assert result.cost_rub == 5.0

@@ -473,6 +473,7 @@ def run_agent_decompose(
     interactive: bool = False,
     replan: bool = False,
     rollback_on_fail: bool = False,
+    max_cost_rub: float | None = None,
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -526,6 +527,9 @@ def run_agent_decompose(
         if decompose_dir is not None:
             subtask_subdir = decompose_dir / f"subtask-{st.n}"
 
+        remaining = (
+            max(0.0, max_cost_rub - dec_result.cost_rub) if max_cost_rub is not None else None
+        )
         loop_result = run_tool_loop(
             goal=st.goal,
             project_root=project_root,
@@ -535,6 +539,7 @@ def run_agent_decompose(
             depth=depth,
             extra_exclude=extra_exclude,
             max_iterations=cfg.agent.max_steps,
+            max_cost_rub=remaining,
             dry_run=dry_run,
             interactive=interactive,
             journal=journal,
@@ -568,6 +573,11 @@ def run_agent_decompose(
                     f"({loop_result.stopped_reason}). "
                     f"Повтор через {fallback_model}...[/yellow]"
                 )
+                remaining = (
+                    max(0.0, max_cost_rub - dec_result.cost_rub)
+                    if max_cost_rub is not None
+                    else None
+                )
                 loop_result = run_tool_loop(
                     goal=st.goal,
                     project_root=project_root,
@@ -577,6 +587,7 @@ def run_agent_decompose(
                     depth=depth,
                     extra_exclude=extra_exclude,
                     max_iterations=cfg.agent.max_steps,
+                    max_cost_rub=remaining,
                     dry_run=dry_run,
                     interactive=interactive,
                     journal=journal,
@@ -605,6 +616,10 @@ def run_agent_decompose(
                         if loop_result.journal_dir
                         else None,
                     }
+
+        if max_cost_rub is not None and dec_result.cost_rub >= max_cost_rub:
+            dec_result.parse_error = "max_cost exceeded"
+            return dec_result
 
         if not loop_result.success:
             # --- NEW: replan ---

@@ -750,6 +750,11 @@ def agent_cmd(
         "--decompose-rollback-on-fail/--no-decompose-rollback-on-fail",
         help="При провале — откатить все успешные подзадачи.",
     ),
+    decompose_max_cost_rub: float | None = typer.Option(
+        None,
+        "--decompose-max-cost-rub",
+        help="Остановка decompose при превышении стоимости (RUB).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -851,6 +856,7 @@ def agent_cmd(
                     interactive=interactive,
                     replan=decompose_replan,
                     rollback_on_fail=decompose_rollback_on_fail,
+                    max_cost_rub=decompose_max_cost_rub,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка decompose:[/red] {e}")
