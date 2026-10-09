@@ -271,10 +271,19 @@ def tool_run_shell(args: dict[str, Any], project_root: Path) -> ToolResult:
 
 
 def tool_read_file(args: dict[str, Any], project_root: Path) -> ToolResult:
-    """read_file(path: str) → содержимое файла (до 50K символов)."""
+    """read_file(path, line_start?, line_end?) → содержимое файла или участок.
+
+    Без line_start/line_end — весь файл (до 50K символов).
+    С line_start/line_end — только строки [line_start, line_end] включительно
+    (нумерация с 1). Нужно для больших файлов: не обрезается, читаем точно
+    нужный участок.
+    """
     path = str(args.get("path", "")).strip()
     if not path:
         return ToolResult(ok=False, error="read_file: missing 'path'")
+
+    line_start = args.get("line_start")
+    line_end = args.get("line_end")
 
     try:
         abs_path = _safe_path(project_root, path)
@@ -291,7 +300,37 @@ def tool_read_file(args: dict[str, Any], project_root: Path) -> ToolResult:
     except OSError as e:
         return ToolResult(ok=False, error=f"read error: {e}")
 
-    # ограничение — 50K символов
+    # --- режим участка: line_start / line_end ---
+    if line_start is not None or line_end is not None:
+        try:
+            start = int(line_start) if line_start is not None else 1
+            end = int(line_end) if line_end is not None else 10**9
+        except (TypeError, ValueError):
+            return ToolResult(
+                ok=False,
+                error="read_file: line_start/line_end must be integers",
+            )
+        if start < 1:
+            start = 1
+        lines = text.splitlines()
+        total = len(lines)
+        if end > total:
+            end = total
+        if start > total:
+            return ToolResult(
+                ok=False,
+                error=f"read_file: line_start={start} > total lines ({total})",
+            )
+        if start > end:
+            return ToolResult(
+                ok=False,
+                error=f"read_file: line_start={start} > line_end={end}",
+            )
+        selected = "\n".join(lines[start - 1 : end])
+        header = f"# {path} (lines {start}-{end} of {total})\n"
+        return ToolResult(ok=True, output=header + selected)
+
+    # --- режим файла целиком (как было) ---
     if len(text) > 50_000:
         text = text[:50_000] + f"\n... [обрезано, всего {len(text)} символов]"
 
@@ -429,9 +468,20 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, Callable[[dict[str, Any], Path], ToolRe
     "read_file": (
         ToolSpec(
             name="read_file",
-            description="Read the contents of a file. Use for inspection.",
-            args={"path": "relative path to file (POSIX)"},
-            returns="file contents as text (up to 50K chars)",
+            description=(
+                "Read a file (or a specific line range of a large file). "
+                "For files with '[обрезано]' in output, use grep -n + "
+                "read_file(line_start, line_end) to read the exact range."
+            ),
+            args={
+                "path": "relative path to file (POSIX)",
+                "line_start": "optional 1-based start line (for large files)",
+                "line_end": "optional 1-based end line (inclusive)",
+            },
+            returns=(
+                "file contents, or a line-range slice with header "
+                "'# path (lines X-Y of N)' when line_start/line_end given"
+            ),
         ),
         tool_read_file,
     ),

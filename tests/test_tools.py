@@ -582,3 +582,96 @@ def test_format_tool_history_edit_file_uses_500():
     text = format_tool_history([(a, r)], other_max_chars=500)
     assert "обрезано" in text
     assert "grep" in text.lower()
+
+
+# ---------- read_file: line_start / line_end ----------
+
+
+def test_read_file_with_line_range(tmp_path: Path):
+    """read_file(line_start, line_end) — читает только участок."""
+    content = "\n".join(f"line {i}" for i in range(1, 101))
+    (tmp_path / "big.py").write_text(content, encoding="utf-8")
+
+    r = execute_tool(
+        "read_file",
+        {"path": "big.py", "line_start": 10, "line_end": 20},
+        tmp_path,
+    )
+    assert r.ok
+    # Заголовок с диапазоном
+    assert "lines 10-20 of 100" in r.output
+    # Строки 10..20 включительно (11 строк)
+    for i in range(10, 21):
+        assert f"line {i}" in r.output
+    # Строки вне диапазона не попали
+    assert "line 9" not in r.output
+    assert "line 21" not in r.output
+
+
+def test_read_file_only_line_start(tmp_path: Path):
+    """read_file(line_start=95) без line_end — до конца файла."""
+    content = "\n".join(f"line {i}" for i in range(1, 101))
+    (tmp_path / "big.py").write_text(content, encoding="utf-8")
+
+    r = execute_tool(
+        "read_file",
+        {"path": "big.py", "line_start": 95},
+        tmp_path,
+    )
+    assert r.ok
+    assert "lines 95-100 of 100" in r.output
+    assert "line 95" in r.output
+    assert "line 100" in r.output
+    assert "line 94" not in r.output
+
+
+def test_read_file_line_range_clamps_end(tmp_path: Path):
+    """line_end больше, чем строк в файле — обрезается до конца."""
+    content = "\n".join(f"line {i}" for i in range(1, 11))
+    (tmp_path / "small.py").write_text(content, encoding="utf-8")
+
+    r = execute_tool(
+        "read_file",
+        {"path": "small.py", "line_start": 5, "line_end": 9999},
+        tmp_path,
+    )
+    assert r.ok
+    assert "lines 5-10 of 10" in r.output
+
+
+def test_read_file_line_range_invalid_order(tmp_path: Path):
+    """line_start > line_end → ошибка."""
+    (tmp_path / "x.py").write_text("a\nb\nc\n", encoding="utf-8")
+
+    r = execute_tool(
+        "read_file",
+        {"path": "x.py", "line_start": 10, "line_end": 5},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "line_start=10" in r.error
+
+
+def test_read_file_line_range_start_out_of_bounds(tmp_path: Path):
+    """line_start > total lines → ошибка."""
+    (tmp_path / "x.py").write_text("a\nb\nc\n", encoding="utf-8")
+
+    r = execute_tool(
+        "read_file",
+        {"path": "x.py", "line_start": 100},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "100" in r.error and "total lines" in r.error
+
+
+def test_read_file_no_range_still_returns_full_small_file(tmp_path: Path):
+    """Без line_start/line_end — весь файл (поведение не изменилось)."""
+    (tmp_path / "x.py").write_text("a = 1\nb = 2\n", encoding="utf-8")
+
+    r = execute_tool("read_file", {"path": "x.py"}, tmp_path)
+    assert r.ok
+    assert "a = 1" in r.output
+    assert "b = 2" in r.output
+    # Заголовка с диапазоном нет
+    assert "lines" not in r.output.split("\n")[0]
