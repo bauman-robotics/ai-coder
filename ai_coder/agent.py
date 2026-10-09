@@ -471,6 +471,7 @@ def run_agent_decompose(
     journal: bool = True,
     dry_run: bool = False,
     interactive: bool = False,
+    replan: bool = False,
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -498,7 +499,10 @@ def run_agent_decompose(
     _console.print(f"[dim]Декомпозиция: {len(dec_result.subtasks)} подзадач[/dim]")
 
     # 2. Выполнить каждую подзадачу через tool loop
-    for st in dec_result.subtasks:
+    subtasks = list(dec_result.subtasks)
+    i = 0
+    while i < len(subtasks):
+        st = subtasks[i]
         _console.print()
         _console.print(
             Panel.fit(
@@ -552,14 +556,65 @@ def run_agent_decompose(
                 dec_result.cost_usd += loop_result.total_cost_usd
 
         if not loop_result.success:
+            # --- NEW: replan ---
+            if replan and not dry_run:
+                replan_model = getattr(cfg.agent, "decompose_model", None) or model
+                replan_result = run_planner_replan(
+                    goal=goal,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=prompts_cfg,
+                    failed_subtask=st,
+                    failed_error=loop_result.summary,
+                    completed_subtasks=subtasks[:i],
+                    remaining_subtasks=subtasks[i + 1 :],
+                    model=replan_model,
+                    depth=depth,
+                )
+                dec_result.cost_rub += replan_result.cost_rub
+                dec_result.cost_cny += replan_result.cost_cny
+                dec_result.cost_usd += replan_result.cost_usd
+
+                if replan_result.parse_error is not None:
+                    _console.print(f"[red]Replan parse_error:[/red] {replan_result.parse_error}")
+                    dec_result.parse_error = f"replan parse_error: {replan_result.parse_error}"
+                    return dec_result
+
+                if replan_result.action == "skip":
+                    _console.print(
+                        f"[yellow]Replan: skip подзадачи {st.n} "
+                        f"({replan_result.explanation})[/yellow]"
+                    )
+                    dec_result.skipped_subtasks.append(st)
+                    i += 1
+                    continue
+                elif replan_result.action == "modify":
+                    _console.print(
+                        f"[yellow]Replan: modify — новых подзадач "
+                        f"{len(replan_result.new_subtasks)}[/yellow]"
+                    )
+                    subtasks = subtasks[:i] + replan_result.new_subtasks
+                    continue
+                elif replan_result.action == "stop":
+                    _console.print(f"[red]Replan: stop ({replan_result.explanation})[/red]")
+                    dec_result.parse_error = f"subtask {st.n} failed, replan=stop"
+                    return dec_result
+
             _console.print(f"[red]Подзадача {st.n} не выполнена — стоп.[/red]")
             dec_result.parse_error = f"subtask {st.n} failed"
             return dec_result
 
+        i += 1
+
     _console.print()
+    skipped_info = ""
+    if dec_result.skipped_subtasks:
+        skipped_info = f"\n[yellow]Пропущено: {len(dec_result.skipped_subtasks)}[/yellow]"
     _console.print(
         Panel.fit(
-            f"[green]✅ Все {len(dec_result.subtasks)} подзадач выполнены[/green]\n"
+            f"[green]✅ Декомпозиция завершена[/green]\n"
+            f"[bold]Подзадач:[/bold] {len(subtasks)}"
+            f"{skipped_info}\n"
             f"[bold]Стоимость всего:[/bold] {dec_result.cost_rub:.4f} RUB",
             title="Декомпозиция — итог",
         )
@@ -1106,6 +1161,7 @@ class DecomposeResult:
     cost_rub: float = 0.0
     cost_cny: float = 0.0
     cost_usd: float = 0.0
+    skipped_subtasks: list[Subtask] = field(default_factory=list)
 
 
 # ---------- исполнитель одного шага ----------

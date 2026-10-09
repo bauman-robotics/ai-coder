@@ -740,6 +740,11 @@ def agent_cmd(
         "--decompose",
         help="Декомпозиция: разбить задачу на подзадачи и выполнить через tool loop.",
     ),
+    decompose_replan: bool = typer.Option(
+        False,
+        "--decompose-replan/--no-decompose-replan",
+        help="При провале подзадачи — перепланировать (skip/modify/stop).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -839,6 +844,7 @@ def agent_cmd(
                     journal=journal,
                     dry_run=dry_run,
                     interactive=interactive,
+                    replan=decompose_replan,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка decompose:[/red] {e}")
@@ -868,6 +874,11 @@ def agent_cmd(
                 files = ", ".join(subtask.files[:3]) or "—"
                 table.add_row(str(subtask.n), subtask.goal[:80], files)
             console.print(table)
+
+        if getattr(dec_result, "skipped_subtasks", None):
+            console.print(
+                f"[yellow]Пропущено подзадач: {len(dec_result.skipped_subtasks)}[/yellow]"
+            )
 
         raise typer.Exit(0 if dec_result.parse_error is None else 1)
 

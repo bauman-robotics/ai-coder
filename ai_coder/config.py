@@ -203,6 +203,7 @@ class AgentConfig(BaseModel):
     tool_loop_history_max_chars: int = 10_000
     tool_loop_history_other_max_chars: int = 500
     decompose_model: str | None = None
+    decompose_replan: bool = False
 
 
 # ---------- root ----------
