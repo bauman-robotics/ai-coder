@@ -510,6 +510,32 @@ def run_agent_decompose(
         dec_result.cost_cny += loop_result.total_cost_cny
         dec_result.cost_usd += loop_result.total_cost_usd
 
+        # --- NEW: retry через v4-pro при fail ---
+        if not loop_result.success and not dry_run:
+            fallback_model = getattr(cfg.agent, "decompose_model", None)
+            if fallback_model and fallback_model != model:
+                _console.print(
+                    f"[yellow]Подзадача {st.n} не выполнена "
+                    f"({loop_result.stopped_reason}). "
+                    f"Повтор через {fallback_model}...[/yellow]"
+                )
+                loop_result = run_tool_loop(
+                    goal=st.goal,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=prompts_cfg,
+                    model=fallback_model,
+                    depth=depth,
+                    extra_exclude=extra_exclude,
+                    max_iterations=cfg.agent.max_steps,
+                    dry_run=dry_run,
+                    interactive=interactive,
+                    journal=journal,
+                )
+                dec_result.cost_rub += loop_result.total_cost_rub
+                dec_result.cost_cny += loop_result.total_cost_cny
+                dec_result.cost_usd += loop_result.total_cost_usd
+
         if not loop_result.success:
             _console.print(f"[red]Подзадача {st.n} не выполнена — стоп.[/red]")
             dec_result.parse_error = f"subtask {st.n} failed"

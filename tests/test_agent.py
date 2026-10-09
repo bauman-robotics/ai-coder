@@ -1276,3 +1276,49 @@ def test_run_tool_loop_parse_error_exhausted(sample_project, minimal_cfg, prompt
     assert result.success is False
     assert result.stopped_reason == "parse_error"
     assert MockClient.return_value.chat.call_count == 3
+
+
+def test_run_agent_decompose_retry_v4pro(sample_project, minimal_cfg, prompts_cfg):
+    """При fail подзадачи — retry через decompose_model."""
+    from ai_coder.agent import run_agent_decompose
+    from ai_coder.pricing import Rate
+
+    (sample_project / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+    # 1. Decompose: 1 подзадача
+    decompose_resp = (
+        '{"explanation": "x", "subtasks": [{"n": 1, "goal": "edit a.py", "files": ["a.py"]}]}'
+    )
+
+    # 2. Tool loop (flash): fail
+    flash_fail = "not json"
+
+    # 3. Tool loop (v4-pro): успех
+    v4pro_ok = '{"finish": true, "summary": "done", "success": true}'
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        # 1-й вызов — decompose, 2-й — flash (fail), 3-й — v4-pro (ok)
+        MockClient.return_value.chat.side_effect = [
+            _make_llm_response(decompose_resp),
+            _make_llm_response(flash_fail),
+            _make_llm_response(flash_fail),
+            _make_llm_response(flash_fail),  # retry parse_error 2 раза
+            _make_llm_response(v4pro_ok),
+        ]
+
+        result = run_agent_decompose(
+            goal="test retry",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            model="test-model-flash",
+            journal=False,
+        )
+
+    # должна быть попытка retry
+    assert MockClient.return_value.chat.call_count >= 4
