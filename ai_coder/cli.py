@@ -976,6 +976,14 @@ def agent_cmd(
             console.print(f"[dim]Посмотреть: git show {loop_result.commit_hash}[/dim]")
             console.print(f"[dim]Откатить: git revert {loop_result.commit_hash}[/dim]")
 
+        if loop_result.verify_errors:
+            console.print()
+            console.print("[red]Ошибки verify:[/red]")
+            for err in loop_result.verify_errors[:5]:
+                console.print(f"  [red]✗[/red] {err}")
+            if len(loop_result.verify_errors) > 5:
+                console.print(f"  [dim]... ещё {len(loop_result.verify_errors) - 5}[/dim]")
+
         if loop_result.dry_run:
             console.print("[yellow]⚠️ Режим dry-run: изменения НЕ применялись.[/yellow]")
 

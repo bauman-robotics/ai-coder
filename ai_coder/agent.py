@@ -1248,6 +1248,7 @@ class ToolLoopResult:
     dry_run: bool = False
     backup_dir: Path | None = None
     commit_hash: str | None = None  # NEW
+    verify_errors: list[str] = field(default_factory=list)
 
 
 # ---------- декомпозиция задач ----------
@@ -2315,6 +2316,28 @@ def run_tool_loop(
             )
         except OSError:
             pass
+
+    # --- NEW: verify_commands после успеха ---
+    verify_errors: list[str] = []
+    if success and cfg.agent.verify_commands and not dry_run:
+        _console.print(f"[dim]Проверка: {'; '.join(cfg.agent.verify_commands)}[/dim]")
+        verify_errors = run_verify_commands(
+            cfg.agent.verify_commands,
+            project_root,
+            timeout_sec=cfg.agent.verify_timeout_sec,
+            max_output_chars=cfg.agent.verify_max_output_chars,
+        )
+        if verify_errors:
+            success = False
+            stopped_reason = "verify_failed"
+            summary = f"verify failed: {len(verify_errors)} ошибок"
+            _console.print(f"[red]Проверка не прошла ({len(verify_errors)}):[/red]")
+            for err in verify_errors[:5]:
+                _console.print(f"  [red]✗[/red] {err}")
+            if len(verify_errors) > 5:
+                _console.print(f"  [dim]... ещё {len(verify_errors) - 5}[/dim]")
+        else:
+            _console.print("[green]✅ Проверка пройдена[/green]")
 
     # --- NEW: автокоммит после успеха ---
     commit_hash: str | None = None

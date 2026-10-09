@@ -1365,3 +1365,62 @@ def test_parse_replan_invalid_action():
     assert result.parse_error is not None
     assert "invalid action" in result.parse_error
     assert result.action == "stop"  # default
+
+
+def test_run_tool_loop_verify_success(sample_project, minimal_cfg, prompts_cfg):
+    """verify_commands проходят — success=True."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    minimal_cfg.agent.verify_commands = ["true"]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="verify ok",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.success is True
+    assert result.verify_errors == []
+
+
+def test_run_tool_loop_verify_failed(sample_project, minimal_cfg, prompts_cfg):
+    """verify_commands упали — success=False, stopped_reason=verify_failed."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    minimal_cfg.agent.verify_commands = ["false"]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="verify fail",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.success is False
+    assert result.stopped_reason == "verify_failed"
+    assert len(result.verify_errors) > 0
