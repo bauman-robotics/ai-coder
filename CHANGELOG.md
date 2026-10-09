@@ -36,6 +36,51 @@
 
 
 
+## [2026-10-09] iteration 10.14.1–10.14.3 — feat: auto-fix cycle
+
+### Добавлено (10.14.1 — run_auto_fix)
+- `AutoFixResult` — dataclass: `success`, `attempts`,
+  `total_cost_rub/cny/usd`, `initial_errors`, `final_errors`,
+  `journal_dir`, `stopped_reason`.
+- `run_auto_fix` в `ai_coder/agent.py`: цикл
+  `verify_commands → (fail) → run_tool_loop(goal='исправь ошибки: ...')
+  → verify → ...` до `success` или `max_attempts`.
+- `_save_auto_fix_report` — `report.md` с начальными и финальными
+  ошибками, списком проверок, стоимостью.
+- `stopped_reason`: `completed` | `max_attempts` | `loop_failed`
+  | `no_verify_commands`.
+
+### Добавлено (10.14.2 — CLI `fix`)
+- Команда `ai-coder fix .` — цикл verify → fix → verify.
+- Флаги: `--verify 'pytest -q;ruff check .'` (переопределяет
+  `config.agent.verify_commands`), `--max-attempts N`,
+  `--interactive`, `--journal/--no-journal`, `--model`, `--depth`,
+  `--exclude`.
+- Итог: `attempts`, `stopped_reason`, `total_cost_rub`,
+  `final_errors`, путь к журналу.
+- Валидация: `--interactive` требует TTY; если verify-команд нет —
+  выход с ошибкой.
+
+### Добавлено (10.14.3 — тесты)
+- `test_run_auto_fix_no_errors` — verify сразу OK, 1 попытка.
+- `test_run_auto_fix_loop_success` — ошибки → LLM fix → success.
+- `test_run_auto_fix_max_attempts` — лимит, `stopped_reason=max_attempts`.
+- 294 → **297 passed**.
+
+### E2E
+- `ai-coder fix . --verify "python -m pytest -q"`:
+  цикл работает, отчёт `autofix-<ts>/report.md`,
+  `attempt-N/tool-loop-<ts>/` — журналы попыток.
+
+### Известное ограничение
+- `run_auto_fix` **не прокидывает** `max_cost_rub` в `run_tool_loop` —
+  бюджет попыток не ограничен (TODO 10.14.x).
+
+### Итого тестов
+- 294 → 297 passed (+3).
+
+---
+
 ## [2026-10-09] iteration 10.13 — feat: verify_commands в tool loop
 
 ### Добавлено
