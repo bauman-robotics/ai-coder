@@ -130,6 +130,7 @@ agent:
   phase1_max_output_tokens: 2000    # NEW
   tool_loop_history_max_chars: 10000
   tool_loop_history_other_max_chars: 500
+  decompose_model: "deepseek-v4-pro"
 
 output:
   dir: .ai-out

@@ -290,6 +290,243 @@ def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
     return sorted(set(paths)), None
 
 
+def parse_decompose_response(content: str) -> DecomposeResult:
+    """
+    Парсит ответ планировщика-декомпозитора.
+
+    Ожидает JSON:
+      {"explanation": "...",
+       "subtasks": [{"n": 1, "goal": "...", "files": ["..."]}, ...]}
+
+    Устойчив к markdown-обёртке, мусору, двум JSON подряд.
+    """
+    result = DecomposeResult(raw_json=content)
+    text = content.strip()
+
+    # markdown-обёртка
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    # вырезать первый {...}
+    if not text.startswith("{"):
+        start = text.find("{")
+        if start == -1:
+            result.parse_error = "no '{' found"
+            return result
+        text = text[start:]
+
+    # raw_decode — берём первый JSON-объект
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(text)
+    except json.JSONDecodeError as e:
+        result.parse_error = f"JSON parse error: {e}"
+        return result
+
+    if not isinstance(data, dict):
+        result.parse_error = f"expected dict, got {type(data).__name__}"
+        return result
+
+    result.explanation = str(data.get("explanation", "")).strip()
+
+    subtasks_raw = data.get("subtasks", [])
+    if not isinstance(subtasks_raw, list):
+        result.parse_error = "'subtasks' must be a list"
+        return result
+
+    for i, s in enumerate(subtasks_raw, 1):
+        if not isinstance(s, dict):
+            continue
+        goal = str(s.get("goal", "")).strip()
+        if not goal:
+            continue
+        files_raw = s.get("files", [])
+        files = [str(f) for f in files_raw] if isinstance(files_raw, list) else []
+        result.subtasks.append(Subtask(n=i, goal=goal, files=files))
+
+    if not result.subtasks and result.parse_error is None:
+        result.parse_error = "empty subtasks"
+
+    return result
+
+
+def run_planner_decompose(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+) -> DecomposeResult:
+    """
+    Планировщик-декомпозитор: одна задача → список подзадач.
+    """
+    model = model or cfg.api.model
+
+    # metadata-scan (дерево + метаданные)
+    scan_meta = scan_project_metadata(project_root, cfg.scanning, extra_exclude=extra_exclude)
+
+    # промпт
+    prompt_entry = prompts_cfg.get("agent_decompose_json")
+    metadata_block = render_metadata_block(scan_meta)
+    empty_scan = ScanResult(root=project_root)
+    system, user = render_prompt(
+        prompt_entry,
+        depth=depth,
+        scan=empty_scan,
+        extra={
+            "goal": goal,
+            "tree": scan_meta.tree,
+            "metadata": metadata_block,
+        },
+    )
+
+    # тариф и курсы
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    # запрос
+    client = LLMClient(cfg.api)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.step_max_output_tokens,
+    )
+
+    # парсим
+    result = parse_decompose_response(llm_resp.content)
+    result.llm = llm_resp
+
+    # стоимость
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+    result.cost_rub = cost.cost_rub
+    result.cost_cny = cost.cost_cny
+    result.cost_usd = cost.cost_usd
+
+    # учёт
+    output_root = project_root / cfg.output.dir
+    append_usage(
+        project_root=project_root,
+        output_root=output_root,
+        action="agent:decompose",
+        project_name=project_root.name,
+        model=model,
+        depth=depth,
+        files_count=scan_meta.total_files,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok" if result.parse_error is None else "parse_error",
+        usage_cfg=cfg.usage,
+        iteration=0,
+        parent_action="agent",
+    )
+
+    return result
+
+
+def run_agent_decompose(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+    journal: bool = True,
+    dry_run: bool = False,
+    interactive: bool = False,
+) -> DecomposeResult:
+    """
+    Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
+    """
+    # 1. Декомпозиция (через v4-pro, если задано)
+    decompose_model = getattr(cfg.agent, "decompose_model", None) or model
+    dec_result = run_planner_decompose(
+        goal=goal,
+        project_root=project_root,
+        cfg=cfg,
+        prompts_cfg=prompts_cfg,
+        model=decompose_model,
+        depth=depth,
+        extra_exclude=extra_exclude,
+    )
+
+    if dec_result.parse_error is not None:
+        _console.print(f"[red]Декомпозиция не удалась:[/red] {dec_result.parse_error}")
+        return dec_result
+
+    if not dec_result.subtasks:
+        _console.print("[yellow]Декомпозиция: пусто — нечего выполнять.[/yellow]")
+        return dec_result
+
+    _console.print(f"[dim]Декомпозиция: {len(dec_result.subtasks)} подзадач[/dim]")
+
+    # 2. Выполнить каждую подзадачу через tool loop
+    for st in dec_result.subtasks:
+        _console.print()
+        _console.print(
+            Panel.fit(
+                f"[bold]Подзадача {st.n}/{len(dec_result.subtasks)}[/bold]\n{st.goal}",
+                title=f"subtask {st.n}",
+            )
+        )
+
+        loop_result = run_tool_loop(
+            goal=st.goal,
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=prompts_cfg,
+            model=model,  # для tool loop — flash
+            depth=depth,
+            extra_exclude=extra_exclude,
+            max_iterations=cfg.agent.max_steps,
+            dry_run=dry_run,
+            interactive=interactive,
+            journal=journal,
+        )
+
+        dec_result.cost_rub += loop_result.total_cost_rub
+        dec_result.cost_cny += loop_result.total_cost_cny
+        dec_result.cost_usd += loop_result.total_cost_usd
+
+        if not loop_result.success:
+            _console.print(f"[red]Подзадача {st.n} не выполнена — стоп.[/red]")
+            dec_result.parse_error = f"subtask {st.n} failed"
+            return dec_result
+
+    _console.print()
+    _console.print(
+        Panel.fit(
+            f"[green]✅ Все {len(dec_result.subtasks)} подзадач выполнены[/green]\n"
+            f"[bold]Стоимость всего:[/bold] {dec_result.cost_rub:.4f} RUB",
+            title="Декомпозиция — итог",
+        )
+    )
+
+    return dec_result
+
+
 # ---------- кэш phase1 ----------
 
 
@@ -637,6 +874,32 @@ class ToolLoopResult:
     dry_run: bool = False
     backup_dir: Path | None = None
     commit_hash: str | None = None  # NEW
+
+
+# ---------- декомпозиция задач ----------
+
+
+@dataclass
+class Subtask:
+    """Одна подзадача в декомпозиции."""
+
+    n: int
+    goal: str
+    files: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DecomposeResult:
+    """Результат декомпозиции большой задачи."""
+
+    explanation: str = ""
+    subtasks: list[Subtask] = field(default_factory=list)
+    parse_error: str | None = None
+    raw_json: str = ""
+    llm: LLMResponse | None = None
+    cost_rub: float = 0.0
+    cost_cny: float = 0.0
+    cost_usd: float = 0.0
 
 
 # ---------- исполнитель одного шага ----------

@@ -735,6 +735,11 @@ def agent_cmd(
         "--max-cost-rub",
         help="Остановка при превышении стоимости (RUB).",
     ),
+    decompose: bool = typer.Option(
+        False,
+        "--decompose",
+        help="Декомпозиция: разбить задачу на подзадачи и выполнить через tool loop.",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -797,6 +802,74 @@ def agent_cmd(
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
+
+    # --- NEW: decompose ---
+    if decompose:
+        from .agent import run_agent_decompose
+
+        if not tool_loop:
+            console.print(
+                "[yellow]⚠ --decompose работает вместе с --tool-loop. Добавь --tool-loop.[/yellow]"
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            Panel.fit(
+                f"[bold]Цель:[/bold] {goal}\n"
+                f"[bold]Проект:[/bold] {project_root}\n"
+                f"[bold]Модель tool loop:[/bold] {model or cfg.api.model}\n"
+                f"[bold]Модель decompose:[/bold] "
+                f"{cfg.agent.decompose_model or 'default'}\n"
+                f"[bold]Режим:[/bold] decompose + tool loop\n"
+                f"[bold]Max итераций на подзадачу:[/bold] {max_iterations}",
+                title="ai-coder agent --decompose",
+            )
+        )
+
+        try:
+            with console.status("[cyan]Декомпозиция и выполнение..."):
+                dec_result = run_agent_decompose(
+                    goal=goal,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=pr_cfg,
+                    model=model,
+                    depth=depth,
+                    extra_exclude=list(exclude) or None,
+                    journal=journal,
+                    dry_run=dry_run,
+                    interactive=interactive,
+                )
+        except Exception as e:
+            console.print(f"[red]Ошибка decompose:[/red] {e}")
+            raise typer.Exit(1)
+
+        console.print()
+        status = (
+            "[green]✅ успех[/green]" if dec_result.parse_error is None else "[red]❌ неуспех[/red]"
+        )
+        console.print(
+            Panel.fit(
+                f"{status}\n"
+                f"[bold]Подзадач:[/bold] {len(dec_result.subtasks)}\n"
+                f"[bold]Стоимость всего:[/bold] {dec_result.cost_rub:.4f} RUB\n"
+                f"[bold]Explanation:[/bold] {dec_result.explanation[:200]}",
+                title="Decompose — итог",
+            )
+        )
+
+        if dec_result.subtasks:
+            console.print()
+            table = Table(title="Подзадачи")
+            table.add_column("#", justify="right")
+            table.add_column("Goal", style="cyan")
+            table.add_column("Файлы", style="dim")
+            for subtask in dec_result.subtasks:
+                files = ", ".join(subtask.files[:3]) or "—"
+                table.add_row(str(subtask.n), subtask.goal[:80], files)
+            console.print(table)
+
+        raise typer.Exit(0 if dec_result.parse_error is None else 1)
 
     # --- tool loop: отдельная ветка ---
     if tool_loop:
