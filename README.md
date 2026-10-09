@@ -37,6 +37,8 @@ AI-ассистированный анализ git-проектов через D
 - **[docs/state.md](docs/state.md)** — текущее состояние проекта.
 - **[docs/experiments.md](docs/experiments.md)** — журнал
   экспериментов (что пробовали, что вышло).
+- **[docs/roadmap.md](docs/roadmap.md)** — план развития в сторону
+  автономности (безопасность, автономность, архитектура).
 - **[docs/reviews/](docs/reviews/)** — внешние обзоры:
   [v4-pro, 2026-10-07](docs/reviews/v4-pro-2026-10-07.md) ·
   [v4-pro, 2026-10-09 (full)](docs/reviews/v4-pro-2026-10-09-full.md).
