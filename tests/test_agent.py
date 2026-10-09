@@ -14,6 +14,7 @@ from ai_coder.agent import (
     parse_agent_plan,
     parse_decompose_response,
     parse_replan_response,
+    run_auto_fix,
     run_planner,
     run_planner_replan,
     run_tool_loop,
@@ -1424,3 +1425,89 @@ def test_run_tool_loop_verify_failed(sample_project, minimal_cfg, prompts_cfg):
     assert result.success is False
     assert result.stopped_reason == "verify_failed"
     assert len(result.verify_errors) > 0
+
+
+def test_run_auto_fix_no_errors(sample_project, minimal_cfg, prompts_cfg):
+    """Если verify сразу прошёл — success=True, 1 попытка."""
+
+    result = run_auto_fix(
+        project_root=sample_project,
+        cfg=minimal_cfg,
+        prompts_cfg=prompts_cfg,
+        verify_commands=["true"],
+        max_attempts=3,
+        journal=False,
+    )
+    assert result.success is True
+    assert result.attempts == 1
+    assert result.initial_errors == []
+    assert result.final_errors == []
+    assert result.stopped_reason == "completed"
+
+
+def test_run_auto_fix_loop_success(sample_project, minimal_cfg, prompts_cfg):
+    """Ошибки были, LLM починил — success=True."""
+    from ai_coder.pricing import Rate
+
+    calls = {"n": 0}
+
+    def fake_verify(commands, project_root, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ["error 1", "error 2"]
+        return []
+
+    with (
+        patch("ai_coder.agent.run_verify_commands", side_effect=fake_verify),
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "fixed", "success": true}'
+        )
+
+        result = run_auto_fix(
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            verify_commands=["pytest -q"],
+            max_attempts=3,
+            journal=False,
+        )
+
+    assert result.success is True
+    assert result.attempts == 2
+    assert result.initial_errors == ["error 1", "error 2"]
+    assert result.final_errors == []
+
+
+def test_run_auto_fix_max_attempts(sample_project, minimal_cfg, prompts_cfg):
+    """Ошибки не уходят — stopped_reason=max_attempts."""
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.run_verify_commands", return_value=["always fail"]),
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "tried", "success": true}'
+        )
+
+        result = run_auto_fix(
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            verify_commands=["false"],
+            max_attempts=2,
+            journal=False,
+        )
+
+    assert result.success is False
+    assert result.attempts == 2
+    assert result.stopped_reason == "max_attempts"
+    assert result.final_errors == ["always fail"]
