@@ -1722,6 +1722,10 @@ def run_tool_loop(
     summary = ""
     accept_all_ref: list[bool] = [False]
 
+    # --- NEW: retry при parse_error ---
+    parse_retries = 0
+    max_parse_retries = 2
+
     # --- NEW: resume из журнала ---
     start_iteration = 1
     if resume_from is not None:
@@ -1828,13 +1832,35 @@ def run_tool_loop(
         # --- парсинг ---
         action = parse_tool_action(llm_resp.content)
         if action.parse_error:
-            stopped_reason = "parse_error"
-            summary = f"parse error at iteration {iteration}: {action.parse_error}"
-            # добавляем в историю, чтобы модель видела свою ошибку
-            history.append((action, ToolResult(ok=False, error=action.parse_error)))
+            parse_retries += 1
+            if parse_retries > max_parse_retries:
+                stopped_reason = "parse_error"
+                summary = (
+                    f"parse error at iteration {iteration}: "
+                    f"{action.parse_error} (после {parse_retries} попыток)"
+                )
+                history.append((action, ToolResult(ok=False, error=action.parse_error)))
+                if journal_dir is not None:
+                    _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+                break
+
+            # NEW: retry — просим модель вернуть корректный JSON
+            _console.print(
+                f"[yellow]parse_error (попытка {parse_retries}/"
+                f"{max_parse_retries}): {action.parse_error}[/yellow]\n"
+                f"[dim]Повторяю запрос...[/dim]"
+            )
+            error_result = ToolResult(
+                ok=False,
+                error=(
+                    f"Твой предыдущий ответ не распознан как JSON: "
+                    f"{action.parse_error}. Верни СТРОГО JSON без текста вокруг."
+                ),
+            )
+            history.append((action, error_result))
             if journal_dir is not None:
-                _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
-            break
+                _save_tool_loop_step(journal_dir, iteration, action, error_result, llm_resp)
+            continue
 
         # --- finish ---
         if action.finish:

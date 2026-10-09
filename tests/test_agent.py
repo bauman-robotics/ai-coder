@@ -1215,3 +1215,64 @@ def test_parse_decompose_invalid_json():
     assert result.parse_error is not None
     assert "no '{' found" in result.parse_error or "JSON" in result.parse_error
     assert result.subtasks == []
+
+
+def test_run_tool_loop_parse_error_retry(sample_project, minimal_cfg, prompts_cfg):
+    """parse_error → retry, потом успех."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    responses = [
+        "",
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="retry test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            max_iterations=5,
+        )
+
+    assert result.success is True
+    assert result.summary == "done"
+    assert result.stopped_reason == "completed"
+
+
+def test_run_tool_loop_parse_error_exhausted(sample_project, minimal_cfg, prompts_cfg):
+    """parse_error повторяется → после 2 retry — стоп."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response("")
+
+        result = run_tool_loop(
+            goal="always fail",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            max_iterations=10,
+        )
+
+    assert result.success is False
+    assert result.stopped_reason == "parse_error"
+    assert MockClient.return_value.chat.call_count == 3
