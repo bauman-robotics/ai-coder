@@ -412,6 +412,7 @@ diff, журналы, roadmap.
 ---
 
 ## Ссылки
+- **Доступ чата к консоли** — `docs/mcp-and-chat-integration.md` (MCP, Open WebUI, Continue, Cursor).
 
 - Полное ревью: `docs/reviews/v4-pro-2026-10-09-full.md`
 - Прошлое ревью: `docs/reviews/v4-pro-2026-10-07.md`
