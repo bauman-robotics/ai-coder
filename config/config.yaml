@@ -163,6 +163,11 @@ actions:
     prompt: inventory
     mode: read
     exclude_web_assets: true
+  explain:
+    description: "Объяснить файл/функцию/класс"
+    prompt: explain
+    mode: read
+    exclude_web_assets: true
   suggest_improvements:
     description: "Предложить варианты доработки"
     prompt: suggest_improvements

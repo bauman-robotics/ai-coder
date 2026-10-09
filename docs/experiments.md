@@ -43,6 +43,72 @@
 
 ---
 
+## 2026-10-09 — YAML-стресс: действие explain в 2 файлах, ✅ успех
+
+**Что пробовали:** `agent --tool-loop --apply` на **своём** проекте.
+Задача — добавить новое действие `explain` (read-only):
+- в `config/config.yaml` — блок `actions.explain`;
+- в `config/prompts.yaml` — промпт `explain`;
+- `ai_coder/actions.py` — **не трогать**.
+
+**Зачем:** YAML — известная слабость (CHANGELOG 8.3:
+«модель слабо правит YAML, шаг 2 в self-hosted E2E не применился»).
+Проверяем, жив ли этот баг после фиксов 10.5–10.8.
+
+**Команда:**
+    python -m ai_coder.cli agent "Добавь в config/config.yaml новое \
+        действие explain с полями: description 'Объяснить \
+        файл/функцию/класс', prompt 'explain', mode 'read', \
+        exclude_web_assets true. Добавь в config/prompts.yaml промпт \
+        explain с system и user (user — с плейсхолдерами depth, \
+        depth_hint, files, как у других read-действий). Только эти \
+        два файла, actions.py не трогай." . --tool-loop --apply \
+        --max-iterations 15 --max-cost-rub 3
+
+**Результат:** ✅ **успех**, **4 итерации**, **0.3096 RUB**, pytest 306 passed.
+
+**Что произошло:**
+1. `read_file(config/config.yaml)` — увидел структуру `actions:`.
+2. `read_file(config/prompts.yaml)` — увидел промпты.
+3. `edit_file(config/config.yaml)` — добавил `explain`
+   между `inventory` и `suggest_improvements`.
+4. `edit_file(config/prompts.yaml)` — добавил `explain`
+   между `inventory` и `suggest_improvements`.
+5. `finish(success=true)`.
+6. Внешний `verify_commands` → `✅ Проверка пройдена`.
+
+**Качество результата:**
+- `config.yaml`: блок `explain` с корректными отступами (2 пробела),
+  `mode=read`, `prompt=explain`, `exclude_web_assets=true`.
+- `config/prompts.yaml`: `system` (3 строки, включая правило
+  «опирайся только на исходники») и `user` (7 пунктов +
+  `{{depth}}` / `{{depth_hint}}` / `{{files}}`).
+- **`actions.py` не тронут.**
+- Стиль промпта — как у `greet`/`inventory` (скопировал паттерн).
+
+**Выводы:**
+1. **YAML-слабость закрыта.** Два YAML-edit подряд с идеальными
+   отступами. Скорее всего — следствие фикса 10.8
+   (`format_tool_history` → 10 000 символов): модель видит файл
+   целиком, выбирает уникальный `old`.
+2. **Правило 3 («после edit → finish») не сработало слишком
+   рано** — модель сделала **обе** правки подряд. Это был главный
+   риск, реализовался в правильную сторону.
+3. **`read_file × 2 → edit_file × 2 → finish`** — минимальная
+   последовательность, 4 итерации.
+4. **Инструкция «не трогай actions.py» сработала.**
+5. **`verify_commands` ✅** — 306 тестов не сломались.
+6. **0.31 RUB** — выше песочницы (0.16): `config.yaml` +
+   `prompts.yaml` большие, проект сканируется целиком.
+
+**Артефакт:** новое действие `explain` — реально полезно
+(из TODO «Действия»). Закоммичено в 10.14.10.
+
+**Ссылки:** CHANGELOG 8.3 (YAML), 10.8 (format_tool_history),
+docs/tools.md → «Как формулировать».
+
+---
+
 ## 2026-10-09 — автономное написание кода: класс Stats, ✅ успех
 
 **Что пробовали:** `agent --tool-loop --apply` на пустой песочнице
