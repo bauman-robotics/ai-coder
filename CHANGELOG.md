@@ -36,6 +36,35 @@
 
 
 
+## [2026-10-09] iteration 10.14.16 — feat(decompose): --decompose-max-cost-rub
+
+### Добавлено
+- `run_agent_decompose(max_cost_rub: float | None = None)` —
+  бюджет всего decompose.
+- `remaining` пересчитывается **перед каждым** `run_tool_loop`
+  (основной + retry) как `max(0.0, max_cost_rub - dec_result.cost_rub)`.
+- После каждой подзадачи (после retry) — проверка:
+  `if max_cost_rub is not None and dec_result.cost_rub >= max_cost_rub:
+  dec_result.parse_error = "max_cost exceeded"; return`.
+- CLI `agent`: флаг `--decompose-max-cost-rub N`.
+- Тест `test_run_agent_decompose_max_cost`.
+
+### Написано агентом через tool loop
+- **16 итераций, 1.8532 RUB, 6 edit_file** — 4 в `agent.py`,
+  2 в `cli.py`.
+- `read_file(line_start, line_end)` использован **с самого начала** —
+  фикс 10.14.14 работает.
+- Модель **сама** догадалась:
+  - `remaining` пересчитывать **перед** retry;
+  - проверку бюджета делать **один раз** после retry.
+- 3 промежуточных фейла (`missing 'path'`) — модель повторила
+  вызовы и справилась.
+
+### Итого тестов
+- 314 → 315 passed (+1).
+
+---
+
 ## [2026-10-09] iteration 10.14.14 — feat(tools): read_file с line_start/line_end
 
 ### Добавлено
