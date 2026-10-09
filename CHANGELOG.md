@@ -35,6 +35,44 @@
 
 
 
+
+## [2026-10-09] iteration 10.13 — feat: verify_commands в tool loop
+
+### Добавлено
+- `ToolLoopResult.verify_errors: list[str]`.
+- `run_tool_loop`: после `finish(success=true)` — автоматический
+  запуск `cfg.agent.verify_commands` (pytest, ruff, mypy и т.п.).
+- Если verify_errors — `success=False`,
+  `stopped_reason="verify_failed"`.
+- CLI: показать `verify_errors` в итоге tool loop.
+
+### Зачем
+- Раньше: агент говорил «готово» — но никто не проверял.
+- Теперь: после каждой tool loop — автоматическая проверка.
+- Ошибки сразу видны, а не через день.
+
+### E2E
+- Задача «2 поля в config.py + config.yaml»: 4 итерации,
+  **0.19 RUB**, `✅ успех`.
+- **`Проверка: python -m pytest -q`** → **`✅ Проверка пройдена`**.
+
+### Как настроить
+`config.yaml`:
+
+    agent:
+      verify_commands:
+        - "python -m pytest -q"
+      verify_timeout_sec: 60
+
+Или через CLI:
+
+    ai-coder agent "..." . --tool-loop --apply --verify-commands "pytest -q;ruff check ."
+
+### Итого тестов
+- 292 → 294 passed.
+
+---
+
 ## [2026-10-09] iteration 10.11.6–10.12 — feat: replan + журнал decompose
 
 ### Документация `--decompose` (10.11.6)

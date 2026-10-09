@@ -305,6 +305,34 @@ tool-loop-2026-10-08T16-24-05/
 
 ---
 
+## Проверка после finish
+
+После `finish(success=true)` в tool loop автоматически
+запускаются `cfg.agent.verify_commands` (по умолчанию —
+`["python -m pytest -q"]`).
+
+Как настроить (`config/config.yaml`):
+
+    agent:
+      verify_commands:
+        - "python -m py_compile ai_coder/*.py"
+        - "python -m pytest -q"
+      verify_timeout_sec: 60
+
+Или через CLI:
+
+    ai-coder agent "..." . --tool-loop --apply --verify-commands "pytest -q;ruff check ."
+
+Что происходит:
+- Если все команды вернули `exit code = 0` — `✅ Проверка пройдена`,
+  `success=True`.
+- Если хотя бы одна упала — `❌ Проверка не прошла`,
+  `success=False`, `stopped_reason="verify_failed"`,
+  `verify_errors` в результате.
+
+Зачем: раньше агент говорил «готово», но никто не проверял.
+Теперь — автоматическая проверка после каждого tool loop.
+
 ## Troubleshooting
 
 ### `parse_error`
