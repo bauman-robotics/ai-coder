@@ -18,8 +18,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$PROJECT_ROOT/next-chat"
 BUNDLE="$OUT/bundle.md"
 
-rm -rf "$OUT"
+# НЕ удаляем всю папку — там может быть prompt.md (ручной шаблон).
+# Удаляем только то, что генерируем.
 mkdir -p "$OUT"
+rm -f "$OUT/bundle.md"
 cd "$PROJECT_ROOT"
 
 # --- inventory (опционально) ---
@@ -136,6 +138,27 @@ fi
             echo ""
         fi
     done
+    echo '```'
+    echo ""
+
+    echo "# docs/roadmap.md — план развития в сторону автономности"
+    echo ""
+    echo '```'
+    cat docs/roadmap.md
+    echo '```'
+    echo ""
+
+    echo "# docs/examples.md — примеры сценариев"
+    echo ""
+    echo '```'
+    cat docs/examples.md
+    echo '```'
+    echo ""
+
+    echo "# docs/reviews/v4-pro-2026-10-09-full.md — последнее ревью"
+    echo ""
+    echo '```'
+    cat docs/reviews/v4-pro-2026-10-09-full.md
     echo '```'
     echo ""
 
