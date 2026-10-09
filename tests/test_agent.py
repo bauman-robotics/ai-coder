@@ -13,6 +13,7 @@ from ai_coder.agent import (
     _select_step_only_paths,
     parse_agent_plan,
     parse_decompose_response,
+    parse_replan_response,
     run_planner,
     run_planner_replan,
     run_tool_loop,
@@ -1311,3 +1312,56 @@ def test_run_planner_replan_skip(sample_project, minimal_cfg, prompts_cfg):
     assert result.action == "skip"
     assert result.explanation == "не критично"
     assert result.new_subtasks == []
+
+
+def test_parse_replan_skip():
+    """parse_replan_response — action=skip."""
+    content = json.dumps(
+        {
+            "action": "skip",
+            "explanation": "не критично",
+            "new_subtasks": [],
+        }
+    )
+    result = parse_replan_response(content)
+    assert result.parse_error is None
+    assert result.action == "skip"
+    assert result.explanation == "не критично"
+    assert result.new_subtasks == []
+
+
+def test_parse_replan_modify():
+    """parse_replan_response — action=modify с new_subtasks."""
+    content = json.dumps(
+        {
+            "action": "modify",
+            "explanation": "план изменён",
+            "new_subtasks": [
+                {"n": 1, "goal": "новый шаг 1", "files": ["a.py"]},
+                {"n": 2, "goal": "новый шаг 2", "files": ["b.py"]},
+            ],
+        }
+    )
+    result = parse_replan_response(content)
+    assert result.parse_error is None
+    assert result.action == "modify"
+    assert result.explanation == "план изменён"
+    assert len(result.new_subtasks) == 2
+    assert result.new_subtasks[0].goal == "новый шаг 1"
+    assert result.new_subtasks[0].files == ["a.py"]
+    assert result.new_subtasks[1].goal == "новый шаг 2"
+
+
+def test_parse_replan_invalid_action():
+    """parse_replan_response — невалидный action."""
+    content = json.dumps(
+        {
+            "action": "delete_everything",
+            "explanation": "x",
+            "new_subtasks": [],
+        }
+    )
+    result = parse_replan_response(content)
+    assert result.parse_error is not None
+    assert "invalid action" in result.parse_error
+    assert result.action == "stop"  # default
