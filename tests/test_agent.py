@@ -1543,3 +1543,159 @@ def test_run_auto_fix_max_attempts(sample_project, minimal_cfg, prompts_cfg):
     assert result.attempts == 2
     assert result.stopped_reason == "max_attempts"
     assert result.final_errors == ["always fail"]
+
+
+# ---------- run_agent_decompose: replan ----------
+
+
+def _subtask(n: int, goal: str) -> "object":
+    from ai_coder.agent import Subtask
+
+    return Subtask(n=n, goal=goal, files=[])
+
+
+def _ok_loop() -> "object":
+    from ai_coder.agent import ToolLoopResult
+
+    return ToolLoopResult(
+        success=True,
+        summary="ok",
+        iterations=1,
+        total_cost_rub=0.1,
+    )
+
+
+def _fail_loop(reason: str = "max_iterations") -> "object":
+    from ai_coder.agent import ToolLoopResult
+
+    return ToolLoopResult(
+        success=False,
+        summary=f"failed: {reason}",
+        iterations=5,
+        stopped_reason=reason,
+        total_cost_rub=0.2,
+    )
+
+
+def test_run_agent_decompose_replan_skip(sample_project, minimal_cfg, prompts_cfg):
+    """Подзадача 1 падает → replan=skip → подзадача 2 выполняется.
+
+    Проблема 15: replan в оркестраторе run_agent_decompose не был покрыт
+    тестами. Проверяем, что ветка skip живёт и цикл идёт дальше.
+    """
+    from ai_coder.agent import DecomposeResult, ReplanResult, run_agent_decompose
+
+    # Отключаем retry через v4-pro — иначе пойдёт второй run_tool_loop
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="two subtasks",
+        subtasks=[_subtask(1, "first"), _subtask(2, "second")],
+    )
+    replan = ReplanResult(action="skip", explanation="not critical")
+
+    # side_effect: подзадача 1 → fail, подзадача 2 → ok
+    side_effects = [_fail_loop("max_iterations"), _ok_loop()]
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            replan=True,
+        )
+
+    assert result.parse_error is None, "skip не должен останавливать decompose"
+    assert len(result.skipped_subtasks) == 1
+    assert result.skipped_subtasks[0].n == 1
+    assert len(result.subtask_results) == 2
+    assert result.subtask_results[0]["success"] is False
+    assert result.subtask_results[1]["success"] is True
+
+
+def test_run_agent_decompose_replan_stop(sample_project, minimal_cfg, prompts_cfg):
+    """Подзадача 1 падает → replan=stop → оркестратор останавливается."""
+    from ai_coder.agent import DecomposeResult, ReplanResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="two subtasks",
+        subtasks=[_subtask(1, "first"), _subtask(2, "second")],
+    )
+    replan = ReplanResult(action="stop", explanation="hopeless")
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", return_value=_fail_loop()),
+        patch("ai_coder.agent.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            replan=True,
+        )
+
+    assert result.parse_error is not None
+    assert "replan=stop" in result.parse_error
+    assert len(result.subtask_results) == 1
+    assert result.subtask_results[0]["success"] is False
+
+
+def test_run_agent_decompose_replan_modify(sample_project, minimal_cfg, prompts_cfg):
+    """Подзадача 1 падает → replan=modify → новая подзадача выполняется.
+
+    modify пересобирает оставшиеся подзадачи: subtasks[:i] + new_subtasks.
+    Проверяем, что новая подзадача действительно идёт в run_tool_loop.
+    """
+    from ai_coder.agent import DecomposeResult, ReplanResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="two subtasks",
+        subtasks=[_subtask(1, "first"), _subtask(2, "second")],
+    )
+    # modify заменяет оставшиеся на одну новую подзадачу
+    replan = ReplanResult(
+        action="modify",
+        explanation="adapt plan",
+        new_subtasks=[_subtask(1, "rewritten")],
+    )
+
+    # side_effect: подзадача 1 (оригинал) → fail,
+    #              подзадача 1 (новая после modify) → ok
+    side_effects = [_fail_loop(), _ok_loop()]
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            replan=True,
+        )
+
+    assert result.parse_error is None
+    # новая подзадача успешна, оригинальная вторая — не запускалась
+    assert len(result.subtask_results) == 2
+    assert result.subtask_results[0]["success"] is False  # оригинал 1
+    assert result.subtask_results[1]["success"] is True  # new_subtask
+    assert result.subtask_results[1]["goal"] == "rewritten"
