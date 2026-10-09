@@ -1193,6 +1193,11 @@ def fix_cmd(
     ),
     journal: bool = typer.Option(True, "--journal/--no-journal"),
     exclude: list[str] = typer.Option([], "--exclude", "-x"),
+    max_cost_rub: float | None = typer.Option(
+        None,
+        "--max-cost-rub",
+        help="Остановка цикла fix при превышении стоимости (RUB).",
+    ),
 ):
     """Автоматическое исправление: verify → fix → verify → ..."""
     from .agent import run_auto_fix
@@ -1221,12 +1226,13 @@ def fix_cmd(
         console.print("[red]--interactive требует TTY[/red]")
         raise typer.Exit(1)
 
+    budget_line = f"\n[bold]Лимит:[/bold] {max_cost_rub:.4f} RUB" if max_cost_rub else ""
     console.print(
         Panel.fit(
             f"[bold]Проект:[/bold] {project_root}\n"
             f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
             f"[bold]Попыток:[/bold] {max_attempts}\n"
-            f"[bold]Проверки:[/bold]\n" + "\n".join(f"  - {c}" for c in cmds),
+            f"[bold]Проверки:[/bold]\n" + "\n".join(f"  - {c}" for c in cmds) + budget_line,
             title="ai-coder fix",
         )
     )
@@ -1243,6 +1249,7 @@ def fix_cmd(
             extra_exclude=list(exclude) or None,
             journal=journal,
             interactive=interactive,
+            max_cost_rub=max_cost_rub,
         )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")

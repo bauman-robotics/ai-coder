@@ -1483,6 +1483,38 @@ def test_run_auto_fix_loop_success(sample_project, minimal_cfg, prompts_cfg):
     assert result.final_errors == []
 
 
+def test_run_auto_fix_max_cost(sample_project, minimal_cfg, prompts_cfg):
+    """Стоимость превысила max_cost_rub — stopped_reason=max_cost."""
+    from ai_coder.agent import ToolLoopResult
+
+    expensive = ToolLoopResult(
+        success=False,  # попытка не удалась (иначе цикл завершился бы)
+        summary="tried but failed",
+        iterations=3,
+        total_cost_rub=5.0,  # дорого
+        stopped_reason="completed",
+    )
+
+    with (
+        patch("ai_coder.agent.run_verify_commands", return_value=["always fail"]),
+        patch("ai_coder.agent.run_tool_loop", return_value=expensive),
+    ):
+        result = run_auto_fix(
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            verify_commands=["false"],
+            max_attempts=5,
+            journal=False,
+            max_cost_rub=1.0,  # лимит меньше стоимости одной попытки
+        )
+
+    assert result.success is False
+    assert result.stopped_reason == "max_cost"
+    assert result.attempts == 1  # остановились после первой попытки
+    assert result.total_cost_rub == 5.0
+
+
 def test_run_auto_fix_max_attempts(sample_project, minimal_cfg, prompts_cfg):
     """Ошибки не уходят — stopped_reason=max_attempts."""
     from ai_coder.pricing import Rate

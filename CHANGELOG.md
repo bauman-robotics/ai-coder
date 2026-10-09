@@ -36,6 +36,29 @@
 
 
 
+## [2026-10-09] iteration 10.14.4 — fix: max_cost_rub в run_auto_fix
+
+### Добавлено
+- `run_auto_fix(max_cost_rub: float | None = None)` — бюджет всего
+  цикла auto-fix.
+- Проброс остатка бюджета в каждый `run_tool_loop`:
+  `remaining_budget = max(0.0, max_cost_rub - result.total_cost_rub)`.
+- После каждой попытки: если `total_cost_rub >= max_cost_rub` —
+  `stopped_reason="max_cost"`, следующая попытка не запускается.
+- CLI `fix`: флаг `--max-cost-rub N`, строка «Лимит: X RUB» в панели.
+- Тест `test_run_auto_fix_max_cost`: дорогая попытка (5 RUB) при
+  лимите 1 RUB → `stopped_reason="max_cost"`, `attempts=1`.
+
+### Зачем
+- `ai-coder fix` — цикл verify → fix → verify. Каждая попытка — это
+  полный tool loop (деньги). Раньше лимита не было.
+- Теперь: страховка от неожиданного счёта, как у `agent --tool-loop`.
+
+### Итого тестов
+- 297 → 298 passed (+1).
+
+---
+
 ## [2026-10-09] iteration 10.14.1–10.14.3 — feat: auto-fix cycle
 
 ### Добавлено (10.14.1 — run_auto_fix)

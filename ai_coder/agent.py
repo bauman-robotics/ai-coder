@@ -2549,6 +2549,7 @@ def run_auto_fix(
     extra_exclude: list[str] | None = None,
     journal: bool = True,
     interactive: bool = False,
+    max_cost_rub: float | None = None,
 ) -> AutoFixResult:
     """
     Цикл: verify → fix (tool loop) → verify → ...
@@ -2602,6 +2603,12 @@ def run_auto_fix(
         if journal_dir is not None:
             subdir = journal_dir / f"attempt-{attempt}"
 
+        # Остаток бюджета: сколько ещё можно потратить в этой попытке.
+        # max_cost_rub — общий лимит на весь run_auto_fix.
+        remaining_budget: float | None = None
+        if max_cost_rub is not None:
+            remaining_budget = max(0.0, max_cost_rub - result.total_cost_rub)
+
         loop_result = run_tool_loop(
             goal=goal,
             project_root=project_root,
@@ -2614,10 +2621,20 @@ def run_auto_fix(
             interactive=interactive,
             journal=journal,
             journal_subdir=subdir,
+            max_cost_rub=remaining_budget,
         )
         result.total_cost_rub += loop_result.total_cost_rub
         result.total_cost_cny += loop_result.total_cost_cny
         result.total_cost_usd += loop_result.total_cost_usd
+
+        # Бюджет исчерпан — останавливаемся, не делаем следующую попытку.
+        if max_cost_rub is not None and result.total_cost_rub >= max_cost_rub:
+            result.stopped_reason = "max_cost"
+            result.final_errors = errors
+            result.attempts = attempt
+            if journal_dir is not None:
+                _save_auto_fix_report(journal_dir, result, verify_commands)
+            return result
 
         if not loop_result.success:
             result.stopped_reason = "loop_failed"
