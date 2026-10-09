@@ -53,11 +53,11 @@ AI-ассистированный анализ git-проектов через D
 до `decompose`) — в [`docs/scenarios.md`](docs/scenarios.md).
 
 **Как формулировать задачу агенту** (короткие промпты, без обратных
-кавычек, 1-2 файла на задачу) — тоже в `docs/tools.md`,
+кавычек, 1-2 файла на задачу) — тоже в [`docs/tools.md`](docs/tools.md),
 раздел «Как формулировать задачу агенту».
 
 **Декомпозиция задач** (`--decompose`) — для задач с 5+ файлов,
-в `docs/tools.md`, раздел «Декомпозиция задач».
+в [`docs/tools.md`](docs/tools.md), раздел «Декомпозиция задач».
 
 ## Быстрый старт
 
@@ -99,7 +99,7 @@ ai-coder run suggest_improvements . --dry-run
     ai-coder run write_readme . --apply --yes
     ai-coder run explain . --only-path ai_coder/agent.py
 
-Полный обзор — в `docs/scenarios.md` (12 сценариев).
+Полный обзор — в [`docs/scenarios.md`](docs/scenarios.md) (12 сценариев).
 
 ---
 
@@ -235,7 +235,7 @@ ai-coder run write_readme . --apply --no-verify
     # Explain — объяснить файл
     ai-coder run explain . --only-path ai_coder/agent.py
 
-Больше примеров — в `docs/examples.md`.
+Больше примеров — в [`docs/examples.md`](docs/examples.md).
 
 ---
 
