@@ -1832,3 +1832,58 @@ def test_run_agent_decompose_max_cost_saves_report(sample_project, minimal_cfg, 
     assert report_path.exists(), f"report.md не найден в {result.journal_dir}"
     content = report_path.read_text(encoding="utf-8")
     assert "max_cost" in content or "неуспех" in content
+
+
+def test_run_tool_loop_retry_on_missing_args(sample_project, minimal_cfg, prompts_cfg):
+    """Регрессия: при missing 'path' — retry (не считая итерацию)."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.llm import LLMResponse
+    from ai_coder.pricing import Rate
+
+    llm_replies = [
+        '{"tool": "edit_file", "args": {}, "reason": "забыл path"}',
+        (
+            '{"tool": "edit_file", "args": '
+            '{"path": "src/main.py", "old": "hello", "new": "world"}, '
+            '"reason": "правка"}'
+        ),
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+    calls = {"n": 0}
+
+    def fake_chat(self, *, system, user, **kwargs):
+        n = calls["n"]
+        calls["n"] += 1
+        content = llm_replies[n] if n < len(llm_replies) else '{"finish": true}'
+        return LLMResponse(
+            content=content,
+            model="test-model",
+            prompt_tokens=100,
+            prompt_cache_hit_tokens=0,
+            prompt_cache_miss_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            duration_ms=100,
+            finish_reason="stop",
+        )
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat = fake_chat.__get__(MockClient.return_value)
+
+        result = run_tool_loop(
+            goal="тест retry missing args",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=10,
+            journal=False,
+            dry_run=True,
+        )
+
+    assert calls["n"] == 3, f"ожидали 3 вызова, было {calls['n']}"
+    assert result.success is True

@@ -401,7 +401,12 @@ agent_tool_json:
         - Не трать итерации на диагностику того, что уже знаешь.
         - sed запрещён — используй edit_file.
 
-    12. ЕСЛИ edit_file ВЕРНУЛ ОШИБКУ:
+    12. ЕСЛИ edit_file / read_file ВЕРНУЛ ОШИБКУ:
+        - "missing 'path'" — ты забыл поле path в args. Верни СТРОГО:
+            {"tool": "edit_file", "args": {"path": "...", "old": "...", "new": "..."}}
+          Все 3 поля обязательны.
+        - "missing 'old'" / "missing 'new'" — верни все 3 поля:
+          path, old, new.
         - "'old' not found" — НЕ повторяй тот же edit. Сделай:
           1. run_shell grep по первым 3-4 словам old;
           2. Скопируй строку ИЗ РЕЗУЛЬТАТА grep (не перепечатывай);

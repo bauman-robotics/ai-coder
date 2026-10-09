@@ -2067,6 +2067,25 @@ def _backup_file_for_tool_loop(
     return backup_dir
 
 
+_REQUIRED_ARGS: dict[str, list[str]] = {
+    "read_file": ["path"],
+    "write_file": ["path", "content"],
+    "edit_file": ["path", "old", "new"],
+    "list_files": [],
+    "run_shell": ["command"],
+}
+
+
+def _has_missing_args(action: ToolAction) -> bool:
+    """True, если инструмент не получил обязательные args."""
+    required = _REQUIRED_ARGS.get(action.tool, [])
+    return any(not action.args.get(k) for k in required)
+
+
+def _required_args_hint(tool: str) -> str:
+    return ", ".join(_REQUIRED_ARGS.get(tool, []))
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -2133,6 +2152,8 @@ def run_tool_loop(
     # --- NEW: retry при parse_error ---
     parse_retries = 0
     max_parse_retries = 2
+    arg_retries = 0
+    max_arg_retries = 3
 
     # --- NEW: resume из журнала ---
     start_iteration = 1
@@ -2269,6 +2290,39 @@ def run_tool_loop(
             if journal_dir is not None:
                 _save_tool_loop_step(journal_dir, iteration, action, error_result, llm_resp)
             continue
+
+        # --- NEW: retry для «пустых args» (missing 'path'/'old'/'new') ---
+        if _has_missing_args(action):
+            arg_retries += 1
+            if arg_retries > max_arg_retries:
+                stopped_reason = "missing_args"
+                summary = f"missing args at iteration {iteration}: после {arg_retries} попыток"
+                history.append((action, ToolResult(ok=False, error="missing args")))
+                if journal_dir is not None:
+                    _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
+                break
+
+            _console.print(
+                f"[yellow]missing args (попытка {arg_retries}/"
+                f"{max_arg_retries}): {action.tool}[/yellow]\n"
+                f"[dim]Повторяю запрос...[/dim]"
+            )
+            error_result = ToolResult(
+                ok=False,
+                error=(
+                    f"Твой ответ не содержит обязательных полей args "
+                    f"для {action.tool}. Нужны: "
+                    f"{_required_args_hint(action.tool)}. "
+                    f"Верни СТРОГО JSON с этими полями."
+                ),
+            )
+            history.append((action, error_result))
+            if journal_dir is not None:
+                _save_tool_loop_step(journal_dir, iteration, action, error_result, llm_resp)
+            continue
+
+        # Сброс arg_retries при успешной итерации
+        arg_retries = 0
 
         # --- finish ---
         if action.finish:
