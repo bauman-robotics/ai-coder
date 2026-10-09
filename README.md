@@ -237,6 +237,10 @@ ai-coder run write_readme . --apply --no-verify
     # Explain — объяснить файл
     ai-coder run explain . --only-path ai_coder/agent.py
 
+    # Уточнение промпта (--hint) — работает для всех run-действий
+    ai-coder run suggest_improvements . --depth deep \
+        --hint "Фокус на безопасности и автономности агента."
+
 Больше примеров — в [`docs/examples.md`](docs/examples.md).
 
 ---
