@@ -34,6 +34,64 @@
 
 
 
+
+## [2026-10-09] iteration 10.11.6–10.12 — feat: replan + журнал decompose
+
+### Документация `--decompose` (10.11.6)
+- `docs/tools.md`: раздел «Декомпозиция задач».
+- README: ссылка на раздел.
+
+### Replan при fail v4-pro (10.11.8)
+- `ReplanResult` — dataclass (action, explanation, new_subtasks,
+  llm, cost, parse_error).
+- `parse_replan_response` — устойчивый парсер (markdown, raw_decode,
+  валидация action ∈ {skip, modify, stop}).
+- `run_planner_replan` — планировщик: собирает контекст (goal,
+  completed, failed, error, remaining), вызывает v4-pro.
+- `--decompose-replan` (opt-in) — при fail подзадачи (после retry
+  v4-pro) перепланировать: skip / modify / stop.
+- `DecomposeResult.skipped_subtasks`.
+- Цикл `for` → `while` (для `modify`).
+- 3 теста `parse_replan_response` + 1 тест `run_planner_replan_skip`.
+- `conftest.py`: `agent_plan_json`, `agent_decompose_json`,
+  `agent_replan_json` в `prompts_cfg`.
+
+### Журнал decompose + откат (10.12)
+- `run_tool_loop(journal_subdir=None)` — журнал в указанную
+  директорию.
+- `run_agent_decompose` — создаёт `decompose-<ts>/`, передаёт
+  `subtask-N/` в каждый `run_tool_loop`.
+- `DecomposeResult`: `journal_dir`, `subtask_results`, `rolled_back`.
+- `AgentConfig.decompose_rollback_on_fail: bool = False`.
+- CLI: `--decompose-rollback-on-fail/--no-decompose-rollback-on-fail`.
+- При fail (после retry + replan) — **откат всех успешных**
+  подзадач (если флаг).
+- `_save_decompose_report`: `report.md` с таблицей подзадач,
+  статусами, стоимостью, ссылками на поджурналы.
+
+### Структура журнала decompose
+
+    .ai-out/<project>/decompose-<ts>/
+    ├── report.md
+    ├── subtask-1/
+    │   └── tool-loop-<ts>/
+    │       ├── history.json
+    │       ├── report.md
+    │       └── step-N.md
+    └── subtask-2/
+        └── tool-loop-<ts>/
+            └── ...
+
+### E2E
+- 2 подзадачи (config.py + config.yaml): ✅ успех, 0.56 RUB.
+- `decompose-<ts>/report.md` — таблица подзадач.
+- `decompose-<ts>/subtask-N/tool-loop-<ts>/` — журналы подзадач.
+
+### Итого тестов
+- 288 → 292 (+4).
+
+---
+
 ## [2026-10-09] iteration 10.11.7 — prompt + retry v4-pro
 
 ### Добавлено
