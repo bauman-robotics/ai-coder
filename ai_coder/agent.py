@@ -619,6 +619,8 @@ def run_agent_decompose(
 
         if max_cost_rub is not None and dec_result.cost_rub >= max_cost_rub:
             dec_result.parse_error = "max_cost exceeded"
+            if decompose_dir is not None:
+                _save_decompose_report(decompose_dir, dec_result, goal)
             return dec_result
 
         if not loop_result.success:
@@ -644,6 +646,8 @@ def run_agent_decompose(
                 if replan_result.parse_error is not None:
                     _console.print(f"[red]Replan parse_error:[/red] {replan_result.parse_error}")
                     dec_result.parse_error = f"replan parse_error: {replan_result.parse_error}"
+                    if decompose_dir is not None:
+                        _save_decompose_report(decompose_dir, dec_result, goal)
                     return dec_result
 
                 if replan_result.action == "skip":
@@ -664,6 +668,8 @@ def run_agent_decompose(
                 elif replan_result.action == "stop":
                     _console.print(f"[red]Replan: stop ({replan_result.explanation})[/red]")
                     dec_result.parse_error = f"subtask {st.n} failed, replan=stop"
+                    if decompose_dir is not None:
+                        _save_decompose_report(decompose_dir, dec_result, goal)
                     return dec_result
 
             # --- NEW: откат при fail ---

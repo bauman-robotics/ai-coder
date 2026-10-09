@@ -36,6 +36,33 @@
 
 
 
+## [2026-10-09] iteration 10.14.18 — fix(decompose): report.md при ранних return
+
+### Исправлено (TODO п.19)
+- `run_agent_decompose`: при **раннем `return`** —
+  `_save_decompose_report` **не вызывался**, если выход произошёл
+  **до** финального сохранения. Пользователь **не видел**
+  итоговый отчёт.
+- Три места:
+  - `max_cost exceeded` (новый блок из 10.14.16);
+  - `replan_result.parse_error`;
+  - `replan_result.action == "stop"`.
+- Во всех трёх — теперь `if decompose_dir is not None:
+  _save_decompose_report(...)` **перед** `return`.
+
+### Найдено
+- При живой проверке `--decompose-max-cost-rub 0.01` (10.14.17) —
+  `decompose-<ts>/` создан, а `report.md` внутри **нет**.
+
+### Тест
+- `test_run_agent_decompose_max_cost_saves_report` — проверяет,
+  что при `max_cost` `report.md` **создан**.
+
+### Итого тестов
+- 315 → 316 passed (+1).
+
+---
+
 ## [2026-10-09] iteration 10.14.16 — feat(decompose): --decompose-max-cost-rub
 
 ### Добавлено

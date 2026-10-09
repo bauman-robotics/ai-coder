@@ -1797,3 +1797,38 @@ def test_run_agent_decompose_max_cost(sample_project, minimal_cfg, prompts_cfg):
     # Вторая подзадача не выполнялась
     assert len(result.subtask_results) == 1
     assert result.cost_rub == 5.0
+
+
+def test_run_agent_decompose_max_cost_saves_report(sample_project, minimal_cfg, prompts_cfg):
+    """При max_cost — report.md всё равно создаётся (регрессия 10.14.18)."""
+    from ai_coder.agent import DecomposeResult, ToolLoopResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="two subtasks",
+        subtasks=[_subtask(1, "first"), _subtask(2, "second")],
+    )
+    expensive = ToolLoopResult(success=True, summary="done", iterations=1, total_cost_rub=5.0)
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=True,
+            max_cost_rub=1.0,
+        )
+
+    assert result.parse_error is not None
+    assert "max_cost exceeded" in result.parse_error
+    assert result.journal_dir is not None
+    report_path = result.journal_dir / "report.md"
+    assert report_path.exists(), f"report.md не найден в {result.journal_dir}"
+    content = report_path.read_text(encoding="utf-8")
+    assert "max_cost" in content or "неуспех" in content
