@@ -248,6 +248,21 @@ class PlannerPhase1Result:
     from_cache: bool = False
 
 
+@dataclass
+class ReplanResult:
+    """Результат перепланирования при провале подзадачи."""
+
+    action: str = "stop"  # "skip" | "modify" | "stop"
+    explanation: str = ""
+    new_subtasks: list[Subtask] = field(default_factory=list)
+    llm: LLMResponse | None = None
+    cost_rub: float = 0.0
+    cost_cny: float = 0.0
+    cost_usd: float = 0.0
+    parse_error: str | None = None
+    raw_json: str = ""
+
+
 def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
     """
     Парсит ответ phase1: ожидает {"explanation": ..., "target_files": [...]}.
@@ -551,6 +566,73 @@ def run_agent_decompose(
     )
 
     return dec_result
+
+
+def parse_replan_response(content: str) -> ReplanResult:
+    """
+    Парсит ответ планировщика-replan.
+
+    Ожидает JSON:
+      {"action": "skip" | "modify" | "stop",
+       "explanation": "...",
+       "new_subtasks": [{"n": 1, "goal": "...", "files": ["..."]}, ...]}
+
+    При ошибке — action="stop" + parse_error.
+    """
+    result = ReplanResult(raw_json=content)
+    text = content.strip()
+
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    if not text.startswith("{"):
+        start = text.find("{")
+        if start == -1:
+            result.parse_error = "no '{' found"
+            return result
+        text = text[start:]
+
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(text)
+    except json.JSONDecodeError as e:
+        result.parse_error = f"JSON parse error: {e}"
+        return result
+
+    if not isinstance(data, dict):
+        result.parse_error = f"expected dict, got {type(data).__name__}"
+        return result
+
+    action = str(data.get("action", "")).strip().lower()
+    if action not in ("skip", "modify", "stop"):
+        result.parse_error = f"invalid action: {action!r}"
+        return result
+
+    result.action = action
+    result.explanation = str(data.get("explanation", "")).strip()
+
+    if action == "modify":
+        subtasks_raw = data.get("new_subtasks", [])
+        if not isinstance(subtasks_raw, list):
+            result.parse_error = "'new_subtasks' must be a list"
+            return result
+        for i, s in enumerate(subtasks_raw, 1):
+            if not isinstance(s, dict):
+                continue
+            goal = str(s.get("goal", "")).strip()
+            if not goal:
+                continue
+            files_raw = s.get("files", [])
+            files = [str(f) for f in files_raw] if isinstance(files_raw, list) else []
+            result.new_subtasks.append(Subtask(n=i, goal=goal, files=files))
+
+        if not result.new_subtasks:
+            result.parse_error = "action=modify but new_subtasks empty"
+
+    return result
 
 
 # ---------- кэш phase1 ----------
