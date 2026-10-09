@@ -176,6 +176,18 @@ def prompts_cfg() -> PromptsConfig:
                 system="Phase1: {{goal}}",
                 user="Tree: {{tree}}, metadata: {{metadata}}",
             ),
+            "agent_plan_json": PromptEntry(
+                system="Plan: {{goal}}",
+                user="Tree: {{tree}}, max_steps: {{max_steps}}",
+            ),
+            "agent_decompose_json": PromptEntry(
+                system="Decompose: {{goal}}",
+                user="Tree: {{tree}}, metadata: {{metadata}}",
+            ),
+            "agent_replan_json": PromptEntry(
+                system="Replan: {{goal}}",
+                user="Failed: {{failed_goal}}, Error: {{error}}",
+            ),
         }
     )
 

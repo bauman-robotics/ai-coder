@@ -635,6 +635,104 @@ def parse_replan_response(content: str) -> ReplanResult:
     return result
 
 
+def run_planner_replan(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    failed_subtask: Subtask,
+    failed_error: str,
+    completed_subtasks: list[Subtask],
+    remaining_subtasks: list[Subtask],
+    model: str | None = None,
+    depth: str = "normal",
+) -> ReplanResult:
+    """
+    Планировщик-replan: подзадача провалилась → решаем,
+    что делать (skip / modify / stop).
+    """
+    model = model or cfg.api.model
+
+    # форматируем списки подзадач
+    completed_text = "\n".join(f"  {s.n}. {s.goal}" for s in completed_subtasks) or "(нет)"
+    remaining_text = "\n".join(f"  {s.n}. {s.goal}" for s in remaining_subtasks) or "(нет)"
+
+    # промпт
+    prompt_entry = prompts_cfg.get("agent_replan_json")
+    empty_scan = ScanResult(root=project_root)
+    system, user = render_prompt(
+        prompt_entry,
+        depth=depth,
+        scan=empty_scan,
+        extra={
+            "goal": goal,
+            "completed": completed_text,
+            "failed_n": str(failed_subtask.n),
+            "failed_goal": failed_subtask.goal,
+            "error": failed_error,
+            "remaining": remaining_text,
+        },
+    )
+
+    # тариф и курсы
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    # запрос
+    client = LLMClient(cfg.api)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.step_max_output_tokens,
+    )
+
+    # парсим
+    result = parse_replan_response(llm_resp.content)
+    result.llm = llm_resp
+
+    # стоимость
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+    result.cost_rub = cost.cost_rub
+    result.cost_cny = cost.cost_cny
+    result.cost_usd = cost.cost_usd
+
+    # учёт
+    output_root = project_root / cfg.output.dir
+    append_usage(
+        project_root=project_root,
+        output_root=output_root,
+        action="agent:replan",
+        project_name=project_root.name,
+        model=model,
+        depth=depth,
+        files_count=0,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok" if result.parse_error is None else "parse_error",
+        usage_cfg=cfg.usage,
+        iteration=0,
+        parent_action="agent",
+    )
+
+    return result
+
+
 # ---------- кэш phase1 ----------
 
 

@@ -14,6 +14,7 @@ from ai_coder.agent import (
     parse_agent_plan,
     parse_decompose_response,
     run_planner,
+    run_planner_replan,
     run_tool_loop,
 )
 from ai_coder.llm import LLMResponse
@@ -1276,3 +1277,37 @@ def test_run_tool_loop_parse_error_exhausted(sample_project, minimal_cfg, prompt
     assert result.success is False
     assert result.stopped_reason == "parse_error"
     assert MockClient.return_value.chat.call_count == 3
+
+
+def test_run_planner_replan_skip(sample_project, minimal_cfg, prompts_cfg):
+    """run_planner_replan парсит action=skip."""
+    from ai_coder.agent import (
+        Subtask,
+    )
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"action": "skip", "explanation": "не критично", "new_subtasks": []}'
+        )
+
+        result = run_planner_replan(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            failed_subtask=Subtask(n=2, goal="failed goal"),
+            failed_error="something went wrong",
+            completed_subtasks=[Subtask(n=1, goal="done")],
+            remaining_subtasks=[Subtask(n=3, goal="remaining")],
+        )
+
+    assert result.parse_error is None
+    assert result.action == "skip"
+    assert result.explanation == "не критично"
+    assert result.new_subtasks == []
