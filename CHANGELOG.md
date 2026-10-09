@@ -31,6 +31,42 @@
 
 
 
+
+## [2026-10-09] iteration 10.11.2 — feat: run_agent_decompose
+
+### Добавлено
+- `Subtask`, `DecomposeResult` — dataclass'ы в `agent.py`.
+- `parse_decompose_response` — устойчивый парсер JSON.
+- `run_planner_decompose` — планировщик-декомпозитор (LLM → подзадачи).
+- `run_agent_decompose` — оркестратор: последовательно `run_tool_loop`
+  для каждой подзадачи. Стоп при первом неуспехе.
+- CLI-флаг `--decompose` (работает вместе с `--tool-loop`).
+- `AgentConfig.decompose_model: str | None = None`.
+- `config.yaml`: `decompose_model: "deepseek-v4-pro"`.
+- Промпт `agent_decompose_json`.
+
+### E2E (два прогона)
+1. **2 файла** (`config.py` + `config.yaml`):
+   - декомпозиция: **2 подзадачи** (по 1 файлу);
+   - каждая — `run_tool_loop`, `edit_file`, ✅;
+   - **✅ успех**, стоимость **0.64 RUB**.
+2. **5 подзадач** (задача 10.8):
+   - декомпозиция: **5 подзадач** (по 1 файлу);
+   - подзадача 1 ✅ (поля уже есть);
+   - подзадача 2 ❌ (`parse_error` — flash вернула `{}`);
+   - **❌ неуспех**, стоимость **1.22 RUB**.
+
+### Метрики
+- Декомпозиция v4-pro — точная: 5 подзадач × 1 файл.
+- Стоимость 2 файлов: **0.64 RUB** (в 8× дороже прямого tool loop).
+- Стоимость 5 подзадач (неуспех): **1.22 RUB** (в 6× дешевле ❌ 7.74 RUB
+  в 10.8 без decompose).
+
+### Итого тестов
+- 283 passed (без новых тестов для decompose — в 10.11.4).
+
+---
+
 ## [2026-10-08] iteration 10.10 — feat: предупреждение про backticks
 
 ### Добавлено
