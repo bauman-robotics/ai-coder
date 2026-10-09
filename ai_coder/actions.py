@@ -280,18 +280,18 @@ def run_fix_action(
         },
     )
 
-    # 5. кэш (по хэшу: файлы + шаблон + errors + previous_plan + модель + depth)
+    # 5. кэш — по УЖЕ отрендеренному промпту (review 3.2).
+    # Так хэш совпадает с тем, что реально уходит в LLM: шаблон +
+    # подстановки (depth_hint, tree, files, errors, previous_plan).
+    # Раньше хэшировалась синтетическая склейка шаблона — изменение
+    # в шаблоне user/system, но не в этой склейке, не инвалидировало кэш.
     cache_enabled = use_cache and cfg.output.use_cache
     hash_hex: str | None = None
     if cache_enabled:
         hash_hex = cache_mod.compute_hash(
             scan=scan,
-            prompt_system=prompt_entry.system
-            + "\nERRORS:\n"
-            + errors_text
-            + "\nPREV:\n"
-            + previous_plan_text,
-            prompt_user=prompt_entry.user,
+            prompt_system=system,
+            prompt_user=user,
             model=model,
             depth=depth,
             write_blacklist_paths=cfg.write.blacklist_paths,

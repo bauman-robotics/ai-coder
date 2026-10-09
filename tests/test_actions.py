@@ -285,3 +285,135 @@ def test_run_fix_action_basic(actions_cfg, actions_prompts, sample_project):
 
     assert result.action == "greet:fix1"
     assert result.write_plan is not None
+
+
+def test_run_fix_action_prompt_change_invalidates_cache(
+    actions_cfg, actions_prompts, sample_project
+):
+    """Смена шаблона user → новый хэш → LLM зовётся заново (защита после 3.2)."""
+    from ai_coder.apply import WritePlan
+    from ai_coder.pricing import Rate
+
+    actions_cfg.fix.prompt = "fix_errors_json"
+    plan_json = '{"explanation": "fix", "operations": []}'
+    calls = {"n": 0}
+
+    class CountingClient:
+        def __init__(self, _cfg):
+            pass
+
+        def chat(self, *, system, user, **kwargs):
+            calls["n"] += 1
+            return _make_llm_response(plan_json)
+
+    prev_plan = WritePlan(explanation="prev", operations=[])
+
+    with (
+        patch("ai_coder.actions.LLMClient", CountingClient),
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+        patch("ai_coder.actions.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+
+        # 1) первый прогон
+        r1 = run_fix_action(
+            parent_action="greet",
+            iteration=1,
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            errors=["E1"],
+            previous_plan=prev_plan,
+            use_cache=True,
+        )
+
+        # 2) тот же вход — из кэша
+        r2 = run_fix_action(
+            parent_action="greet",
+            iteration=1,
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            errors=["E1"],
+            previous_plan=prev_plan,
+            use_cache=True,
+        )
+
+        # 3) подменяем шаблон user — кэш должен промахнуться
+        actions_prompts.prompts["fix_errors_json"] = PromptEntry(
+            system="S {{errors}}",
+            user="U {{files}} # CHANGED",
+        )
+        r3 = run_fix_action(
+            parent_action="greet",
+            iteration=1,
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            errors=["E1"],
+            previous_plan=prev_plan,
+            use_cache=True,
+        )
+
+    assert r1.from_cache is False
+    assert r2.from_cache is True
+    assert r3.from_cache is False, "смена шаблона user должна инвалидировать кэш"
+    assert calls["n"] == 2, "LLM зовётся только при промахе кэша"
+
+
+def test_run_fix_action_hash_uses_rendered_prompt(actions_cfg, actions_prompts, sample_project):
+    """Регрессия 3.2: compute_hash получает УЖЕ отрендеренные system/user.
+
+    До фикса в compute_hash уходил сырой prompt_entry.user — с плейсхолдерами
+    {{files}}, {{errors}} и т.п. Правка подстановок (в шаблоне — да, но не
+    в значениях) не инвалидировала кэш. После фикса compute_hash видит
+    результат render_prompt — без единой пары {{...}}.
+    """
+    from ai_coder.apply import WritePlan
+    from ai_coder.pricing import Rate
+
+    actions_cfg.fix.prompt = "fix_errors_json"
+    plan_json = '{"explanation": "fix", "operations": []}'
+    captured: dict = {}
+
+    def fake_compute_hash(**kwargs):
+        captured.update(kwargs)
+        return "deadbeef" * 8  # 64 hex-символа
+
+    prev_plan = WritePlan(explanation="prev", operations=[])
+
+    with (
+        patch("ai_coder.actions.LLMClient") as MockLLM,
+        patch("ai_coder.actions.get_rate") as mock_rate,
+        patch("ai_coder.actions.is_peak_now", return_value=(False, None)),
+        patch("ai_coder.actions.append_usage"),
+        patch("ai_coder.actions.cache_mod.compute_hash", side_effect=fake_compute_hash),
+        # from_cache вернёт None — кэша с таким хэшем нет, идём в LLM
+        patch("ai_coder.actions.cache_mod.from_cache", return_value=None),
+        patch("ai_coder.actions.cache_mod.save"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockLLM.return_value.chat.return_value = _make_llm_response(plan_json)
+
+        run_fix_action(
+            parent_action="greet",
+            iteration=1,
+            project_root=sample_project,
+            cfg=actions_cfg,
+            prompts_cfg=actions_prompts,
+            errors=["E1"],
+            previous_plan=prev_plan,
+            use_cache=True,
+        )
+
+    assert captured, "compute_hash не был вызван"
+    # В хэш уходит отрендеренный system/user — без плейсхолдеров
+    assert "{{" not in captured["prompt_system"], (
+        f"system содержит плейсхолдеры: {captured['prompt_system']!r}"
+    )
+    assert "{{" not in captured["prompt_user"], (
+        f"user содержит плейсхолдеры: {captured['prompt_user']!r}"
+    )
+    assert "}}" not in captured["prompt_system"]
+    assert "}}" not in captured["prompt_user"]
