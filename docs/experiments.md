@@ -100,3 +100,64 @@
 **Ссылки:** CHANGELOG 10.8.
 
 ---
+
+## 2026-10-09 — decompose (2 файла): ✅ успех
+
+**Что пробовали:** E2E `--decompose` на задаче «добавь
+`test_field_decompose: int = 100` в `AgentConfig` и в `config.yaml`».
+
+**Команда:**
+    python -m ai_coder.cli agent "$(cat /tmp/task_test.txt)" . --tool-loop --decompose --interactive --max-iterations 10
+
+**Результат:** ✅ **успех**, 2 подзадачи × 1 файл, **0.6399 RUB**.
+
+**Что произошло:**
+- v4-pro (decompose) — **2 подзадачи** (по 1 файлу).
+- tool loop (flash) — `edit_file(config.py)` ✅, `edit_file(config.yaml)` ✅.
+- Все правки применены.
+- Итог: **✅ успех**, стоимость **0.64 RUB**.
+
+**Выводы:**
+1. **Decompose работает** — v4-pro точно разбивает.
+2. **2 файла → 2 подзадачи** — идеально.
+3. **Интерактив** — панели, `y`.
+4. **Стоимость** — 0.64 RUB. Без decompose — ~0.05-0.10 RUB.
+   **Дельта — 6-10×**.
+
+**Ссылки:** CHANGELOG 10.11.2, TODO п.14.
+
+---
+
+
+## 2026-10-09 — decompose (задача 10.8, 5 подзадач): ❌ неуспех
+
+**Что пробовали:** E2E `--decompose` на задаче 10.8 (6 файлов,
+5 правок, 3 теста) — но **задача уже решена** в git.
+
+**Команда:**
+    python -m ai_coder.cli agent "$(cat /tmp/task_10_8_short.txt)" . --tool-loop --decompose --interactive --max-iterations 10
+
+**Результат:** ❌ **неуспех**, 5 подзадач, стоп на 2-й, **1.2245 RUB**.
+
+**Что произошло:**
+- v4-pro — **5 подзадач** (по 1 файлу): config.py, config.yaml,
+  prompts.yaml, tools.py, test_tools.py.
+- **Подзадача 1** — ✅: `read_file(config.py)`, увидела «уже есть»,
+  `finish(success=true)`. 1 итерация, 0.097 RUB.
+- **Подзадача 2** — ❌: `parse_error` на 3-й итерации.
+  `tool JSON no '{' found` — flash вернула `{}`.
+- **Стоп** по правилу `if not success: break`.
+
+**Выводы:**
+1. **Decompose работает** — v4-pro **точно** разбил на 5.
+2. **Проблема 11** (new): `parse_error` при `{}` от flash.
+3. **Проблема 12** (new): подзадачи **не знают**, что задача
+   уже решена. Подзадача 1 «поняла», подзадача 2 — нет.
+4. **Проблема 13** (new): **нет отката** при частичном провале.
+5. **Проблема 14** (new): decompose **дорого** для 2 файлов.
+   Для 5+ — **оправдан** (1.22 RUB с decompose vs 7.74 RUB
+   в 10.8 без decompose — в **6× дешевле**).
+
+**Ссылки:** CHANGELOG 10.11.2, TODO п.11-14.
+
+---
