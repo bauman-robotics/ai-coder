@@ -12,6 +12,7 @@ from ai_coder.agent import (
     _render_plan_summary,
     _select_step_only_paths,
     parse_agent_plan,
+    parse_decompose_response,
     run_planner,
     run_tool_loop,
 )
@@ -1173,3 +1174,44 @@ def test_run_planner_phase1_no_cache(sample_project, minimal_cfg, prompts_cfg):
         assert r1.from_cache is False
         assert r2.from_cache is False
         assert MockClient.return_value.chat.call_count == 2
+
+
+# ---------- parse_decompose_response ----------
+
+
+def test_parse_decompose_valid():
+    """2 подзадачи — парсинг ok."""
+    content = json.dumps(
+        {
+            "explanation": "разбиваю на 2 файла",
+            "subtasks": [
+                {"n": 1, "goal": "добавь поле A", "files": ["a.py"]},
+                {"n": 2, "goal": "добавь ключ B", "files": ["b.yaml"]},
+            ],
+        }
+    )
+    result = parse_decompose_response(content)
+    assert result.parse_error is None
+    assert len(result.subtasks) == 2
+    assert result.subtasks[0].goal == "добавь поле A"
+    assert result.subtasks[0].files == ["a.py"]
+    assert result.subtasks[1].goal == "добавь ключ B"
+    assert result.subtasks[1].files == ["b.yaml"]
+    assert result.explanation == "разбиваю на 2 файла"
+
+
+def test_parse_decompose_markdown_wrapper():
+    """Ответ с markdown-обёрткой — парсинг ok."""
+    content = '```json\n{"explanation": "x", "subtasks": [{"n": 1, "goal": "g", "files": []}]}\n```'
+    result = parse_decompose_response(content)
+    assert result.parse_error is None
+    assert len(result.subtasks) == 1
+    assert result.subtasks[0].goal == "g"
+
+
+def test_parse_decompose_invalid_json():
+    """Невалидный JSON — parse_error."""
+    result = parse_decompose_response("not json at all")
+    assert result.parse_error is not None
+    assert "no '{' found" in result.parse_error or "JSON" in result.parse_error
+    assert result.subtasks == []
