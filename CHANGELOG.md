@@ -36,6 +36,33 @@
 
 
 
+## [2026-10-09] iteration 10.14.13 — fix(decompose): суммировать стоимость retry
+
+### Исправлено
+- `run_agent_decompose`: при retry через v4-pro стоимость первой
+  (flash) попытки **терялась** — `subtask_results[-1]["cost_rub"]`
+  перезаписывался стоимостью retry вместо суммирования.
+- Фикс: `prev_cost = subtask_results[-1].get("cost_rub", 0.0)`;
+  `"cost_rub": prev_cost + loop_result.total_cost_rub`.
+- Найдено на живом прогоне `/tmp/agent-replan`:
+  - flash-попытка подзадачи 1: **0.0608 RUB**;
+  - retry v4-pro: **0.3796 RUB**;
+  - в decompose-report было только 0.3796.
+- Тест `test_run_agent_decompose_retry_cost_summation` — проверяет
+  сумму 0.06 + 0.38 = 0.44.
+
+### Побочный результат
+- Живой прогон агента на правку `agent.py` (2600 строк) — **провал**:
+  12 итераций, 0 правок. Причина — правило 11 не различает
+  «весь файл в контексте» и «файл обрезан». Записано в TODO п.18.
+- experiments.md: записи про провал на большом файле и про
+  decompose-replan.
+
+### Итого тестов
+- 307 → 308 passed (+1).
+
+---
+
 ## [2026-10-09] iteration 10.14.8 — test(llm): покрытие 100%
 
 ### Добавлено

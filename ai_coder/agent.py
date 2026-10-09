@@ -587,13 +587,17 @@ def run_agent_decompose(
                 dec_result.cost_usd += loop_result.total_cost_usd
 
                 if dec_result.subtask_results:
+                    # Суммируем стоимость: первая попытка (flash) +
+                    # retry (v4-pro). Иначе flash-попытка теряется
+                    # в отчёте (см. experiments 2026-10-09, 10.14.13).
+                    prev_cost = dec_result.subtask_results[-1].get("cost_rub", 0.0)
                     dec_result.subtask_results[-1] = {
                         "n": st.n,
                         "goal": st.goal,
                         "files": st.files,
                         "success": loop_result.success,
                         "stopped_reason": loop_result.stopped_reason,
-                        "cost_rub": loop_result.total_cost_rub,
+                        "cost_rub": prev_cost + loop_result.total_cost_rub,
                         "backup_dir": str(loop_result.backup_dir)
                         if loop_result.backup_dir
                         else None,

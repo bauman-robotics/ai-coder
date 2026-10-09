@@ -1699,3 +1699,62 @@ def test_run_agent_decompose_replan_modify(sample_project, minimal_cfg, prompts_
     assert result.subtask_results[0]["success"] is False  # оригинал 1
     assert result.subtask_results[1]["success"] is True  # new_subtask
     assert result.subtask_results[1]["goal"] == "rewritten"
+
+
+def test_run_agent_decompose_retry_cost_summation(sample_project, minimal_cfg, prompts_cfg):
+    """При retry через v4-pro стоимость суммируется с первой попыткой.
+
+    Регрессия 10.14.13: раньше subtask_results[-1]["cost_rub"]
+    перезаписывался стоимостью retry — flash-попытка терялась
+    в отчёте decompose.
+    """
+    from ai_coder.agent import DecomposeResult, ReplanResult, run_agent_decompose
+
+    # Включаем retry через v4-pro
+    minimal_cfg.agent.decompose_model = "deepseek-v4-pro"
+
+    dec = DecomposeResult(
+        explanation="one subtask",
+        subtasks=[_subtask(1, "fail twice")],
+    )
+    replan = ReplanResult(action="stop", explanation="hopeless")
+
+    # Попытка 1 (flash): 0.06 RUB. Попытка 2 (v4-pro retry): 0.38 RUB.
+    side_effects = [
+        _fail_loop_with_cost(0.06),
+        _fail_loop_with_cost(0.38),
+    ]
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            model="deepseek-flash",  # первая попытка
+            journal=False,
+            replan=True,
+        )
+
+    # Ключевая проверка: 0.06 + 0.38 = 0.44, не 0.38
+    assert len(result.subtask_results) == 1
+    assert result.subtask_results[0]["cost_rub"] == 0.44, (
+        f"ожидали 0.44 (сумма), получили {result.subtask_results[0]['cost_rub']}"
+    )
+
+
+def _fail_loop_with_cost(cost: float) -> "object":
+    from ai_coder.agent import ToolLoopResult
+
+    return ToolLoopResult(
+        success=False,
+        summary="failed",
+        iterations=1,
+        stopped_reason="completed",
+        total_cost_rub=cost,
+    )
