@@ -524,17 +524,15 @@
       обратные кавычки.
 - **Приоритет:** 🟢 закрыто.
 
-### 11. `parse_error` при пустом JSON от flash (обнаружено 2026-10-09)
+### 11. `parse_error` при пустом JSON от flash — ✅ решено (10.11.5)
 
-- [ ] **Проблема:** в decompose E2E подзадача 2 упала на
-      `tool JSON no '{' found`. Модель вернула `{}` (пустой JSON)
-      или мусор без `{`. `parse_tool_action` — `parse_error`,
-      decompose — **стоп**.
-- [ ] **Фикс:** при `parse_error` от `parse_tool_action` — **retry**
-      (до 2 попыток) с уточнением «верни непустой JSON».
-- [ ] **Фикс (альтернатива):** при `{}` — `finish(success=false,
-      summary="empty JSON from model")`, не `parse_error`.
-- **Приоритет:** 🟡 средний.
+- [x] **Проблема:** в decompose E2E подзадача 2 упала на
+      `tool JSON no '{' found`.
+- [x] **Фикс:** `parse_retries` (max 2) в `run_tool_loop`.
+      При `parse_error` — retry с сообщением «верни СТРОГО JSON».
+      После 2 retry — `stopped_reason=parse_error`.
+- [x] **2 теста:** retry-ok, exhausted.
+- **Приоритет:** 🟢 закрыто.
 
 ### 12. Подзадачи не знают, что задача уже решена (обнаружено 2026-10-09)
 

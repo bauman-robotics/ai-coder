@@ -32,6 +32,35 @@
 
 
 
+
+## [2026-10-09] iteration 10.11.4 + 10.11.5 — тесты + retry
+
+### Добавлено (10.11.4 — тесты)
+- `test_parse_decompose_valid` — 2 подзадачи, поля goal/files.
+- `test_parse_decompose_markdown_wrapper` — обёртка ```json.
+- `test_parse_decompose_invalid_json` — parse_error.
+- 283 → 286 passed.
+
+### Исправлено (10.11.5 — проблема 11)
+- **`parse_error` → retry (до 2 попыток)** в `run_tool_loop`.
+- Раньше: `parse_error` → стоп. В decompose E2E подзадача 2
+  упала, потому что flash вернула `{}` на 3-й итерации.
+- Теперь: при `parse_error` — добавляем в `history` сообщение
+  «верни СТРОГО JSON», `continue`. Счётчик `parse_retries` (max 2).
+  После 2 retry — `stopped_reason="parse_error"`.
+- `test_run_tool_loop_parse_error_retry` — retry → успех.
+- `test_run_tool_loop_parse_error_exhausted` — 2 retry → стоп.
+- 286 → 288 passed.
+
+### Метрика
+- Тестов: 283 → **288** (+5).
+- Decompose E2E: подзадача 2 больше не падает на `parse_error`.
+
+### TODO
+- Закрыт п.11 (parse_error при {}).
+
+---
+
 ## [2026-10-09] iteration 10.11.2 — feat: run_agent_decompose
 
 ### Добавлено
