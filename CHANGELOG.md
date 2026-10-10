@@ -4,6 +4,54 @@
 
 ---
 
+## [2026-10-10] iteration 10.15 — Сессия 1: критичные фиксы безопасности
+
+Три пункта из ревью v4-pro (2026-10-09-full), раздел «Критично». Все
+блокировали безопасную автономность агента.
+
+### 1.1 — blacklist для tool loop (`2d8e31b`)
+
+- **Проблема:** tool loop обходил `apply_plan`-blacklist. Агент мог
+  писать в `.git/**`, `config/config.yaml`, `pyproject.toml`, `.env`.
+- **Фикс:**
+  - новый модуль `ai_coder/pathfilter.py` — общий `is_blacklisted()`;
+  - `apply._path_is_blacklisted` делегирует в `pathfilter`;
+  - `tools.execute_tool`: `write_cfg` + `allow_blacklist` (keyword-only);
+  - проброс через `run_tool_loop`, `run_agent_decompose`, `run_auto_fix`;
+  - CLI: `--allow-blacklist` для `agent` и `fix` (opt-in self-improvement);
+  - дефолт `write_cfg=None` → проверка выключена (обратная совместимость).
+- **Тесты:** +4 в `test_tools.py`.
+
+### 1.2 — маскировка секретов в tool loop (`1f31880`)
+
+- **Проблема:** `_contains_secret` работал только при скане. `tool_read_file`
+  и `run_shell` отдавали секреты в LLM (утечка API-ключей).
+- **Фикс:**
+  - `scanner.mask_secrets(text)` → `(masked, names)`;
+  - `tool_read_file` (оба режима) и `tool_run_shell` маскируют вывод;
+  - warning-строка в начале вывода: `⚠️ [masked N secret(s): ...]`.
+- **Тесты:** +3 в `test_scanner.py`, +3 в `test_tools.py`.
+
+### 1.3 — `run_verify_commands` без `shell=True` (`2ef8073`)
+
+- **Проблема:** `subprocess.run(cmd, shell=True)` — RCE-вектор.
+  `pytest -q; rm -rf /` выполнял `rm`.
+- **Фикс:**
+  - `shlex.split` + `shell=False`;
+  - blacklist первого токена: `rm`, `dd`, `mkfs`, `shutdown`, `kill`,
+    `sudo`, `chmod`, `chown` и др.;
+  - `pytest -q; rm -rf /` больше не выполняет `rm` — `;` становится
+    частью аргумента `-q;`.
+- **Тесты:** +3 в `test_apply.py`.
+
+### Итого
+
+- Тесты: **317 → 330** (+13).
+- CI: pytest × 3 (3.10/3.11/3.12) + ruff + mypy — зелёный.
+- Коммиты: `2d8e31b`, `1f31880`, `2ef8073`.
+
+---
+
 
 
 

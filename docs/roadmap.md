@@ -344,11 +344,13 @@ diff, журналы, roadmap.
 
 ## Рекомендуемый порядок — на 2-3 дня
 
-### Сессия 1 (2-3 часа) — критичные фиксы безопасности
+### ✅ Сессия 1 (2-3 часа) — критичные фиксы безопасности — ЗАКРЫТО 2026-10-10
 
-- **1.1** tools.py blacklist (с флагом `--allow-blacklist`);
-- **1.2** tools.py content-фильтр;
-- **1.3** apply.py `shell=True` → `shlex.split`.
+- ✅ **1.1** tools.py blacklist (с флагом `--allow-blacklist`) — `2d8e31b`;
+- ✅ **1.2** tools.py content-фильтр (`mask_secrets`) — `1f31880`;
+- ✅ **1.3** apply.py `shell=True` → `shlex.split` — `2ef8073`.
+
+Тесты: 317 → 330 (+13). CI зелёный.
 
 ### Сессия 1.5 (2-6 часов) — навигация
 

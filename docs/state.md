@@ -1,10 +1,10 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-09 (поздний вечер, iteration 10.14.18)
+**Дата обновления:** 2026-10-10 (Сессия 1: security, iteration 10.15)
 **Ветка:** main
-**Последний коммит:** (см. `git log -1 --oneline`)
-**Тесты:** 316 passed | CI: pytest x3 + ruff + mypy — зелёный
-**Статус:** рабочий инструмент, активная разработка
+**Последний коммит:** 2ef8073 (fix(security): run_verify_commands без shell=True)
+**Тесты:** 330 passed | CI: pytest x3 + ruff + mypy — зелёный
+**Статус:** рабочий инструмент, активная разработка; базовая безопасность закрыта
 
 ---
 
@@ -82,6 +82,14 @@ Python-проектов через DeepSeek API. Работает с git-про�
   - `--max-iterations` — лимит итераций;
   - бэкап перед первым изменением + `ai-coder rollback` совместим;
   - журнал `tool-loop-<ts>/step-N.md` + `report.md`.
+  - **Безопасность (10.15):**
+    - blacklist в tool loop: `write_file`/`edit_file` не пишут
+      в `.git/**`, `config/**`, `pyproject.toml`, `.env`
+      (флаг `--allow-blacklist` — осознанный обход);
+    - `mask_secrets` в `read_file`/`run_shell` — API-ключи,
+      токены, PEM не уходят в LLM;
+    - `run_verify_commands` без `shell=True` — RCE-вектор закрыт,
+      blacklist первого токена (`rm`, `dd`, `sudo`, ...).
 
 ---
 
@@ -130,6 +138,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 Сделано в итерациях 6.5–10.14:
 - review 1.1–1.4, 5.2, 5.3 — закрыты
+
+**Сессия 1: security (10.15, 2026-10-10):**
+- review 1.1 — blacklist для tool loop (`--allow-blacklist`);
+- review 1.2 — `mask_secrets` в `read_file`/`run_shell`;
+- review 1.3 — `run_verify_commands` без `shell=True`.
 - CI + coverage + pre-commit — настроены
 - Покрытие тестами: 40% -> 73% (144 теста)
 - Сканер: пустые + приоритизация + content-секреты + вёрстка
