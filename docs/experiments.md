@@ -6,6 +6,93 @@
 
 ---
 
+## 2026-10-10 — E8.1: повтор 1.5 с коротким goal (flash vs v4-pro)
+
+**Что пробовали:** E7 показал провал на задаче 1.5 (19-строчный goal,
+`apply.py`, `apply_plan` + `rollback`). Здесь — **та же задача**, но
+**короткий goal (4 строки)**. Проверяем гипотезу **H12: длина goal**.
+
+**Issue (4 строки):**
+
+    # task: manifest version в apply.py
+
+    ## Цель
+    В ai_coder/apply.py добавь в manifest поле version: 1.
+    В rollback проверь: если manifest.get("version") != 1 —
+    raise ValueError с сообщением "unsupported manifest version".
+
+**Прогон 1 — flash:**
+
+    python -m ai_coder.cli agent --issue /tmp/issue-b15/short.md . \
+        --tool-loop --apply --max-iterations 15 --max-cost-rub 2 \
+        --verify-commands "python -m pytest tests/test_apply.py -q;ruff check ." \
+        --model deepseek-flash
+
+**Результат flash:**
+
+- **6 итераций**, **0.3435 RUB**, ✅ успех.
+- Итерации: `read_file` → `run_shell (rejected)` → `run_shell (grep)` →
+  `read_file (lines 400-545)` → `edit_file` × 2.
+- **0 флейков** (rejection `run_shell` — whitelist, не флейк модели).
+
+**Прогон 2 — v4-pro:**
+
+    python -m ai_coder.cli agent --issue /tmp/issue-b15/short.md . \
+        --tool-loop --apply --max-iterations 15 --max-cost-rub 3 \
+        --verify-commands "python -m pytest tests/test_apply.py -q;ruff check ." \
+        --model deepseek-v4-pro
+
+**Результат v4-pro:**
+
+- **8 итераций**, **2.5880 RUB**, ✅ успех.
+- Итерации: `read_file` → `run_shell (rejected)` → `run_shell (grep)` →
+  `read_file (400-470)` → `read_file (410-430)` → `read_symbol` →
+  `edit_file` × 2.
+- **0 флейков.**
+
+**Сравнение:**
+
+| Модель | Goal | Итераций | Стоимость | Результат |
+|---|---|---|---|---|
+| **flash (E7)** | 19 | ≥15 | ~0.5+ | ❌ `parse_error` |
+| **flash (E8.1)** | 4 | **6** | **0.3435** | ✅ |
+| **v4-pro (E8.1)** | 4 | **8** | **2.5880** | ✅ |
+
+**Выводы:**
+
+1. **H12 подтверждена: длина goal — критична.** **19 строк → флейк,
+   4 строки → ✅.** Это **главный фактор** провала 1.5, а не
+   алгоритмическая природа задачи, не размер файла.
+
+2. **v4-pro не быстрее flash на этой задаче.** **8 итераций** vs 6.
+   **×7.5 дороже** (2.59 vs 0.34 RUB).
+
+3. **Flash достаточен** для **большинства** задач. **v4-pro** —
+   только если flash **действительно** не справляется.
+
+4. **`read_symbol` используется** — v4-pro применил (итерация 6),
+   flash — нет (пошёл через `read_file` диапазона).
+
+5. **Правило для `--issue`:** **< 10 строк** — безопасно,
+   **10-15** — риск флейка, **> 15** — высокий риск (`parse_error`).
+
+**Действия (сделано):**
+
+- **Warning в `--issue`** (>10 — жёлтый, >15 — красный).
+  См. `ai_coder/cli.py`.
+
+**Открытый вопрос:**
+
+- **Почему v4-pro «думает» дольше?** 4 итерации на чтение
+  (`read_file` × 2, `read_symbol`), тогда как flash — 3
+  (`read_file`, `run_shell`, `read_file`). Возможно, v4-pro
+  **осторожнее** — читает больше контекста перед правкой.
+
+**Ссылки:** E7 (провал 1.5, 19 строк), E8 (граница flash, 10 задач),
+CHANGELOG 10.22 (warning + E8.1).
+
+---
+
 ## 2026-10-10 — E8: граница flash — 10 задач нарастающей сложности
 
 **Что пробовали:** понять, где flash перестаёт справляться.

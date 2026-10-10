@@ -839,6 +839,20 @@ def agent_cmd(
         console.print("[red]Нужен goal (аргумент) или --issue <file>[/red]")
         raise typer.Exit(1)
 
+    # --- WARN: длинный goal (E7, E8) ---
+    _goal_lines_n = len(goal.splitlines())
+    if _goal_lines_n > 15:
+        console.print(
+            f"[red]⚠ Goal очень длинный ({_goal_lines_n} строк). "
+            f"Высокий риск флейка (E7: 19 строк → parse_error). "
+            f"Разбей на 2-3 коротких задачи (< 10 строк каждая).[/red]"
+        )
+    elif _goal_lines_n > 10:
+        console.print(
+            f"[yellow]⚠ Goal длинный ({_goal_lines_n} строк). "
+            f"Правило: < 10 (E8). Риск флейка. Возможно, разбей.[/yellow]"
+        )
+
     # --max-tokens: переопределяем бюджет сканера
     if max_tokens is not None:
         cfg.scanning.max_total_tokens = max_tokens
