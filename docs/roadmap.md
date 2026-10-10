@@ -42,22 +42,20 @@ LLM сама вызывает инструменты, планирует, дек
 
 ## Направления доработок
 
-### 🟢 Направление 1 — `--auto-fix-issues`
+### ✅ Направление 1 — `--auto-fix-issues` — ЗАКРЫТО 2026-10-10
 
 **Что:** цикл `pytest → fix (tool loop) → pytest → ...`
 до success или `--max-attempts`.
 
-**Что уже есть:**
-- `ai-coder fix` (10.14.1–10.14.3) — работает;
-- `run_auto_fix` — цикл.
+**Реализовано** в 10.17 (`b421c38`):
+- флаг `--auto-fix-issues` для `agent` (требует `--tool-loop`);
+- после `run_tool_loop`, если verify упал — `run_auto_fix`;
+- стоимость суммируется, бюджет делится;
+- E2E (E5): сломанный `calc.py` → verify fail → auto-fix → success
+  (0.1460 RUB, 2 попытки).
 
-**Что нужно:**
-- вызвать `run_auto_fix` из агента **после** правки;
-- флаг `--auto-fix-issues` (opt-in).
-
-**Оценка:** ~2 часа. **Риск:** низкий. **Приоритет:** 🟢 высокий.
-
-**Ценность:** высокая — полный цикл «правка → verify → fix».
+**Отложено:** интеграция в `--decompose` (там replan/rollback),
+в `run_agent` (свой `--max-fix-attempts`).
 
 ---
 
@@ -402,7 +400,7 @@ C/C++/JS/Go/Rust. Но **не блокирует** автономность на
 3. **apply.py** — `shell=True` → `shlex.split` — M;
 4. **`read_symbol(name)`** — новый инструмент навигации — ~2 ч;
 5. **кэш сканирования** (`scan-cache.json`) — ~4 ч;
-6. **`--auto-fix-issues`** — вызвать `run_auto_fix` из агента — ~2 ч;
+6. ✅ **`--auto-fix-issues`** — вызвать `run_auto_fix` из агента — ЗАКРЫТО 10.17;
 7. **`--with-tests`** — агент пишет тесты — ~3 ч;
 8. **ветки + PR** — `ai-coder/<slug>-<ts>` + `gh pr create` — ~4 ч;
 9. **память между запусками** — `.ai-out/<project>/tasks/` — ~6 ч.

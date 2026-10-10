@@ -95,6 +95,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
       тело функции/класса Python по имени, без `grep`+`read_file`.
       E2E: **2 итерации вместо 3**, 0.11 RUB вместо 0.13.
       Python-only; для C/C++ — направление 9 roadmap.
+  - **Автономность (10.17):**
+    - `--auto-fix-issues` — после tool loop, если verify упал,
+      запускается `run_auto_fix` (до 3 попыток).
+      E2E: сломанный `calc.py` → verify fail → auto-fix → success
+      (0.1460 RUB, 2 попытки). Требует `--tool-loop`.
 
 ---
 

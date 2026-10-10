@@ -6,6 +6,78 @@
 
 ---
 
+## 2026-10-10 — E5: --auto-fix-issues в бою: ✅ успех за 2 попытки
+
+**Что пробовали:** новый флаг `--auto-fix-issues` (10.17) — цикл
+`verify → fix → verify` после tool loop.
+
+**Песочница `/tmp/autofix-test`:**
+
+    calc.py:      def add(a, b): return a - b       # баг
+    test_calc.py: def test_add(): assert add(2, 3) == 5   # падает
+
+**Задача агенту:** «Прочитай файл calc.py и верни finish(success=true).
+НЕ правь файл» — специально, чтобы verify упал и сработал auto-fix.
+
+**Команда:**
+
+    python -m ai_coder.cli agent "Прочитай файл calc.py и верни finish..." \
+        /tmp/autofix-test --tool-loop --apply --auto-fix-issues \
+        --max-iterations 5 --max-cost-rub 2 \
+        --verify-commands "python -m pytest -q" --model deepseek-flash
+
+**Что произошло:**
+
+1. **Tool loop:** `read_file(calc.py)` → `finish(success=true)` (1 итерация).
+2. **Verify:** `pytest -q` → ❌ `assert -1 == 5` → `success=False`,
+   `stopped_reason="verify_failed"`.
+3. **Auto-fix стартует** (новый блок):
+   - Попытка 1/3: `pytest` → ошибка → `fix через tool loop` →
+     правит `calc.py` (`a - b` → `a + b`) → `pytest` ✅.
+   - Попытка 2/3: `✅ Auto-fix: успех`.
+4. **Итог:** `✅ успех`, `Стоимость: 0.1460 RUB`,
+   `Summary: verify failed, auto-fix: 2 попыток → ok`.
+
+**Проверка результата:**
+
+    $ cat /tmp/autofix-test/calc.py
+    def add(a, b): return a + b
+
+    $ git diff
+    -def add(a, b): return a - b
+    +def add(a, b): return a + b
+
+**Стоимость:**
+
+- Tool loop: ~0.06 RUB (1 итерация — read + finish).
+- Auto-fix: ~0.09 RUB (2 попытки: fail + fix + verify success).
+- **Итого:** 0.1460 RUB.
+
+**Выводы:**
+
+1. **Цикл замкнут:** «правка → verify → fix → verify» — в одной
+   команде, без ручного перезапуска.
+2. **Стоимость предсказуема:** 2 попытки auto-fix = ~0.09 RUB.
+3. **Бюджет делится:** остаток `--max-cost-rub` уходит в auto-fix
+   (в тесте не пригодилось — остаток 1.85 RUB, потратили 0.09).
+4. **Отчёт консистентен:** `loop_result.success=True` после
+   auto-fix, `summary` объясняет что было.
+
+**Открытые вопросы:**
+
+- **Что если auto-fix зациклится?** Ограничение `max_attempts=3`
+  жёсткое. Проверить на реально сложном баге.
+- **Интеграция в `--decompose`:** там уже replan/rollback,
+  auto-fix поверх — потенциально сложно (что чинить, если подзадача
+  упала?). **Отложено.**
+- **Auto-fix внутри `run_agent` (классический):** там свой
+  `--max-fix-attempts`. Дублировать или унифицировать? **Отложено.**
+
+**Ссылки:** CHANGELOG 10.17, коммит `b421c38`, roadmap → направление 1
+(закрыто).
+
+---
+
 ## 2026-10-10 — E4: scan-cache содержимого — ❌ отрицательный результат
 
 **Что пробовали:** кэш сканирования проекта. Идея (roadmap 2B):

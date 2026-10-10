@@ -4,6 +4,40 @@
 
 ---
 
+## [2026-10-10] iteration 10.17 — --auto-fix-issues (автономность, направление 1)
+
+Замкнули цикл `правка → verify → fix → verify` в одну команду.
+Если после `run_tool_loop` verify падает — автоматически запускается
+`run_auto_fix` (до 3 попыток).
+
+### Добавлено
+
+- **CLI:** `--auto-fix-issues` для `agent` (требует `--tool-loop`).
+- **Логика в `agent_cmd`:** после `run_tool_loop`, если
+  `not success and verify_errors` — вызывается `run_auto_fix`.
+- **Суммирование стоимости:** tool loop + auto-fix в одном отчёте.
+- **Бюджет:** `--max-cost-rub` делится — остаток идёт в auto-fix.
+- **Обновление итога:** `success`, `verify_errors`, `summary`
+  пересчитываются после auto-fix.
+
+### Smoke-тест (E5)
+
+Песочница `/tmp/autofix-test`: `calc.py` с багом (`return a - b`),
+падающий тест `test_add`. Агент по задаче **не правил** файл
+(просто `read_file` + `finish`), verify упал → auto-fix:
+
+- **Попытка 1:** ошибка → fix через tool loop → правит `calc.py` → pytest ✅
+- **Попытка 2:** ✅ Auto-fix: успех
+- **Стоимость:** 0.1460 RUB (tool loop ~0.06 + auto-fix ~0.09)
+- **Результат:** `✅ успех`, `Summary: verify failed, auto-fix: 2 попыток → ok`
+
+### Отложено
+
+- Интеграция в `--decompose` (там уже replan/rollback для подзадач).
+- Интеграция в `run_agent` (классический) — там свой `--max-fix-attempts`.
+
+---
+
 ## [2026-10-10] iteration 10.16 — read_symbol (навигация, направление 2A)
 
 Инструмент `read_symbol` — чтение функции/класса Python по имени,
