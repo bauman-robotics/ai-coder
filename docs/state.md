@@ -108,6 +108,10 @@ Python-проектов через DeepSeek API. Работает с git-про�
       pytest-тесты для изменённых файлов (второй tool loop).
       E2E: 3 итерации, 0.1945 RUB, обновляет существующий
       `test_calc.py`. Требует `--tool-loop`.
+  - **Issue-driven (10.20):**
+    - `--issue <file>` — задача из Markdown-файла вместо CLI.
+      Работает с GitHub issues, `issues/*.md`, roadmap-кусками.
+      Парсит `# task:`-заголовок, обрезает до 60 строк.
 
 ---
 

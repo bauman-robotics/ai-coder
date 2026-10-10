@@ -280,6 +280,72 @@
 
 ---
 
+## 10. Issue-driven — задача из файла
+
+**Задача:** не писать длинный промпт в командной строке (backticks,
+кавычки, bash-конфликты), а хранить задачу в Markdown-файле.
+
+**Формат файла** `issues/1-add-sub.md`:
+
+    # task: add sub function
+
+    ## Цель
+    Добавь в calc.py функцию sub(a, b), возвращающую a - b.
+
+    ## Тесты
+    Не требуется.
+
+**Запуск:**
+
+    ai-coder agent --issue issues/1-add-sub.md /tmp/proj \
+        --tool-loop --apply --max-cost-rub 1
+
+**Стоимость:** ~0.09 RUB (2 итерации). **Что:** `read_file` → `edit_file`.
+
+**Вывод:**
+
+    Задача из issue: 1-add-sub.md (87 символов, 5 строк)
+    ... обычный tool loop ...
+
+**Сценарии:**
+
+**GitHub issue:**
+
+    gh issue view 123 > issues/123.md
+    ai-coder agent --issue issues/123.md . --tool-loop --apply
+
+**Свои задачи в репозитории:**
+
+    mkdir -p issues
+    cat > issues/1-tools-blacklist.md <<'TASK'
+    # task: tools.py blacklist
+    ## Цель
+    Добавить проверку blacklist в write_file/edit_file.
+    ## Файлы
+    - ai_coder/tools.py
+    ## Ограничения
+    Не менять apply.py.
+    TASK
+
+    ai-coder agent --issue issues/1-tools-blacklist.md . \
+        --tool-loop --apply --allow-blacklist
+
+**Roadmap-куски:** roadmap разбит на `issues/N.md` — «кормим»
+агенту частями, по одной задаче.
+
+**Ограничения (первая версия):**
+
+- Первая строка `# task: ...` отбрасывается.
+- Обрезка до 60 строк (с пометкой).
+- `--issue` + непустой `goal`-не-директория → ошибка.
+- Если `path` не текущая директория — используй позиционный `path`
+  или `cd` заранее.
+- `## Файлы` / `## Тесты` / `## Ограничения` — **пока не парсятся**,
+  идут целиком в goal. Дальше — можно добавить `--only-path` из
+  `## Файлы`.
+
+---
+
 ## Что дальше
 
 - **Теория** — [`scenarios.md`](scenarios.md) (12 сценариев).
