@@ -4,6 +4,41 @@
 
 ---
 
+## [2026-10-10] iteration 10.23 — E9: ai-coder в чужом проекте
+
+Агент работал в `youtube-playlist-downloader` (~600 строк) через
+`--issue` + `--tool-loop`. ~15 задач: рефакторинг, GUI,
+транскрибация, пунктуация, LLM-обработка, README.
+
+### Ключевые фичи (за сессию)
+
+- **write_file auto-chmod** — `.sh`/shebang → +x.
+- **--issue <file>** — задача из Markdown-файла.
+- **--with-tests** — pytest-тесты для изменённых файлов.
+- **--auto-fix-issues** — цикл verify → fix → verify.
+- **read_symbol** — чтение функции/класса Python по имени.
+- **blacklist, mask_secrets, shell=False, whitelist аргументов** —
+  безопасность (ревью 09-full закрыто).
+- **apply.py неатомарность** — rollback удаляет пустые каталоги.
+
+### Эксперименты E3–E9
+
+- **E3**: read_symbol — 2 итерации вместо 3.
+- **E4**: scan-cache — отклонён (0.1% времени).
+- **E5**: --auto-fix-issues.
+- **E6**: --with-tests (×2.3 дешевле).
+- **E7**: --issue на сложном — провал (19 строк goal).
+- **E8**: граница flash — 10 задач, все ✅.
+- **E8.1**: длина goal критична.
+- **E9**: ai-coder в чужом проекте — ~15 задач, ✅.
+
+См. `docs/experiments.md`, `docs/roadmap.md` (направление 10),
+`docs/autonomy.md` (этап 5).
+
+Тесты: 366 passed.
+
+---
+
 ## [2026-10-10] iteration 10.22 — warning о длине goal + E8.1 (граница flash)
 
 ### Warning о длине goal в `--issue`
