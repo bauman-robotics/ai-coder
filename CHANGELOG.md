@@ -4,6 +4,53 @@
 
 ---
 
+## [2026-10-10] iteration 10.18 — whitelist аргументов run_shell (ревью 1.4)
+
+Второй слой защиты `run_shell`: после whitelist по имени команды —
+чёрный список опасных флагов. Закрывает дыры, которые оставались
+внутри разрешённых команд.
+
+### Проблема
+
+`find` и `git branch` были в whitelist **целиком** — вместе с
+опасными флагами:
+- `find . -delete` — **удалял файлы** в проекте;
+- `find . -exec <cmd>` — **выполнял произвольные команды**;
+- `tail -f` — **бесконечный** вывод (только timeout спасал);
+- `git branch -D <branch>` — **удалял ветку**;
+- `git log --exec=<cmd>` — **выполнял команду** на каждом коммите.
+
+### Фикс
+
+- `_SHELL_FORBIDDEN_FLAGS` — простые команды:
+  - `find`: `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fdelete`, `-fls`;
+  - `tail`: `-f`, `--follow`, `-F`.
+- `_GIT_FORBIDDEN_FLAGS` — по подкоманде:
+  - `branch`: `-D`, `-d`, `-m`, `-M`, `--delete`, `--move`, `--set-upstream-to`, `-u`;
+  - `log`, `diff`, `show`: `--exec`, `--ext-diff`, `--textconv`.
+- `_flag_is_forbidden` — сравнение как целого токена, так и префикса
+  до `=` (`--exec=rm` → `--exec`).
+
+### Smoke
+
+| Команда | Результат |
+|---|---|
+| `find . -delete` | REJECT (`flag forbidden for find: -delete`) |
+| `find . -name *.py` | OK |
+| `find . -name x -exec rm` | REJECT (`-exec`) |
+| `tail -f log.txt` | REJECT (`-f`) |
+| `tail -n 10 log.txt` | OK |
+| `git branch -D main` | REJECT (`-D`) |
+| `git branch` | OK |
+| `git log --exec=rm` | REJECT (`--exec`) |
+| `git log --oneline` | OK |
+
+### Тесты
+
++9 в `test_tools.py` (find, tail, git branch, git log).
+
+---
+
 ## [2026-10-10] iteration 10.17 — --auto-fix-issues (автономность, направление 1)
 
 Замкнули цикл `правка → verify → fix → verify` в одну команду.

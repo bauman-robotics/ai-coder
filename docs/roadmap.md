@@ -328,11 +328,16 @@ C/C++/JS/Go/Rust. Но **не блокирует** автономность на
 - **Фикс:** `shlex.split(cmd)` + `shell=False` + whitelist.
 - **Приоритет:** 🔴 высокий (RCE). **Оценка:** M (~2 часа).
 
-### run_shell — whitelist аргументов (ревью 1.4)
+### ✅ run_shell — whitelist аргументов (ревью 1.4) — ЗАКРЫТО 2026-10-10
 
 - **Проблема:** `find . -delete`, `git branch -D` — опасные флаги.
-- **Фикс:** чёрный список флагов для `find`, `git`.
-- **Приоритет:** 🟡 средний. **Оценка:** M (~2 часа).
+- **Фикс (10.18, `1a8ed0f`):**
+  - `_SHELL_FORBIDDEN_FLAGS`: `find` (`-delete`/`-exec`/`-ok`),
+    `tail` (`-f`);
+  - `_GIT_FORBIDDEN_FLAGS`: `branch` (`-D`/`-d`/`-m`/`-M`),
+    `log`/`diff`/`show` (`--exec`/`--ext-diff`/`--textconv`);
+  - `_flag_is_forbidden`: сравнение по целому токену и до `=`.
+- **Тесты:** +9.
 
 ### apply.py — неатомарность (ревью 1.5)
 

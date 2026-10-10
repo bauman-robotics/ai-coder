@@ -89,7 +89,10 @@ Python-проектов через DeepSeek API. Работает с git-про�
     - `mask_secrets` в `read_file`/`run_shell` — API-ключи,
       токены, PEM не уходят в LLM;
     - `run_verify_commands` без `shell=True` — RCE-вектор закрыт,
-      blacklist первого токена (`rm`, `dd`, `sudo`, ...).
+      blacklist первого токена (`rm`, `dd`, `sudo`, ...);
+    - `run_shell` whitelist аргументов (10.18): `find` без
+      `-delete`/`-exec`, `tail` без `-f`, `git branch` без `-D`,
+      `git log` без `--exec`.
   - **Навигация (10.16):**
     - `read_symbol(name, path?, kind?)` — 6-й инструмент:
       тело функции/класса Python по имени, без `grep`+`read_file`.
