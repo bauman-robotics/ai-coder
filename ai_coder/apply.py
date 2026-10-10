@@ -8,8 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-import pathspec
-
 OperationType = Literal["edit_file", "create_file"]
 
 
@@ -122,15 +120,13 @@ def parse_response(content: str) -> WritePlan:
 
 
 def _path_is_blacklisted(rel_path: str, cfg) -> bool:
-    patterns = list(cfg.write.blacklist_paths)
-    if not patterns:
-        return False
-    spec = pathspec.PathSpec.from_lines("gitignore", patterns)
-    if spec.match_file(rel_path) or spec.match_file(rel_path + "/"):
-        return True
-    if rel_path in cfg.write.blacklist_files:
-        return True
-    return False
+    from .pathfilter import is_blacklisted
+
+    return is_blacklisted(
+        rel_path,
+        cfg.write.blacklist_paths,
+        cfg.write.blacklist_files,
+    )
 
 
 def validate_operations(plan: WritePlan, project_root: Path, cfg) -> None:

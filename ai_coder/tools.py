@@ -550,6 +550,8 @@ def execute_tool(
     project_root: Path,
     *,
     dry_run: bool = False,
+    write_cfg: Any = None,
+    allow_blacklist: bool = False,
 ) -> ToolResult:
     """
     Выполняет инструмент по имени.
@@ -560,6 +562,11 @@ def execute_tool(
         project_root: корень проекта.
         dry_run: если True — dangerous-инструменты НЕ выполняются,
                  возвращают "(dry-run) would have ...".
+        write_cfg: секция cfg.write (blacklist_paths/blacklist_files).
+                   Если None — проверка blacklist выключена
+                   (для обратной совместимости с тестами).
+        allow_blacklist: если True — осознанно разрешить запись
+                   в blacklist (для self-improvement).
 
     Returns:
         ToolResult. Если инструмент не найден или упал — ok=False.
@@ -568,6 +575,20 @@ def execute_tool(
         return ToolResult(ok=False, error=f"unknown tool: {name}")
 
     spec, fn = TOOL_REGISTRY[name]
+
+    # --- blacklist для write_file / edit_file ---
+    if write_cfg is not None and not allow_blacklist and name in ("write_file", "edit_file"):
+        rel = str(args.get("path", "")).strip()
+        if rel:
+            from .pathfilter import is_blacklisted
+
+            if is_blacklisted(rel, write_cfg.blacklist_paths, write_cfg.blacklist_files):
+                return ToolResult(
+                    ok=False,
+                    error=(
+                        f"{name}: path '{rel}' is blacklisted (use --allow-blacklist to override)"
+                    ),
+                )
 
     # dry-run: пропускаем dangerous, но сообщаем, что БЫЛО БЫ сделано.
     # Формулировка "EDITED/WROTE/RAN" (а не "would have called") — чтобы

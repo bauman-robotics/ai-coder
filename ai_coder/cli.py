@@ -761,6 +761,11 @@ def agent_cmd(
         "--decompose-max-cost-rub",
         help="Остановка decompose при превышении стоимости (RUB).",
     ),
+    allow_blacklist: bool = typer.Option(
+        False,
+        "--allow-blacklist",
+        help="Разрешить tool loop запись в blacklist (self-improvement). По умолчанию запрещено.",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -863,6 +868,7 @@ def agent_cmd(
                     replan=decompose_replan,
                     rollback_on_fail=decompose_rollback_on_fail,
                     max_cost_rub=decompose_max_cost_rub,
+                    allow_blacklist=allow_blacklist,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка decompose:[/red] {e}")
@@ -936,6 +942,7 @@ def agent_cmd(
                     interactive=interactive,
                     auto_commit=commit,
                     resume_from=resume,  # NEW
+                    allow_blacklist=allow_blacklist,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
@@ -1200,6 +1207,11 @@ def fix_cmd(
         "По умолчанию — из config.yaml.",
     ),
     max_attempts: int = typer.Option(3, "--max-attempts", help="Максимум попыток fix"),
+    allow_blacklist: bool = typer.Option(
+        False,
+        "--allow-blacklist",
+        help="Разрешить fix-агенту запись в blacklist. По умолчанию запрещено.",
+    ),
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Подтверждать каждый dangerous-инструмент"
     ),
@@ -1262,6 +1274,7 @@ def fix_cmd(
             journal=journal,
             interactive=interactive,
             max_cost_rub=max_cost_rub,
+            allow_blacklist=allow_blacklist,
         )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")

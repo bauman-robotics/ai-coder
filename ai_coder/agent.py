@@ -474,6 +474,7 @@ def run_agent_decompose(
     replan: bool = False,
     rollback_on_fail: bool = False,
     max_cost_rub: float | None = None,
+    allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -544,6 +545,7 @@ def run_agent_decompose(
             interactive=interactive,
             journal=journal,
             journal_subdir=subtask_subdir,
+            allow_blacklist=allow_blacklist,
         )
 
         dec_result.cost_rub += loop_result.total_cost_rub
@@ -592,6 +594,7 @@ def run_agent_decompose(
                     interactive=interactive,
                     journal=journal,
                     journal_subdir=subtask_subdir,
+                    allow_blacklist=allow_blacklist,
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub
                 dec_result.cost_cny += loop_result.total_cost_cny
@@ -2103,6 +2106,7 @@ def run_tool_loop(
     auto_commit: bool = False,
     resume_from: Path | None = None,  # NEW
     journal_subdir: Path | None = None,  # NEW: куда писать журнал
+    allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -2369,6 +2373,8 @@ def run_tool_loop(
             action.args,
             project_root,
             dry_run=dry_run,
+            write_cfg=cfg.write,
+            allow_blacklist=allow_blacklist,
         )
         history.append((action, tool_result))
 
@@ -2629,6 +2635,7 @@ def run_auto_fix(
     journal: bool = True,
     interactive: bool = False,
     max_cost_rub: float | None = None,
+    allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
 ) -> AutoFixResult:
     """
     Цикл: verify → fix (tool loop) → verify → ...
@@ -2701,6 +2708,7 @@ def run_auto_fix(
             journal=journal,
             journal_subdir=subdir,
             max_cost_rub=remaining_budget,
+            allow_blacklist=allow_blacklist,
         )
         result.total_cost_rub += loop_result.total_cost_rub
         result.total_cost_cny += loop_result.total_cost_cny

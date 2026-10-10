@@ -675,3 +675,80 @@ def test_read_file_no_range_still_returns_full_small_file(tmp_path: Path):
     assert "b = 2" in r.output
     # Заголовка с диапазоном нет
     assert "lines" not in r.output.split("\n")[0]
+
+
+# ---------- blacklist в tool loop ----------
+
+
+def test_execute_tool_write_file_rejects_blacklist_default(tmp_path: Path):
+    """write_file в blacklist-файл отклоняется, если write_cfg передан."""
+    from ai_coder.config import WriteConfig
+
+    wc = WriteConfig(
+        blacklist_paths=[".git/**", "*.env"],
+        blacklist_files=["pyproject.toml"],
+    )
+    r = execute_tool(
+        "write_file",
+        {"path": "pyproject.toml", "content": "x = 1\n"},
+        tmp_path,
+        write_cfg=wc,
+    )
+    assert not r.ok
+    assert "blacklisted" in r.error
+    assert "pyproject.toml" in r.error
+    # файл НЕ создан
+    assert not (tmp_path / "pyproject.toml").exists()
+
+
+def test_execute_tool_edit_file_rejects_blacklist_default(tmp_path: Path):
+    """edit_file в blacklist-файл отклоняется, если write_cfg передан."""
+    from ai_coder.config import WriteConfig
+
+    target = tmp_path / ".env"
+    target.write_text("SECRET=old\n", encoding="utf-8")
+
+    wc = WriteConfig(blacklist_paths=["*.env"], blacklist_files=[])
+    r = execute_tool(
+        "edit_file",
+        {"path": ".env", "old": "old", "new": "new"},
+        tmp_path,
+        write_cfg=wc,
+    )
+    assert not r.ok
+    assert "blacklisted" in r.error
+    # файл НЕ изменён
+    assert target.read_text(encoding="utf-8") == "SECRET=old\n"
+
+
+def test_execute_tool_write_file_allows_with_flag(tmp_path: Path):
+    """С --allow-blacklist запись в blacklist разрешена."""
+    from ai_coder.config import WriteConfig
+
+    wc = WriteConfig(blacklist_paths=[], blacklist_files=["pyproject.toml"])
+    r = execute_tool(
+        "write_file",
+        {"path": "pyproject.toml", "content": "x = 1\n"},
+        tmp_path,
+        write_cfg=wc,
+        allow_blacklist=True,
+    )
+    assert r.ok
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_execute_tool_read_file_ignores_blacklist(tmp_path: Path):
+    """read_file не проверяет blacklist (dangerous=False)."""
+    from ai_coder.config import WriteConfig
+
+    (tmp_path / "pyproject.toml").write_text("x = 1\n", encoding="utf-8")
+    wc = WriteConfig(blacklist_paths=[], blacklist_files=["pyproject.toml"])
+
+    r = execute_tool(
+        "read_file",
+        {"path": "pyproject.toml"},
+        tmp_path,
+        write_cfg=wc,
+    )
+    assert r.ok
+    assert "x = 1" in r.output
