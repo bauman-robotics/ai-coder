@@ -332,6 +332,23 @@ def _copy_to_backup(abs_path: Path, project_root: Path, backup_dir: Path) -> Pat
     return dst
 
 
+def _collect_new_dirs(abs_parent: Path, root: Path) -> list[str]:
+    """
+    Создаёт недостающие каталоги для abs_parent (аналог mkdir(parents=True))
+    и возвращает относительные POSIX-пути вновь созданных каталогов
+    от глубокого к корню.
+    """
+    missing: list[Path] = []
+    p = abs_parent
+    while p != root and not p.exists():
+        missing.append(p)
+        p = p.parent
+    # missing собран от глубокого к корню; создаём от корня к глубокому
+    for d in reversed(missing):
+        d.mkdir(exist_ok=True)
+    return [d.relative_to(root).as_posix() for d in missing]
+
+
 def apply_plan(
     plan: WritePlan,
     project_root: Path,
@@ -350,6 +367,7 @@ def apply_plan(
     backed_up_paths: set[str] = set()  # rel-пути, уже забэкапленные
     backups_made: list[tuple[Path, Path]] = []  # для отката при ошибке
     created_files: list[Path] = []
+    created_dirs: list[str] = []
     operations_log: list[dict] = []
 
     try:
@@ -373,7 +391,12 @@ def apply_plan(
 
             if op.type == "create_file":
                 content = op.content or ""
-                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                # Собираем и создаём недостающие каталоги, запоминаем
+                # в created_dirs (от глубокого к корню, для отката).
+                new_dirs = _collect_new_dirs(abs_path.parent, root)
+                for d in new_dirs:
+                    if d not in created_dirs:
+                        created_dirs.append(d)
                 abs_path.write_text(content, encoding="utf-8")
                 created_files.append(abs_path)
                 applied.append(rel)
@@ -393,6 +416,7 @@ def apply_plan(
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             "project_root": str(root),
             "operations": operations_log,
+            "created_dirs": created_dirs,  # NEW: пустые каталоги для отката
         }
         (backup_dir / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2),
@@ -458,6 +482,17 @@ def rollback(backup_dir: Path, project_root: Path) -> list[str]:
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src, dst)
                     restored.append(f"~{rel}")
+
+        # NEW: удаляем пустые каталоги, созданные при apply_plan.
+        # created_dirs — от глубокого к корню, поэтому идём в этом же
+        # порядке: сначала глубокие, потом родители. Непустые — ignore.
+        for dir_rel in manifest.get("created_dirs", []):
+            d = root / dir_rel
+            try:
+                d.rmdir()
+                restored.append(f"-{dir_rel}/")
+            except OSError:
+                pass  # не пуст или уже нет
 
         return restored
 

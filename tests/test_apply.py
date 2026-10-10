@@ -389,3 +389,61 @@ def test_run_verify_commands_unparseable(sample_project: Path):
     errors = run_verify_commands(["python -c 'unclosed"], sample_project, timeout_sec=5)
     assert len(errors) == 1
     assert "распарсить" in errors[0]
+
+
+# ---------- rollback: удаление пустых каталогов ----------
+
+
+def test_rollback_removes_empty_dirs(tmp_path: Path, minimal_cfg):
+    """apply_plan создаёт a/b/c.py; rollback удаляет файл И каталоги."""
+    from ai_coder.apply import Operation, WritePlan, apply_plan, rollback
+
+    # создаём план: create_file a/b/c.py
+    plan = WritePlan(
+        operations=[
+            Operation(type="create_file", path="a/b/c.py", content="x = 1\n"),
+        ]
+    )
+
+    backup = tmp_path / "backup"
+    applied, errors = apply_plan(plan, tmp_path, backup)
+
+    assert errors == [], errors
+    assert (tmp_path / "a/b/c.py").exists()
+    assert (tmp_path / "a/b").is_dir()
+
+    # rollback
+    restored = rollback(backup, tmp_path)
+    assert not (tmp_path / "a/b/c.py").exists()
+    # ключевое: пустые каталоги удалены
+    assert not (tmp_path / "a/b").exists()
+    assert not (tmp_path / "a").exists()
+    # и в restored есть записи об удалении каталогов
+    assert any(r.startswith("-") and r.endswith("/") for r in restored)
+
+
+def test_rollback_keeps_non_empty_dirs(tmp_path: Path, minimal_cfg):
+    """Если в a/b есть ДРУГОЙ файл — rollback НЕ удаляет a/b."""
+    from ai_coder.apply import Operation, WritePlan, apply_plan, rollback
+
+    # заранее создаём a/b/keep.py — он не в плане
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "a" / "b" / "keep.py").write_text("keep\n", encoding="utf-8")
+
+    plan = WritePlan(
+        operations=[
+            Operation(type="create_file", path="a/b/c.py", content="x = 1\n"),
+        ]
+    )
+
+    backup = tmp_path / "backup"
+    applied, errors = apply_plan(plan, tmp_path, backup)
+    assert errors == []
+
+    # rollback
+    rollback(backup, tmp_path)
+
+    # c.py удалён, но a/b сохранён (непустой)
+    assert not (tmp_path / "a/b/c.py").exists()
+    assert (tmp_path / "a/b").is_dir()
+    assert (tmp_path / "a/b/keep.py").exists()
