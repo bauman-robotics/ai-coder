@@ -103,6 +103,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
       запускается `run_auto_fix` (до 3 попыток).
       E2E: сломанный `calc.py` → verify fail → auto-fix → success
       (0.1460 RUB, 2 попытки). Требует `--tool-loop`.
+  - **Автономность (10.19):**
+    - `--with-tests` — после успешного tool loop агент пишет
+      pytest-тесты для изменённых файлов (второй tool loop).
+      E2E: 3 итерации, 0.1945 RUB, обновляет существующий
+      `test_calc.py`. Требует `--tool-loop`.
 
 ---
 
