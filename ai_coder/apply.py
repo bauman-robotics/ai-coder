@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import py_compile
+import shlex
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,6 +10,26 @@ from pathlib import Path
 from typing import Literal
 
 OperationType = Literal["edit_file", "create_file"]
+
+# Команды, которые запрещены в verify (черный список первого токена).
+# Защита от случайного/намеренного запуска деструктивных команд.
+_VERIFY_FORBIDDEN_COMMANDS: frozenset[str] = frozenset(
+    {
+        "rm",
+        "dd",
+        "mkfs",
+        "shutdown",
+        "reboot",
+        "halt",
+        "kill",
+        "killall",
+        "pkill",
+        "chmod",
+        "chown",
+        "sudo",
+        "su",
+    }
+)
 
 
 @dataclass
@@ -520,10 +541,27 @@ def run_verify_commands(
         if not cmd:
             continue
 
+        # парсим команду БЕЗ shell (shell=False ниже).
+        # shlex.split корректно обрабатывает кавычки, поэтому
+        # `python -c 'import sys; sys.exit(2)'` — это один аргумент,
+        # а `pytest -q; rm -rf /` — набор токенов без shell-семантики.
+        try:
+            tokens = shlex.split(cmd)
+        except ValueError as e:
+            errors.append(f"$ {cmd}\n  не удалось распарсить: {e}")
+            continue
+
+        if not tokens:
+            continue
+
+        if tokens[0] in _VERIFY_FORBIDDEN_COMMANDS:
+            errors.append(f"$ {cmd}\n  команда запрещена (blacklist): {tokens[0]}")
+            continue
+
         try:
             proc = subprocess.run(
-                cmd,
-                shell=True,
+                tokens,
+                shell=False,
                 cwd=root,
                 capture_output=True,
                 text=True,

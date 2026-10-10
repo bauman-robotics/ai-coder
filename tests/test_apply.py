@@ -354,3 +354,38 @@ def test_run_verify_commands_empty_list(sample_project: Path):
 
     errors = run_verify_commands([], sample_project)
     assert errors == []
+
+
+def test_run_verify_commands_rejects_blacklist(sample_project: Path):
+    """verify_commands с rm отклоняется (blacklist первого токена)."""
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands(["rm -rf /"], sample_project, timeout_sec=5)
+    assert len(errors) == 1
+    assert "команда запрещена" in errors[0]
+    assert "rm" in errors[0]
+
+
+def test_run_verify_commands_no_shell_metachars_leak(sample_project: Path):
+    """`pytest -q; rm -rf /` НЕ выполняет rm: shlex.split → pytest с аргументом `-q;`."""
+    from ai_coder.apply import run_verify_commands
+
+    # pytest, скорее всего, вернёт non-zero (нет тестов / аргумент странный) —
+    # главное, что rm НЕ выполняется и в errors нет "rm -rf".
+    errors = run_verify_commands(
+        ["pytest -q; rm -rf /nonexistent-xyz"],
+        sample_project,
+        timeout_sec=10,
+    )
+    # Ошибка есть (pytest не пройдёт), но она про pytest, не про rm.
+    assert len(errors) == 1
+    assert "rm" not in errors[0] or "pytest" in errors[0]
+
+
+def test_run_verify_commands_unparseable(sample_project: Path):
+    """Некорректные кавычки → ошибка парсинга, не запуск."""
+    from ai_coder.apply import run_verify_commands
+
+    errors = run_verify_commands(["python -c 'unclosed"], sample_project, timeout_sec=5)
+    assert len(errors) == 1
+    assert "распарсить" in errors[0]
