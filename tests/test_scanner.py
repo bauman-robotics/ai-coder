@@ -214,3 +214,39 @@ def test_render_metadata_block(sample_project, minimal_cfg):
 
     assert "### README.md" in block
     assert "# sample" in block
+
+
+# ---------- mask_secrets ----------
+
+
+def test_mask_secrets_empty():
+    from ai_coder.scanner import mask_secrets
+
+    masked, names = mask_secrets("hello world")
+    assert masked == "hello world"
+    assert names == []
+
+
+def test_mask_secrets_aws_key():
+    from ai_coder.scanner import mask_secrets
+
+    text = "aws_key = 'AKIAIOSFODNN7EXAMPLE'"
+    masked, names = mask_secrets(text)
+    assert "AKIAIOSFODNN7EXAMPLE" not in masked
+    assert "***REDACTED (AWS access key)***" in masked
+    assert names == ["AWS access key"]
+
+
+def test_mask_secrets_multiple():
+    from ai_coder.scanner import mask_secrets
+
+    text = (
+        "openai = 'sk-aaaaaaaaaaaaaaaaaaaaaaaaa'\n"
+        "github = 'ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n"
+    )
+    masked, names = mask_secrets(text)
+    assert "sk-aaaaaaaaaaaaaaaaaaaaaaaaa" not in masked
+    assert "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" not in masked
+    assert "OpenAI/DeepSeek API key" in names
+    assert "GitHub personal access token" in names
+    assert len(names) == 2

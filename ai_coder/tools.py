@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .scanner import mask_secrets
+
 
 @dataclass
 class ToolSpec:
@@ -252,6 +254,13 @@ def tool_run_shell(args: dict[str, Any], project_root: Path) -> ToolResult:
         parts.append("--- stderr ---\n" + completed.stderr)
     output = "\n".join(parts).strip()
 
+    # content-фильтр секретов: маскируем ДО обрезки,
+    # чтобы warning был виден даже если вывод огромный
+    output, secret_names = mask_secrets(output)
+    if secret_names:
+        warning = f"⚠️ [masked {len(secret_names)} secret(s): {', '.join(secret_names)}]"
+        output = warning + "\n" + output
+
     if len(output) > _SHELL_MAX_OUTPUT_CHARS:
         output = (
             output[:_SHELL_MAX_OUTPUT_CHARS] + f"\n... [обрезано, всего {len(output)} символов]"
@@ -328,11 +337,20 @@ def tool_read_file(args: dict[str, Any], project_root: Path) -> ToolResult:
             )
         selected = "\n".join(lines[start - 1 : end])
         header = f"# {path} (lines {start}-{end} of {total})\n"
+        selected, secret_names = mask_secrets(selected)
+        if secret_names:
+            warning = f"⚠️ [masked {len(secret_names)} secret(s): {', '.join(secret_names)}]\n"
+            header = warning + header
         return ToolResult(ok=True, output=header + selected)
 
     # --- режим файла целиком (как было) ---
     if len(text) > 50_000:
         text = text[:50_000] + f"\n... [обрезано, всего {len(text)} символов]"
+
+    text, secret_names = mask_secrets(text)
+    if secret_names:
+        warning = f"⚠️ [masked {len(secret_names)} secret(s): {', '.join(secret_names)}]\n"
+        text = warning + text
 
     return ToolResult(ok=True, output=text)
 

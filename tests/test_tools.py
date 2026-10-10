@@ -752,3 +752,57 @@ def test_execute_tool_read_file_ignores_blacklist(tmp_path: Path):
     )
     assert r.ok
     assert "x = 1" in r.output
+
+
+# ---------- mask_secrets в tool loop ----------
+
+
+def test_read_file_masks_secrets(tmp_path: Path):
+    """read_file маскирует секреты и добавляет warning."""
+    (tmp_path / "config.py").write_text(
+        "KEY = 'AKIAIOSFODNN7EXAMPLE'\nNAME = 'prod'\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_file", {"path": "config.py"}, tmp_path)
+    assert r.ok
+    assert "AKIAIOSFODNN7EXAMPLE" not in r.output
+    assert "***REDACTED (AWS access key)***" in r.output
+    assert "⚠️ [masked 1 secret(s): AWS access key]" in r.output
+
+
+def test_read_file_masks_secrets_in_range(tmp_path: Path):
+    """read_file с line_start/line_end тоже маскирует."""
+    (tmp_path / "x.py").write_text(
+        "a = 1\nb = 2\nKEY = 'AKIAIOSFODNN7EXAMPLE'\nd = 4\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool(
+        "read_file",
+        {"path": "x.py", "line_start": 3, "line_end": 3},
+        tmp_path,
+    )
+    assert r.ok
+    assert "AKIAIOSFODNN7EXAMPLE" not in r.output
+    assert "***REDACTED (AWS access key)***" in r.output
+    # warning в начале
+    assert r.output.startswith("⚠️ [masked 1 secret(s): AWS access key]")
+
+
+def test_run_shell_masks_secrets(tmp_path: Path):
+    """run_shell маскирует секреты в stdout."""
+    (tmp_path / "leak.txt").write_text(
+        "print('AKIAIOSFODNN7EXAMPLE')\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool(
+        "run_shell",
+        {"command": "cat leak.txt"},
+        tmp_path,
+    )
+    assert r.ok
+    assert "AKIAIOSFODNN7EXAMPLE" not in r.output
+    assert "***REDACTED (AWS access key)***" in r.output
+    assert "⚠️ [masked 1 secret(s): AWS access key]" in r.output

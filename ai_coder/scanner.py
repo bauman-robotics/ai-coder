@@ -129,6 +129,33 @@ def _contains_secret(text: str) -> str | None:
     return None
 
 
+def mask_secrets(text: str) -> tuple[str, list[str]]:
+    """
+    Маскирует найденные секреты в тексте.
+
+    Возвращает (masked_text, sorted_unique_names). Если секретов нет —
+    (text, []).
+
+    Используется в tool loop (read_file, run_shell), чтобы секреты
+    не попадали в контекст LLM.
+    """
+    found: list[str] = []
+
+    def _repl(name: str):
+        def _cb(m: re.Match[str]) -> str:
+            if name not in found:
+                found.append(name)
+            return f"***REDACTED ({name})***"
+
+        return _cb
+
+    masked = text
+    for pattern, name in _SECRET_PATTERNS:
+        if re.search(pattern, masked):
+            masked = re.sub(pattern, _repl(name), masked)
+    return masked, sorted(set(found))
+
+
 def _expand_dir_patterns(patterns: list[str]) -> list[str]:
     """
     Для паттернов вида ".venv/" или ".venv" добавляет варианты,
