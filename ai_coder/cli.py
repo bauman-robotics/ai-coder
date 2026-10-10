@@ -766,6 +766,14 @@ def agent_cmd(
         "--allow-blacklist",
         help="Разрешить tool loop запись в blacklist (self-improvement). По умолчанию запрещено.",
     ),
+    auto_fix_issues: bool = typer.Option(
+        False,
+        "--auto-fix-issues",
+        help=(
+            "После tool loop: если verify упал — запустить цикл fix "
+            "(verify → fix → verify). Требует --tool-loop."
+        ),
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -790,6 +798,10 @@ def agent_cmd(
 
     if interactive and not apply and not tool_loop:
         console.print("[red]--interactive требует --apply (или --tool-loop)[/red]")
+        raise typer.Exit(1)
+
+    if auto_fix_issues and not tool_loop:
+        console.print("[red]--auto-fix-issues требует --tool-loop[/red]")
         raise typer.Exit(1)
 
     if interactive and not sys.stdin.isatty():
@@ -947,6 +959,58 @@ def agent_cmd(
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
             raise typer.Exit(1)
+
+        # --- NEW: --auto-fix-issues ---
+        if auto_fix_issues and not loop_result.success and loop_result.verify_errors:
+            from .agent import run_auto_fix
+
+            console.print()
+            console.print(
+                f"[yellow]Verify упал ({len(loop_result.verify_errors)}). "
+                f"Запускаю auto-fix...[/yellow]"
+            )
+            remaining_budget: float | None = None
+            if max_cost_rub is not None:
+                remaining_budget = max(0.0, max_cost_rub - loop_result.total_cost_rub)
+            try:
+                fix_result = run_auto_fix(
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=pr_cfg,
+                    verify_commands=cfg.agent.verify_commands,
+                    max_attempts=3,
+                    model=model,
+                    depth=depth,
+                    extra_exclude=list(exclude) or None,
+                    journal=journal,
+                    interactive=interactive,
+                    max_cost_rub=remaining_budget,
+                    allow_blacklist=allow_blacklist,
+                )
+            except Exception as e:
+                console.print(f"[red]Ошибка auto-fix:[/red] {e}")
+                fix_result = None
+
+            if fix_result is not None:
+                # суммируем стоимость
+                loop_result.total_cost_rub += fix_result.total_cost_rub
+                loop_result.total_cost_cny += fix_result.total_cost_cny
+                loop_result.total_cost_usd += fix_result.total_cost_usd
+                # обновляем итог
+                if fix_result.success:
+                    loop_result.success = True
+                    loop_result.verify_errors = []
+                    loop_result.summary = (
+                        f"verify failed, auto-fix: {fix_result.attempts} попыток → ok"
+                    )
+                    console.print("[green]✅ Auto-fix: успех[/green]")
+                else:
+                    loop_result.verify_errors = fix_result.final_errors or loop_result.verify_errors
+                    loop_result.summary = (
+                        f"verify failed, auto-fix: {fix_result.attempts} попыток → "
+                        f"{fix_result.stopped_reason}"
+                    )
+                    console.print(f"[red]❌ Auto-fix: неуспех ({fix_result.stopped_reason})[/red]")
 
         console.print()
         status = "[green]✅ успех[/green]" if loop_result.success else "[red]❌ неуспех[/red]"
