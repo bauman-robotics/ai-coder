@@ -950,3 +950,105 @@ def test_format_tool_history_other_tools_still_short():
 
     text = format_tool_history([(action, result)])
     assert "[обрезано" in text
+
+
+# ---------- run_shell: whitelist аргументов (флаги) ----------
+
+
+def test_run_shell_rejects_find_delete(tmp_path: Path):
+    """find . -delete — флаг -delete запрещён."""
+    r = execute_tool("run_shell", {"command": "find . -delete"}, tmp_path)
+    assert not r.ok
+    assert "-delete" in r.error
+
+
+def test_run_shell_rejects_find_exec(tmp_path: Path):
+    """find . -name x -exec — флаг -exec запрещён."""
+    r = execute_tool(
+        "run_shell",
+        {"command": "find . -name x -exec echo"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "-exec" in r.error
+
+
+def test_run_shell_allows_find_name(tmp_path: Path):
+    """find . -name '*.py' — разрешено."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    r = execute_tool(
+        "run_shell",
+        {"command": "find . -name a.py"},
+        tmp_path,
+    )
+    assert r.ok
+    assert "a.py" in r.output
+
+
+def test_run_shell_rejects_tail_follow(tmp_path: Path):
+    """tail -f — запрещено."""
+    (tmp_path / "log.txt").write_text("x\n", encoding="utf-8")
+    r = execute_tool(
+        "run_shell",
+        {"command": "tail -f log.txt"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "-f" in r.error
+
+
+def test_run_shell_allows_tail_n(tmp_path: Path):
+    """tail -n 1 — разрешено."""
+    (tmp_path / "log.txt").write_text("a\nb\n", encoding="utf-8")
+    r = execute_tool(
+        "run_shell",
+        {"command": "tail -n 1 log.txt"},
+        tmp_path,
+    )
+    assert r.ok
+    assert "b" in r.output
+
+
+def test_run_shell_rejects_git_branch_delete(tmp_path: Path):
+    """git branch -D — запрещено."""
+    r = execute_tool(
+        "run_shell",
+        {"command": "git branch -D main"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "-D" in r.error
+
+
+def test_run_shell_rejects_git_branch_delete_long(tmp_path: Path):
+    """git branch --delete=main — запрещено (через '=')."""
+    r = execute_tool(
+        "run_shell",
+        {"command": "git branch --delete=main"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "--delete" in r.error
+
+
+def test_run_shell_allows_git_branch_list(tmp_path: Path):
+    """git branch (без флагов) — разрешено."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+
+    r = execute_tool("run_shell", {"command": "git branch"}, tmp_path)
+    assert r.ok
+
+
+def test_run_shell_rejects_git_log_exec(tmp_path: Path):
+    """git log --exec=cmd — запрещено."""
+    r = execute_tool(
+        "run_shell",
+        {"command": "git log --exec=rm"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert "--exec" in r.error

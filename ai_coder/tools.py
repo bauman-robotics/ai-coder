@@ -118,6 +118,62 @@ _GIT_FORBIDDEN: frozenset[str] = frozenset(
     }
 )
 
+# Чёрный список флагов для простых команд.
+# Токен сравнивается целиком ИЛИ по префиксу до '=' (для --flag=value).
+# Whitelist по имени команды — уже есть; это дополнительный слой
+# (защита от опасных флагов внутри разрешённых команд).
+_SHELL_FORBIDDEN_FLAGS: dict[str, frozenset[str]] = {
+    "find": frozenset(
+        {
+            "-delete",
+            "-exec",
+            "-execdir",
+            "-ok",
+            "-okdir",
+            "-fdelete",  # BSD
+            "-fls",  # BSD: запись списка в файл
+        }
+    ),
+    "tail": frozenset({"-f", "--follow", "-F"}),  # бесконечный хвост
+    # ls, cat, grep, head, wc, pytest, ruff, mypy — нечего запрещать.
+    # python / python3 — проверяются отдельно (только -m pytest|ruff|mypy).
+}
+
+# Чёрный список флагов для git-подкоманд.
+# Ключ — подкоманда (status/diff/log/show/branch/rev-parse/ls-files).
+_GIT_FORBIDDEN_FLAGS: dict[str, frozenset[str]] = {
+    "branch": frozenset(
+        {
+            "-D",
+            "-d",
+            "-m",
+            "-M",
+            "--delete",
+            "--move",
+            "--set-upstream-to",
+            "-u",
+        }
+    ),
+    "log": frozenset({"--exec", "--ext-diff", "--textconv"}),
+    "diff": frozenset({"--ext-diff", "--textconv", "--exec"}),
+    "show": frozenset({"--ext-diff", "--textconv", "--exec"}),
+    # status, rev-parse, ls-files — без запретов.
+}
+
+
+def _flag_is_forbidden(tokens: list[str], forbidden: frozenset[str]) -> str | None:
+    """
+    Проверяет токены на запрещённые флаги.
+    Сравнивает как целый токен, так и префикс до '=' (--flag=value).
+    Возвращает найденный флаг или None.
+    """
+    for tok in tokens:
+        base = tok.split("=", 1)[0]
+        if base in forbidden:
+            return base
+    return None
+
+
 # Метасимволы shell, запрещённые в command.
 # Разрешаем только «простые» команды без пайпов и перенаправлений.
 _SHELL_METACHARS = re.compile(r"[;&|<>`$]|\$\(|\|\|")
@@ -178,6 +234,13 @@ def _validate_command(command: str) -> str | None:
     if first not in _SHELL_WHITELIST:
         return f"command not in whitelist: {first}"
 
+    # --- дополнительно: чёрный список флагов для простых команд ---
+    forbidden = _SHELL_FORBIDDEN_FLAGS.get(first)
+    if forbidden:
+        bad = _flag_is_forbidden(tokens[1:], forbidden)
+        if bad is not None:
+            return f"flag forbidden for {first}: {bad}"
+
     # проверки для конкретных команд
     if first in ("python", "python3"):
         # разрешаем только python -m pytest / -m ruff / -m mypy
@@ -194,6 +257,13 @@ def _validate_command(command: str) -> str | None:
         allowed_git = {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files"}
         if sub not in allowed_git:
             return f"git subcommand not in whitelist: {sub}"
+
+        # --- дополнительно: чёрный список флагов для git-подкоманды ---
+        git_forbidden = _GIT_FORBIDDEN_FLAGS.get(sub)
+        if git_forbidden:
+            bad = _flag_is_forbidden(tokens[2:], git_forbidden)
+            if bad is not None:
+                return f"flag forbidden for git {sub}: {bad}"
 
     return None
 
