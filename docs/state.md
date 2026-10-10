@@ -90,6 +90,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
       токены, PEM не уходят в LLM;
     - `run_verify_commands` без `shell=True` — RCE-вектор закрыт,
       blacklist первого токена (`rm`, `dd`, `sudo`, ...).
+  - **Навигация (10.16):**
+    - `read_symbol(name, path?, kind?)` — 6-й инструмент:
+      тело функции/класса Python по имени, без `grep`+`read_file`.
+      E2E: **2 итерации вместо 3**, 0.11 RUB вместо 0.13.
+      Python-only; для C/C++ — направление 9 roadmap.
 
 ---
 

@@ -4,6 +4,53 @@
 
 ---
 
+## [2026-10-10] iteration 10.16 — read_symbol (навигация, направление 2A)
+
+Инструмент `read_symbol` — чтение функции/класса Python по имени,
+без `grep -n` + `read_file(line_start, line_end)`. Два коммита.
+
+### feat — read_symbol (`c66ec38`)
+
+- **tools.py:** `tool_read_symbol(name, path=None, kind=None)`
+  - Python-only (regex `^def` / `^class` / `^async def`);
+  - `path` опционально (иначе — поиск по всем `.py` проекта);
+  - `kind`: `'def'` | `'class'` (опционально);
+  - учитывает декораторы, вложенные методы, отступы;
+  - при коллизии возвращает первый + помечает в шапке;
+  - `mask_secrets` применяется;
+  - обрезка на 50K, как в `read_file`.
+- **TOOL_REGISTRY:** 6-й инструмент (`read_symbol`).
+- **prompts.yaml:** правило 11 — путь **C** (read_symbol вместо grep).
+- **tests:** +9, обновлены `test_registry_has_six_tools`.
+
+### fix — format_tool_history (`70e15d1`)
+
+- **Проблема (из эксперимента):** `read_symbol` попадал в `other_max_chars`
+  (500 символов) → в истории для модели был обрезанный результат →
+  модель **перечитывала** через `read_file`. 3 итерации вместо 2.
+- **Фикс:** `read_symbol` в привилегированном пути (10000, как `read_file`);
+  пометка при обрезке: «Не перечитывай — правь через edit_file».
+- **tests:** +2.
+
+### Эксперимент (E3, 2026-10-10)
+
+Задача: добавить строку в docstring `run_tool_loop` (`agent.py`, 2806 строк).
+
+| Метрика | 10.14.14 (grep) | read_symbol v1 | **read_symbol v2** |
+|---|---|---|---|
+| Итераций | 3 | 3 (+read_file) | **2** |
+| Стоимость | 0.13 RUB | 0.1586 RUB | **0.1125 RUB** |
+| Путь | read_file→grep→read_file→edit | read_symbol→**read_file**→edit | **read_symbol→edit** |
+
+**Итог:** 2 итерации вместо 3, дешевле на 13% (от 10.14.14) и на 29%
+(от read_symbol v1).
+
+### Итого тестов
+
+- 330 → **341** (+11: +9 read_symbol, +2 format_tool_history).
+
+---
+
 ## [2026-10-10] iteration 10.15 — Сессия 1: критичные фиксы безопасности
 
 Три пункта из ревью v4-pro (2026-10-09-full), раздел «Критично». Все
