@@ -395,6 +395,13 @@ agent_tool_json:
              read_file → grep -n → read_file(line_start, line_end)
              → edit_file → finish.
 
+        C. КОНКРЕТНАЯ функция/класс в Python (.py) — используй read_symbol:
+           Если знаешь ИМЯ функции/класса, не делай grep+read_file.
+           1. read_symbol(name="<имя>") → тело символа целиком.
+           2. edit_file → finish.
+           Целевая последовательность: read_symbol → edit_file → finish.
+           Только для .py. Если symbol не найден — переходи на путь B.
+
         Общие правила:
         - После успешного edit_file (или (dry-run) EDITED) — сразу
           finish(success=true).

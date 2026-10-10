@@ -355,6 +355,184 @@ def tool_read_file(args: dict[str, Any], project_root: Path) -> ToolResult:
     return ToolResult(ok=True, output=text)
 
 
+# ---------- read_symbol (Python-only) ----------
+
+_SYMBOL_DEF_RE = re.compile(r"^([ \t]*)(async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+_SYMBOL_CLASS_RE = re.compile(r"^([ \t]*)class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[\(:]")
+_SYMBOL_DECORATOR_RE = re.compile(r"^[ \t]*@")
+
+
+def _indent_width(line: str) -> int:
+    """Ширина отступа (пробелы + tabs*4) для строки."""
+    n = 0
+    for ch in line:
+        if ch == " ":
+            n += 1
+        elif ch == "\t":
+            n += 4
+        else:
+            break
+    return n
+
+
+def _find_symbol_in_text(text: str, name: str, kind: str | None) -> tuple[int, int, str] | None:
+    """
+    Ищет символ name в тексте.
+    Возвращает (start_line_1based, end_line_1based, kind) или None.
+    kind: 'def' | 'class' | None (любой).
+    """
+    lines = text.splitlines()
+    total = len(lines)
+
+    for i, line in enumerate(lines):
+        m_def = _SYMBOL_DEF_RE.match(line)
+        m_class = _SYMBOL_CLASS_RE.match(line)
+
+        found_kind: str | None = None
+        found_indent = 0
+        if m_def and m_def.group(3) == name and kind in (None, "def"):
+            found_kind = "def"
+            found_indent = _indent_width(line)
+        elif m_class and m_class.group(2) == name and kind in (None, "class"):
+            found_kind = "class"
+            found_indent = _indent_width(line)
+
+        if found_kind is None:
+            continue
+
+        # границы: идём вниз до следующего def/class с отступом <= found_indent
+        end = total
+        for j in range(i + 1, total):
+            lj = lines[j]
+            if not lj.strip():
+                continue
+            if _indent_width(lj) <= found_indent:
+                # проверяем, что это def/class (а не просто строка кода)
+                if _SYMBOL_DEF_RE.match(lj) or _SYMBOL_CLASS_RE.match(lj):
+                    end = j  # exclusive
+                    break
+                # если это не def/class, но с меньшим отступом —
+                # символ уже закончился (конец файла / блока)
+                if _indent_width(lj) < found_indent:
+                    end = j
+                    break
+
+        return (i + 1, end, found_kind)
+
+    return None
+
+
+def _iter_python_files(project_root: Path):
+    """Все .py в проекте, кроме служебных папок."""
+    skip_dirs = {".git", ".venv", "venv", "__pycache__", ".ai-out", "node_modules"}
+    for p in project_root.rglob("*.py"):
+        rel = p.relative_to(project_root)
+        if any(part in skip_dirs for part in rel.parts):
+            continue
+        yield p, rel.as_posix()
+
+
+def tool_read_symbol(args: dict[str, Any], project_root: Path) -> ToolResult:
+    """
+    read_symbol(name, path=None, kind=None) → тело функции/класса Python.
+
+    name: имя символа (обязательно).
+    path: опциональный путь к .py файлу (если None — искать везде).
+    kind: 'def' | 'class' (опционально; иначе — любой).
+
+    Возвращает заголовок '# <path>:<line> (<kind> <name>)' и тело.
+    Если символов несколько — возвращает первый и помечает в шапке.
+    Только .py файлы.
+    """
+    name = str(args.get("name", "")).strip()
+    if not name:
+        return ToolResult(ok=False, error="read_symbol: missing 'name'")
+
+    path_arg = args.get("path")
+    kind = args.get("kind")
+    if kind not in (None, "def", "class"):
+        return ToolResult(
+            ok=False,
+            error="read_symbol: kind must be 'def' or 'class'",
+        )
+
+    # --- выбор файлов ---
+    candidates: list[tuple[Path, str]] = []
+    if path_arg:
+        p_str = str(path_arg).strip()
+        if not p_str.endswith(".py"):
+            return ToolResult(
+                ok=False,
+                error=f"read_symbol supports only .py files, got: {p_str}",
+            )
+        try:
+            abs_p = _safe_path(project_root, p_str)
+        except ToolSecurityError as e:
+            return ToolResult(ok=False, error=str(e))
+        if not abs_p.exists():
+            return ToolResult(ok=False, error=f"file not found: {p_str}")
+        candidates.append((abs_p, p_str))
+    else:
+        candidates = list(_iter_python_files(project_root))
+
+    # --- ищем во всех кандидатах, собираем совпадения ---
+    matches: list[tuple[Path, str, int, int, str]] = []
+    for abs_p, rel in candidates:
+        try:
+            text = abs_p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        found = _find_symbol_in_text(text, name, kind)
+        if found is not None:
+            start, end, k = found
+            matches.append((abs_p, rel, start, end, k))
+            if path_arg:
+                # если путь задан явно — первого достаточно
+                break
+
+    if not matches:
+        where = f"in {path_arg}" if path_arg else "in any .py file"
+        return ToolResult(
+            ok=False,
+            error=f"read_symbol: symbol '{name}' not found {where}",
+        )
+
+    # --- берём первый, читаем его тело ---
+    abs_p, rel, start, end, k = matches[0]
+    try:
+        all_lines = abs_p.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as e:
+        return ToolResult(ok=False, error=f"read error: {e}")
+
+    # включаем декораторы сверху (если есть)
+    deco_start = start - 1
+    while deco_start > 0 and _SYMBOL_DECORATOR_RE.match(all_lines[deco_start - 1]):
+        deco_start -= 1
+
+    body_lines = all_lines[deco_start:end]
+    body = "\n".join(body_lines)
+
+    # --- маскировка секретов ---
+    body, secret_names = mask_secrets(body)
+
+    # --- обрезка ---
+    if len(body) > 50_000:
+        body = body[:50_000] + f"\n... [обрезано, всего {len(body)} символов]"
+
+    # --- шапка ---
+    header_parts = [f"# {rel}:{start} ({k} {name})"]
+    if len(matches) > 1:
+        others = ", ".join(f"{r}:{s}" for _, r, s, _, _ in matches[1:4])
+        header_parts.append(f"# (first match of {len(matches)}; others: {others})")
+    header = "\n".join(header_parts) + "\n"
+
+    if secret_names:
+        warning = f"⚠️ [masked {len(secret_names)} secret(s): {', '.join(secret_names)}]\n"
+        header = warning + header
+
+    return ToolResult(ok=True, output=header + body)
+
+
 def tool_list_files(args: dict[str, Any], project_root: Path) -> ToolResult:
     """
     list_files(dir: str = ".", pattern: str = "") → список файлов.
@@ -502,6 +680,24 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, Callable[[dict[str, Any], Path], ToolRe
             ),
         ),
         tool_read_file,
+    ),
+    "read_symbol": (
+        ToolSpec(
+            name="read_symbol",
+            description=(
+                "Read the full body of a Python function or class by name. "
+                "Python (.py) only. Use instead of grep+read_file when you "
+                "know the symbol name. Returns header '# path:line (kind name)' "
+                "plus the body."
+            ),
+            args={
+                "name": "function or class name (required)",
+                "path": "optional .py file to search in (default: whole project)",
+                "kind": "optional 'def' or 'class' (default: any)",
+            },
+            returns="header + body of the symbol; first match if several",
+        ),
+        tool_read_symbol,
     ),
     "list_files": (
         ToolSpec(

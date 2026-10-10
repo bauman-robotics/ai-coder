@@ -158,9 +158,10 @@ def test_edit_file_missing_args(tmp_path: Path):
 # ---------- реестр ----------
 
 
-def test_registry_has_five_tools():
-    assert len(TOOL_REGISTRY) == 5
+def test_registry_has_six_tools():
+    assert len(TOOL_REGISTRY) == 6
     assert "read_file" in TOOL_REGISTRY
+    assert "read_symbol" in TOOL_REGISTRY
     assert "list_files" in TOOL_REGISTRY
     assert "write_file" in TOOL_REGISTRY
     assert "edit_file" in TOOL_REGISTRY
@@ -169,7 +170,7 @@ def test_registry_has_five_tools():
 
 def test_get_tool_specs_returns_list():
     specs = get_tool_specs()
-    assert len(specs) == 5
+    assert len(specs) == 6
     names = [s.name for s in specs]
     assert "read_file" in names
     assert "run_shell" in names
@@ -806,3 +807,113 @@ def test_run_shell_masks_secrets(tmp_path: Path):
     assert "AKIAIOSFODNN7EXAMPLE" not in r.output
     assert "***REDACTED (AWS access key)***" in r.output
     assert "⚠️ [masked 1 secret(s): AWS access key]" in r.output
+
+
+# ---------- read_symbol ----------
+
+
+def test_read_symbol_function(tmp_path: Path):
+    """read_symbol находит функцию и возвращает её тело."""
+    (tmp_path / "mod.py").write_text(
+        "import os\n\ndef foo(x):\n    return x + 1\n\ndef bar():\n    return 42\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_symbol", {"name": "foo"}, tmp_path)
+    assert r.ok
+    assert "def foo(x):" in r.output
+    assert "return x + 1" in r.output
+    assert "def bar" not in r.output
+    assert "# mod.py:3 (def foo)" in r.output
+
+
+def test_read_symbol_class(tmp_path: Path):
+    """read_symbol находит класс до следующего top-level def/class."""
+    (tmp_path / "mod.py").write_text(
+        "class A:\n    def m(self):\n        return 1\n\nclass B:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_symbol", {"name": "A"}, tmp_path)
+    assert r.ok
+    assert "class A:" in r.output
+    assert "def m(self):" in r.output
+    assert "class B" not in r.output
+
+
+def test_read_symbol_async(tmp_path: Path):
+    """read_symbol находит async def."""
+    (tmp_path / "mod.py").write_text(
+        "async def fetch():\n    return 1\n\ndef other():\n    pass\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_symbol", {"name": "fetch"}, tmp_path)
+    assert r.ok
+    assert "async def fetch():" in r.output
+    assert "def other" not in r.output
+
+
+def test_read_symbol_not_found(tmp_path: Path):
+    (tmp_path / "mod.py").write_text("def foo():\n    pass\n", encoding="utf-8")
+
+    r = execute_tool("read_symbol", {"name": "missing"}, tmp_path)
+    assert not r.ok
+    assert "not found" in r.error
+    assert "missing" in r.error
+
+
+def test_read_symbol_missing_name(tmp_path: Path):
+    r = execute_tool("read_symbol", {}, tmp_path)
+    assert not r.ok
+    assert "missing 'name'" in r.error
+
+
+def test_read_symbol_rejects_non_py(tmp_path: Path):
+    (tmp_path / "config.yaml").write_text("key: value\n", encoding="utf-8")
+
+    r = execute_tool(
+        "read_symbol",
+        {"name": "foo", "path": "config.yaml"},
+        tmp_path,
+    )
+    assert not r.ok
+    assert ".py" in r.error
+
+
+def test_read_symbol_kind_filter(tmp_path: Path):
+    """kind='class' не находит def с тем же именем."""
+    (tmp_path / "mod.py").write_text(
+        "def thing():\n    pass\n\nclass thing:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_symbol", {"name": "thing", "kind": "class"}, tmp_path)
+    assert r.ok
+    assert "class thing:" in r.output
+    assert "def thing" not in r.output
+
+
+def test_read_symbol_collision_reports_first(tmp_path: Path):
+    """Если symbol в нескольких файлах — возвращает первый, помечает."""
+    (tmp_path / "a.py").write_text("def dup():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def dup():\n    return 2\n", encoding="utf-8")
+
+    r = execute_tool("read_symbol", {"name": "dup"}, tmp_path)
+    assert r.ok
+    assert "def dup():" in r.output
+    # либо "first match of 2", либо имена обоих файлов
+    assert "first match of 2" in r.output
+
+
+def test_read_symbol_decorator_included(tmp_path: Path):
+    """Декоратор над def включается в тело."""
+    (tmp_path / "mod.py").write_text(
+        "@decorator\ndef foo():\n    return 1\n",
+        encoding="utf-8",
+    )
+
+    r = execute_tool("read_symbol", {"name": "foo"}, tmp_path)
+    assert r.ok
+    assert "@decorator" in r.output
+    assert "def foo():" in r.output
