@@ -34,3 +34,6 @@ htmlcov/
 
 # Next-chat bundle (локальный, не в git)
 next-chat/
+
+# Local issues (tasks for ai-coder agent)
+issues/
