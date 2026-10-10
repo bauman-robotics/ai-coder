@@ -6,6 +6,120 @@
 
 ---
 
+## 2026-10-10 — E9: ai-coder в чужом проекте (youtube-playlist-downloader)
+
+**Гипотеза:** `--issue` + `--tool-loop` справятся с большим чужим
+проектом (рефакторинг + GUI + интеграция с LLM).
+
+**Что делали:** агент работал в проекте
+`~/projects/03_Youtube_downloader/youtube-playlist-downloader/`
+(скрипт скачивания с YouTube, ~600 строк) — не нашем.
+
+### Задачи
+
+Всего ~15 задач, каждая — через `--issue` (короткий markdown
+файл с задачей) + `--tool-loop --apply --model deepseek-flash`.
+
+**Рефакторинг:**
+- Структура: `src/`, `scripts/`, `data/`, `models/`, `legacy/`.
+- Переименование файлов (gui.py, ytdl.py, transcribe.py,
+  punctuate.py, summarize.py) через `git mv`.
+- Обновление путей в config.yaml, gui.py, ytdl.py, scripts/*.sh.
+
+**GUI (Tkinter):**
+- Класс YtdlApp: поле ссылок (Text), кнопки Запустить/Стоп,
+  лог, тёмная тема, контекстное меню.
+- Чекбокс «Транскрибация», Combobox «Обработка LLM».
+- Цепочка: ytdl → transcribe → punctuate → summarize
+  через `self.stage`.
+- Кнопка «Выбрать файл» + режим файла (без скачивания).
+- Авто-логика чекбоксов (trace_add):
+  - Транскрибация → аудио.
+  - LLM-промпт → аудио + транскрибация.
+  - Снятие аудио → сброс всего.
+
+**Transcribe / Punctuate / Summarize:**
+- transcribe.py: флаг `--file` (обработать один файл).
+- punctuate.py: `skip_suffix` (пропуск уже пунктуированных).
+- summarize.py: LLM через DeepSeek (`urllib`, без openai-пакета),
+  API-ключ из `secret_conf.yaml`.
+- summarize.py: `rglob` (рекурсивный поиск).
+- prompts.yaml: 4 промпта (summary, summary_short, structured,
+  translate_en).
+- secret_conf.example.yaml: шаблон (secret_conf.yaml gitignored).
+
+**Скрипты:**
+- `run.sh` в корне — читает `venv_path` из config.yaml,
+  запускает GUI или CLI.
+
+**README:**
+- Полностью переписан через скрипт (не агент) — точнее и надёжнее.
+
+### Результаты
+
+**Все задачи — ✅.** E2E: ссылка YouTube → mp3 → txt →
+_punctuated.txt → _summary.md (через GUI, один клик).
+
+**Модели:**
+- flash — везде для tool loop.
+- deepseek-chat — для summarize (быстрее v4-pro в 12 раз).
+
+### Проблемы и уроки
+
+**1. `max_iterations` × 3** (17-22 строки goal).
+
+Задачи > 15 строк → модель уходит в изучение кода, не успевает
+править за 12-14 итераций. **Урок:** для UI/больших задач —
+**< 10 строк goal**, иначе флейк (Warning срабатывает, но игнорировали).
+
+**2. `parse_error` × 2.**
+
+Модель отвечает текстом вместо JSON. Retry иногда спасает,
+иногда нет (при большом объёме правок).
+
+**3. Verify-артефакты** (`;` в `python -c`).
+
+`--verify-commands "python -c 'import yaml; ...'"` — `;` разбивает
+команду на две. **Урок:** не использовать `;` внутри `python -c`,
+использовать `,` (или отдельный файл для проверки).
+
+**4. `read_symbol` работает** — используется для навигации по gui.py,
+transcribe.py. **Экономит итерации** на больших файлах.
+
+**5. Auto-chmod работает** — `write_file` для файлов с `#!`
+автоматически ставит `+x`. `run.sh` стал executable без `chmod`.
+
+**6. Мелкие баги после фич:**
+- `punctuate.py` создавал `_punctuated_punctuated.txt` —
+  фикс через `skip_suffix`.
+- `summarize.py` использовал `glob` вместо `rglob` —
+  не находил файлы в подпапках.
+
+**7. `deepseek-v4-pro` — медленный.**
+
+`structured` с `v4-pro` — 40+ секунд (или висит) на файл.
+**Урок:** для автоматизации через GUI — `deepseek-chat`
+(3-10s на файл).
+
+### Итог
+
+**Агент создал полноценное AI-приложение в чужом проекте**
+за ~15 задач (~15-20 RUB на всё).
+
+**Ключевые факторы успеха:**
+- **Короткие задачи** (< 10 строк) с явными требованиями.
+- **Отдельные файлы** для prompts, secrets, config.
+- **Ручная проверка** после каждой задачи (агент не видит
+  интеграционных багов).
+- **Разбиение больших задач** на 2-3 маленьких.
+
+**Ссылки:**
+- Проект: `github.com/bauman-robotics/youtube-playlist-downloader`
+- Ветка: `ai-coder/llm-summary`
+- Коммиты: `c15b510..fdc4e85` (~10 коммитов).
+
+---
+
 ## 2026-10-10 — E8.1: повтор 1.5 с коротким goal (flash vs v4-pro)
 
 **Что пробовали:** E7 показал провал на задаче 1.5 (19-строчный goal,
