@@ -268,3 +268,105 @@ def test_agent_interactive_requires_apply(cli_env):
     )
     assert result.exit_code == 1
     assert "требует --apply" in result.stdout
+
+
+# ---------- agent --issue ----------
+
+
+def test_agent_issue_reads_goal(tmp_path: Path, monkeypatch):
+    """--issue читает goal из файла, первая строка # task: отбрасывается."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issue = tmp_path / "1.md"
+    issue.write_text(
+        "# task: test\n\n## Цель\nСделай что-то.\n",
+        encoding="utf-8",
+    )
+
+    captured: dict = {}
+
+    def fake_run_tool_loop(**kwargs):
+        captured.update(kwargs)
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(success=True, summary="ok", iterations=0)
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_run_tool_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "--issue",
+            str(issue),
+            str(project),
+            "--tool-loop",
+            "--no-verify",
+        ],
+    )
+    # goal должен быть из issue (без "# task:")
+    assert "Сделай что-то" in captured.get("goal", "")
+    assert not captured.get("goal", "").startswith("# task:")
+
+
+def test_agent_issue_and_goal_conflict(tmp_path: Path):
+    """--issue + непустой goal-не-директория → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    issue = tmp_path / "1.md"
+    issue.write_text("# task\n\nЦель.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "это-не-директория",
+            "--issue",
+            str(issue),
+            "--tool-loop",
+        ],
+    )
+    # exit != 0 и сообщение про несовместимость
+    assert result.exit_code != 0
+    assert "несовместим" in result.stdout.lower() or "несовместим" in result.output.lower()
+
+
+def test_agent_issue_missing_file(tmp_path: Path):
+    """Несуществующий --issue → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "--issue", str(tmp_path / "nope.md"), "--tool-loop"],
+    )
+    assert result.exit_code != 0
+
+
+def test_agent_issue_empty_file(tmp_path: Path):
+    """Пустой --issue (после отбрасывания заголовка) → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    issue = tmp_path / "empty.md"
+    issue.write_text("# task: empty\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "--issue", str(issue), "--tool-loop"],
+    )
+    assert result.exit_code != 0

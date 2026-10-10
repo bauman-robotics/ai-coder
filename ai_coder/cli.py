@@ -639,7 +639,9 @@ def _run_dry(
 
 @app.command("agent")
 def agent_cmd(
-    goal: str = typer.Argument(..., help="Цель агента (что нужно сделать)"),
+    goal: str = typer.Argument(
+        "", help="Цель агента (что нужно сделать). Можно заменить на --issue."
+    ),
     path: Path = typer.Argument(Path("."), help="Путь к проекту"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
     prompts: Path = typer.Option(DEFAULT_PROMPTS, "--prompts", "-p"),
@@ -782,9 +784,60 @@ def agent_cmd(
             "pytest-тесты для изменённых файлов. Требует --tool-loop."
         ),
     ),
+    issue: Path | None = typer.Option(
+        None,
+        "--issue",
+        help=(
+            "Markdown-файл с задачей (вместо goal). Первая строка "
+            "'# task: ...' отбрасывается. Удобно для GitHub issues "
+            "и roadmap-задач."
+        ),
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
+
+    # --- NEW: --issue ---
+    # Тонкость typer: у agent два позиционных аргумента (goal, path).
+    # Если пользователь пишет `agent --issue X /tmp/proj`, то "/tmp/proj"
+    # попадает в goal (первый позиционный), а path остаётся дефолтным ".".
+    # Хакаем: если goal — существующая директория, считаем его path.
+    if issue is not None:
+        if goal and Path(goal).is_dir():
+            path = Path(goal)
+            goal = ""
+        if goal:
+            console.print("[red]--issue и goal несовместимы (выбери одно)[/red]")
+            raise typer.Exit(1)
+        issue_path = issue.resolve()
+        if not issue_path.is_file():
+            console.print(f"[red]Файл issue не найден:[/red] {issue_path}")
+            raise typer.Exit(1)
+        try:
+            raw = issue_path.read_text(encoding="utf-8")
+        except OSError as e:
+            console.print(f"[red]Не удалось прочитать issue:[/red] {e}")
+            raise typer.Exit(1)
+        lines = raw.splitlines()
+        # отбрасываем первую строку-заголовок "# task: ..."
+        if lines and lines[0].lstrip().startswith("# "):
+            lines = lines[1:]
+        goal = "\n".join(lines).strip()
+        if not goal:
+            console.print(f"[red]Issue-файл пустой:[/red] {issue_path}")
+            raise typer.Exit(1)
+        # ограничение: 60 строк
+        goal_lines = goal.splitlines()
+        if len(goal_lines) > 60:
+            goal = "\n".join(goal_lines[:60]) + f"\n... [обрезано, всего {len(goal_lines)} строк]"
+        console.print(
+            f"[dim]Задача из issue: {issue_path.name} "
+            f"({len(goal)} символов, {len(goal.splitlines())} строк)[/dim]"
+        )
+
+    if not goal:
+        console.print("[red]Нужен goal (аргумент) или --issue <file>[/red]")
+        raise typer.Exit(1)
 
     # --max-tokens: переопределяем бюджет сканера
     if max_tokens is not None:
@@ -835,8 +888,8 @@ def agent_cmd(
     if only_path:
         cfg.scanning.only_paths = list(only_path)
 
-    # --- WARN: backticks в промпте ---
-    if "`" in goal:
+    # --- WARN: backticks в промпте (только для goal из CLI, не из issue) ---
+    if issue is None and "`" in goal:
         console.print(
             "[yellow]⚠ В промпте есть обратные кавычки (backticks).[/yellow]\n"
             "[dim]Bash мог выполнить их содержимое как команду, "
