@@ -672,6 +672,14 @@ def tool_write_file(args: dict[str, Any], project_root: Path) -> ToolResult:
     except OSError as e:
         return ToolResult(ok=False, error=f"write error: {e}")
 
+    # NEW: auto-chmod +x для скриптов (.sh, .bash, shebang)
+    if abs_path.suffix in (".sh", ".bash") or content.startswith("#!"):
+        try:
+            mode = abs_path.stat().st_mode
+            abs_path.chmod(mode | 0o111)  # +x для user/group/other
+        except OSError:
+            pass  # не критично
+
     return ToolResult(ok=True, output=f"wrote {len(content)} chars to {path}")
 
 

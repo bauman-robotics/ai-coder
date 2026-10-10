@@ -1052,3 +1052,62 @@ def test_run_shell_rejects_git_log_exec(tmp_path: Path):
     )
     assert not r.ok
     assert "--exec" in r.error
+
+
+# ---------- write_file: auto-chmod для скриптов ----------
+
+
+def test_write_file_auto_chmod_sh(tmp_path: Path):
+    """write_file на .sh ставит +x."""
+    import os
+
+    r = execute_tool(
+        "write_file",
+        {"path": "run.sh", "content": "#!/bin/bash\necho hi\n"},
+        tmp_path,
+    )
+    assert r.ok
+    mode = os.stat(tmp_path / "run.sh").st_mode
+    assert mode & 0o111, "run.sh должен быть executable"
+
+
+def test_write_file_auto_chmod_shebang_no_ext(tmp_path: Path):
+    """write_file с shebang (без расширения) ставит +x."""
+    import os
+
+    r = execute_tool(
+        "write_file",
+        {"path": "myscript", "content": "#!/usr/bin/env python\nprint(1)\n"},
+        tmp_path,
+    )
+    assert r.ok
+    mode = os.stat(tmp_path / "myscript").st_mode
+    assert mode & 0o111, "myscript (shebang) должен быть executable"
+
+
+def test_write_file_no_chmod_py(tmp_path: Path):
+    """.py без shebang — не executable."""
+    import os
+
+    r = execute_tool(
+        "write_file",
+        {"path": "mod.py", "content": "x = 1\n"},
+        tmp_path,
+    )
+    assert r.ok
+    mode = os.stat(tmp_path / "mod.py").st_mode
+    assert not (mode & 0o111), "mod.py без shebang не должен быть executable"
+
+
+def test_write_file_no_chmod_txt(tmp_path: Path):
+    """.txt — не executable."""
+    import os
+
+    r = execute_tool(
+        "write_file",
+        {"path": "readme.txt", "content": "hello\n"},
+        tmp_path,
+    )
+    assert r.ok
+    mode = os.stat(tmp_path / "readme.txt").st_mode
+    assert not (mode & 0o111), "readme.txt не должен быть executable"
