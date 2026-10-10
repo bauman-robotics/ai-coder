@@ -1000,19 +1000,25 @@ def format_tool_history(
         status = "ok" if result.ok else "FAIL"
         full_output = result.output or result.error or ""
 
-        # Для read_file показываем БОЛЬШЕ (до 3000 символов) — модель
-        # должна видеть содержимое файла, чтобы не перечитывать.
-        # Для остальных — 500 символов достаточно.
-        if action.tool == "read_file":
+        # read_file / read_symbol — привилегированные: показываем
+        # содержимое целиком (до read_file_max_chars), чтобы модель
+        # НЕ перечитывала файл/символ. Для остальных — 500 символов.
+        if action.tool in ("read_file", "read_symbol"):
             max_chars = read_file_max_chars
         else:
             max_chars = other_max_chars
 
         if len(full_output) > max_chars:
+            # для read_symbol подсказка про grep не нужна —
+            # символ уже прочитан, второй раз не надо
+            if action.tool == "read_symbol":
+                hint = "Не перечитывай — правь через edit_file или finish.]"
+            else:
+                hint = "Используй run_shell grep для точного поиска.]"
             snippet = (
                 full_output[:max_chars]
                 + f"\n     ... [обрезано, всего {len(full_output)} символов. "
-                + "Используй run_shell grep для точного поиска.]"
+                + hint
             )
         else:
             snippet = full_output

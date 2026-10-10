@@ -917,3 +917,36 @@ def test_read_symbol_decorator_included(tmp_path: Path):
     assert r.ok
     assert "@decorator" in r.output
     assert "def foo():" in r.output
+
+
+# ---------- format_tool_history: read_symbol ----------
+
+
+def test_format_tool_history_keeps_read_symbol_full():
+    """read_symbol не обрезается до 500 символов (как read_file)."""
+    from ai_coder.tools import ToolAction, ToolResult, format_tool_history
+
+    # 8000 символов — больше other_max_chars (500), меньше read_file_max_chars (10000)
+    big_output = "x = 1\n" * 1300  # ~7800 символов
+
+    action = ToolAction(tool="read_symbol", args={"name": "foo"})
+    result = ToolResult(ok=True, output=big_output)
+
+    text = format_tool_history([(action, result)])
+    # 7800 < 10000 → вывод должен быть целиком, без "[обрезано]"
+    assert "[обрезано" not in text
+    # и его длина явно больше 500
+    assert len(text) > 500
+
+
+def test_format_tool_history_other_tools_still_short():
+    """Прочие инструменты (не read_file/read_symbol) обрезаются до 500."""
+    from ai_coder.tools import ToolAction, ToolResult, format_tool_history
+
+    big_output = "y" * 2000
+
+    action = ToolAction(tool="list_files", args={"dir": "."})
+    result = ToolResult(ok=True, output=big_output)
+
+    text = format_tool_history([(action, result)])
+    assert "[обрезано" in text
