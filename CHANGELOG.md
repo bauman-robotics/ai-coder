@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-10-10] iteration 10.21 — rollback удаляет пустые каталоги (ревью 1.5)
+
+Последний пункт ревью v4-pro (09-full). Закрывает «неатомарность»
+`apply_plan`: при откате пустые каталоги, созданные `mkdir(parents=True)`,
+оставались на диске.
+
+### Что было
+
+`apply_plan` создавал каталоги через `mkdir(parents=True)` и **не
+запоминал**, какие были созданы. `rollback` удалял **файлы**, но
+**каталоги** — нет. После отката оставались пустые `a/b/c/`.
+
+### Фикс
+
+- **`_collect_new_dirs(abs_parent, root)`** — собирает несуществующие
+  каталоги вверх от `abs_parent`, создаёт от корня к глубокому,
+  возвращает **от глубокого к корню** (порядок для отката).
+- **`apply_plan`:** `created_dirs: list[str]` → `manifest.json`
+  (поле `"created_dirs"`).
+- **`rollback`:** после удаления файлов проходит по `created_dirs`,
+  удаляет через `rmdir` (не пуст → ignore).
+
+### Тесты
+
++2 в `test_apply.py`:
+- `test_rollback_removes_empty_dirs`: create_file a/b/c.py →
+  rollback → файл и каталоги a/b/c, a/b, a удалены.
+- `test_rollback_keeps_non_empty_dirs`: если в a/b есть другой
+  файл — a/b сохранён.
+
+### Как это сделано (важно)
+
+- **Прогон 1** (`--issue --tool-loop`, flash): **провал** —
+  `parse_error: tool JSON no '{' found`. Issue 19 строк, 2 функции
+  (apply_plan + rollback), файл 500+ строк.
+- **Прогон 2** (`--issue --decompose --decompose-replan`, v4-pro
+  разбивает): **провал** — v4-pro не разбил по функциям, первая
+  подзадача = вся задача.
+- **Агент успел 50%:** `_collect_new_dirs` (корректная), `created_dirs`
+  собирается, но **не записано в manifest**, `rollback` не тронут.
+- **Доделано вручную (~30 минут):** вызов `_collect_new_dirs`,
+  `manifest["created_dirs"]`, `rollback` + 2 теста.
+
+См. `docs/experiments.md` → E7 (отрицательный результат `--issue`).
+
+### Итого
+
+- Тесты: **360 → 362** (+2).
+- Ревью 09-full: **1.1, 1.2, 1.3, 1.4, 1.5** — **все закрыты**.
+
+---
+
 ## [2026-10-10] iteration 10.20 — --issue <file> (направление 4, issue-driven)
 
 Задача агента — из Markdown-файла, а не из командной строки.
