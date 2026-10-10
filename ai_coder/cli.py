@@ -774,6 +774,14 @@ def agent_cmd(
             "(verify → fix → verify). Требует --tool-loop."
         ),
     ),
+    with_tests: bool = typer.Option(
+        False,
+        "--with-tests",
+        help=(
+            "После успешного tool loop: попросить агента написать "
+            "pytest-тесты для изменённых файлов. Требует --tool-loop."
+        ),
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -802,6 +810,10 @@ def agent_cmd(
 
     if auto_fix_issues and not tool_loop:
         console.print("[red]--auto-fix-issues требует --tool-loop[/red]")
+        raise typer.Exit(1)
+
+    if with_tests and not tool_loop:
+        console.print("[red]--with-tests требует --tool-loop[/red]")
         raise typer.Exit(1)
 
     if interactive and not sys.stdin.isatty():
@@ -1011,6 +1023,73 @@ def agent_cmd(
                         f"{fix_result.stopped_reason}"
                     )
                     console.print(f"[red]❌ Auto-fix: неуспех ({fix_result.stopped_reason})[/red]")
+
+        # --- NEW: --with-tests ---
+        if with_tests and loop_result.success and not dry_run:
+            from .agent import extract_changed_files, run_tool_loop
+
+            changed = extract_changed_files(loop_result.history)
+            if not changed:
+                console.print("[dim]--with-tests: нет изменённых .py-файлов — пропускаю.[/dim]")
+            else:
+                console.print()
+                console.print(f"[cyan]--with-tests: тесты для {len(changed)} файл(ов)...[/cyan]")
+                tests_goal = (
+                    "Напиши pytest-тесты для изменённых файлов:\n"
+                    + "\n".join(f"- {p}" for p in changed)
+                    + "\n\nСначала найди существующие тесты "
+                    "(list_files + grep test_).\n"
+                    "Если тест для модуля уже есть — добавь в существующий файл.\n"
+                    "Иначе — создай test_<module>.py рядом с модулем.\n"
+                    "Покрой новую/изменённую функцию. "
+                    "Не трогай не-тестовые файлы."
+                )
+                tests_budget: float | None = None
+                if max_cost_rub is not None:
+                    tests_budget = max(0.0, max_cost_rub - loop_result.total_cost_rub)
+                try:
+                    tests_result = run_tool_loop(
+                        goal=tests_goal,
+                        project_root=project_root,
+                        cfg=cfg,
+                        prompts_cfg=pr_cfg,
+                        model=model,
+                        depth=depth,
+                        extra_exclude=list(exclude) or None,
+                        max_iterations=max_iterations,
+                        max_cost_rub=tests_budget,
+                        journal=journal,
+                        dry_run=dry_run,
+                        interactive=interactive,
+                        auto_commit=False,  # with-tests не коммитит сам
+                        allow_blacklist=allow_blacklist,
+                    )
+                except Exception as e:
+                    console.print(f"[red]Ошибка with-tests:[/red] {e}")
+                    tests_result = None
+
+                if tests_result is not None:
+                    # суммируем стоимость
+                    loop_result.total_cost_rub += tests_result.total_cost_rub
+                    loop_result.total_cost_cny += tests_result.total_cost_cny
+                    loop_result.total_cost_usd += tests_result.total_cost_usd
+                    if tests_result.success:
+                        loop_result.summary = (
+                            f"{loop_result.summary}; with-tests: "
+                            f"{tests_result.iterations} итераций → ok"
+                        )
+                        console.print("[green]✅ With-tests: успех[/green]")
+                    else:
+                        loop_result.success = False
+                        loop_result.verify_errors = (
+                            tests_result.verify_errors or loop_result.verify_errors
+                        )
+                        loop_result.summary = (
+                            f"{loop_result.summary}; with-tests: {tests_result.stopped_reason}"
+                        )
+                        console.print(
+                            f"[red]❌ With-tests: неуспех ({tests_result.stopped_reason})[/red]"
+                        )
 
         console.print()
         status = "[green]✅ успех[/green]" if loop_result.success else "[red]❌ неуспех[/red]"

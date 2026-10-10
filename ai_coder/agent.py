@@ -1585,6 +1585,36 @@ def _render_plan_summary(plan: AgentPlan) -> str:
     return "\n".join(parts)
 
 
+# ---------- with-tests: извлечение изменённых файлов ----------
+
+
+def extract_changed_files(history: list[tuple[ToolAction, ToolResult]]) -> list[str]:
+    """
+    Возвращает отсортированный список .py-файлов, изменённых в tool loop
+    (edit_file / write_file, ok=True). Исключает тестовые файлы.
+    """
+    files: set[str] = set()
+    for action, result in history:
+        if action.finish or not result.ok:
+            continue
+        if action.tool not in ("edit_file", "write_file"):
+            continue
+        path = action.args.get("path")
+        if not isinstance(path, str) or not path:
+            continue
+        if not path.endswith(".py"):
+            continue
+        # исключаем тесты
+        parts = path.replace("\\", "/").split("/")
+        name = parts[-1]
+        if name.startswith("test_") or name.endswith("_test.py"):
+            continue
+        if "tests" in parts or "test" in parts:
+            continue
+        files.add(path)
+    return sorted(files)
+
+
 # ---------- главный цикл ----------
 
 

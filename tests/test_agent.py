@@ -1887,3 +1887,98 @@ def test_run_tool_loop_retry_on_missing_args(sample_project, minimal_cfg, prompt
 
     assert calls["n"] == 3, f"ожидали 3 вызова, было {calls['n']}"
     assert result.success is True
+
+
+# ---------- extract_changed_files ----------
+
+
+def test_extract_changed_files_empty():
+    from ai_coder.agent import extract_changed_files
+
+    assert extract_changed_files([]) == []
+
+
+def test_extract_changed_files_picks_edits():
+    from ai_coder.agent import extract_changed_files
+    from ai_coder.tools import ToolAction, ToolResult
+
+    history = [
+        (ToolAction(tool="read_file", args={"path": "a.py"}), ToolResult(ok=True, output="x")),
+        (
+            ToolAction(tool="edit_file", args={"path": "a.py", "old": "x", "new": "y"}),
+            ToolResult(ok=True, output="edited"),
+        ),
+        (
+            ToolAction(tool="write_file", args={"path": "b.py", "content": "z"}),
+            ToolResult(ok=True, output="wrote"),
+        ),
+    ]
+    assert extract_changed_files(history) == ["a.py", "b.py"]
+
+
+def test_extract_changed_files_skips_tests():
+    from ai_coder.agent import extract_changed_files
+    from ai_coder.tools import ToolAction, ToolResult
+
+    history = [
+        (
+            ToolAction(tool="write_file", args={"path": "tests/test_a.py", "content": ""}),
+            ToolResult(ok=True, output="wrote"),
+        ),
+        (
+            ToolAction(tool="write_file", args={"path": "test_b.py", "content": ""}),
+            ToolResult(ok=True, output="wrote"),
+        ),
+        (
+            ToolAction(tool="edit_file", args={"path": "src/c.py", "old": "x", "new": "y"}),
+            ToolResult(ok=True, output="edited"),
+        ),
+    ]
+    assert extract_changed_files(history) == ["src/c.py"]
+
+
+def test_extract_changed_files_skips_failed():
+    from ai_coder.agent import extract_changed_files
+    from ai_coder.tools import ToolAction, ToolResult
+
+    history = [
+        (
+            ToolAction(tool="edit_file", args={"path": "a.py", "old": "x", "new": "y"}),
+            ToolResult(ok=False, error="not found"),
+        ),
+    ]
+    assert extract_changed_files(history) == []
+
+
+def test_extract_changed_files_skips_finish():
+    from ai_coder.agent import extract_changed_files
+    from ai_coder.tools import ToolAction, ToolResult
+
+    history = [
+        (
+            ToolAction(finish=True, success=True, summary="done", args={}),
+            ToolResult(ok=True, output="finished"),
+        ),
+        (
+            ToolAction(tool="edit_file", args={"path": "a.py", "old": "x", "new": "y"}),
+            ToolResult(ok=True, output="edited"),
+        ),
+    ]
+    assert extract_changed_files(history) == ["a.py"]
+
+
+def test_extract_changed_files_skips_non_py():
+    from ai_coder.agent import extract_changed_files
+    from ai_coder.tools import ToolAction, ToolResult
+
+    history = [
+        (
+            ToolAction(tool="write_file", args={"path": "README.md", "content": ""}),
+            ToolResult(ok=True, output="wrote"),
+        ),
+        (
+            ToolAction(tool="write_file", args={"path": "config.yaml", "content": ""}),
+            ToolResult(ok=True, output="wrote"),
+        ),
+    ]
+    assert extract_changed_files(history) == []
