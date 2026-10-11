@@ -745,6 +745,348 @@ def _prompt_plan_review(project_root: Path, dec_result) -> str:
     return ans
 
 
+# ---------- helpers: --chain ----------
+
+
+def _read_issue_file(issue_path: Path) -> str:
+    """Читает issue-файл, отрезает '# task: ...', обрезает до 60 строк.
+
+    Бросает ValueError с понятным сообщением при ошибке.
+    """
+    if not issue_path.is_file():
+        raise ValueError(f"Файл issue не найден: {issue_path}")
+    try:
+        raw = issue_path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise ValueError(f"Не удалось прочитать issue: {e}")
+    lines = raw.splitlines()
+    if lines and lines[0].lstrip().startswith("# "):
+        lines = lines[1:]
+    goal = "\n".join(lines).strip()
+    if not goal:
+        raise ValueError(f"Issue-файл пустой: {issue_path}")
+    goal_lines = goal.splitlines()
+    if len(goal_lines) > 60:
+        goal = "\n".join(goal_lines[:60]) + f"\n... [обрезано, всего {len(goal_lines)} строк]"
+    return goal
+
+
+def _save_chain_plan_yaml(project_root: Path, plans: list[dict]) -> Path:
+    """Сохраняет все планы chain в один YAML."""
+    import yaml
+
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    d = project_root / ".ai-out" / project_root.name / f"chain-plan-{ts}"
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / "plan.yaml"
+    path.write_text(
+        yaml.safe_dump({"tasks": plans}, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _load_chain_plan_yaml(path: Path) -> list[dict]:
+    """Читает chain-plan YAML обратно в список dict."""
+    import yaml
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return list(data.get("tasks", []))
+
+
+def _edit_chain_plans_and_reload(project_root: Path, plans: list[dict]) -> list[dict]:
+    """Открывает plan.yaml в $EDITOR, перечитывает."""
+    import os
+    import shutil
+    import subprocess
+
+    base = project_root / ".ai-out" / project_root.name
+    dirs = sorted(base.glob("chain-plan-*"))
+    if not dirs:
+        console.print("[red]chain-plan.yaml не найден.[/red]")
+        return plans
+    path = dirs[-1] / "plan.yaml"
+    editor = os.environ.get("EDITOR", "vi")
+    if shutil.which(editor) is None:
+        console.print(f"[red]Редактор {editor!r} не найден.[/red] Открой вручную: {path}")
+        return plans
+    subprocess.run([editor, str(path)], check=False)
+    return _load_chain_plan_yaml(path)
+
+
+def _print_chain_plans(plans: list[dict]) -> None:
+    """Печатает все планы chain единым списком."""
+    from rich.table import Table
+
+    total_tasks = sum(len(p.get("subtasks", [])) for p in plans)
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold]План chain[/bold]\n"
+            f"Задач: [cyan]{len(plans)}[/cyan], подзадач: [cyan]{total_tasks}[/cyan]",
+            title="--chain --plan",
+        )
+    )
+    for i, p in enumerate(plans, 1):
+        console.print(f"\n[bold cyan]Задача {i}: {p.get('issue', '?')}[/bold cyan]")
+        table = Table()
+        table.add_column("#", justify="right")
+        table.add_column("Подзадача", style="cyan")
+        table.add_column("Файлы", style="dim")
+        for st in p.get("subtasks", []):
+            files = ", ".join(st.get("files", [])) or "—"
+            goal = st.get("goal", "")
+            if len(goal) > 80:
+                goal = goal[:77] + "..."
+            table.add_row(str(st.get("n", "?")), goal, files)
+        console.print(table)
+
+
+def _run_chain(
+    *,
+    issues: list[Path],
+    project_root: Path,
+    cfg,
+    prompts_cfg,
+    model: str | None,
+    depth: str,
+    extra_exclude: list[str] | None,
+    do_decompose: bool,
+    do_plan: bool,
+    journal: bool,
+    dry_run: bool,
+    interactive: bool,
+    replan: bool,
+    rollback_on_fail: bool,
+    max_cost_rub: float | None,
+    decompose_max_cost_rub: float | None,
+    max_iterations: int,
+    continue_on_fail: bool,
+    allow_blacklist: bool,
+    auto_commit: bool,
+    verify_commands: str | None,
+    verify: bool,
+    max_fix_attempts: int,
+    run_tool_loop_fn,
+    run_agent_decompose_fn,
+    run_planner_decompose_fn,
+) -> dict:
+    """Цикл по issues. Возвращает dict со сводкой."""
+    from .agent import DecomposeResult, Subtask
+
+    # 1. Читаем все goals
+    loaded: list[tuple[Path, str]] = []
+    for issue in issues:
+        try:
+            g = _read_issue_file(issue)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        loaded.append((issue, g))
+
+    console.print(
+        f"[dim]Chain: {len(loaded)} задач, "
+        f"режим = "
+        + ("plan + decompose" if do_plan else ("decompose" if do_decompose else "tool loop"))
+        + "[/dim]"
+    )
+
+    # 2. Если --plan: планируем всё, показываем, спрашиваем один раз
+    pre_plans: list[DecomposeResult | None] = [None] * len(loaded)
+    if do_plan:
+        plans_serial: list[dict] = []
+        for issue, g in loaded:
+            console.print(f"[dim]Планирование: {issue.name}...[/dim]")
+            dec = run_planner_decompose_fn(
+                goal=g,
+                project_root=project_root,
+                cfg=cfg,
+                prompts_cfg=prompts_cfg,
+                model=cfg.agent.decompose_model or model,
+                depth=depth,
+                extra_exclude=extra_exclude,
+            )
+            if dec.parse_error is not None:
+                console.print(f"[red]Планирование {issue.name} не удалось:[/red] {dec.parse_error}")
+                raise typer.Exit(1)
+            pre_plans[loaded.index((issue, g))] = dec
+            plans_serial.append(
+                {
+                    "issue": issue.name,
+                    "goal": g,
+                    "explanation": dec.explanation,
+                    "subtasks": [
+                        {"n": st.n, "goal": st.goal, "files": list(st.files)} for st in dec.subtasks
+                    ],
+                }
+            )
+
+        _print_chain_plans(plans_serial)
+        plan_path = _save_chain_plan_yaml(project_root, plans_serial)
+        console.print(f"[dim]План сохранён: {plan_path}[/dim]")
+
+        # Спросить один раз
+        console.print()
+        console.print(
+            "[bold]Выполнить весь chain?[/bold] "
+            "[cyan]y[/cyan] — да, [cyan]n[/cyan] — нет, [cyan]e[/cyan] — редактировать план"
+        )
+        try:
+            ans = typer.prompt("y/n/e", default="y").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print("[yellow]Нет ввода — отмена.[/yellow]")
+            ans = "n"
+        if ans == "n":
+            console.print("[yellow]Отменено.[/yellow]")
+            return {
+                "results": [],
+                "failed": 0,
+                "total_cost_rub": sum(p.cost_rub for p in pre_plans if p),
+                "journal_dir": None,
+            }
+        if ans == "e":
+            new_plans_serial = _edit_chain_plans_and_reload(project_root, plans_serial)
+            # пересобираем pre_plans из YAML
+            pre_plans = []
+            for p in new_plans_serial:
+                dec = DecomposeResult(
+                    explanation=p.get("explanation", ""),
+                    subtasks=[
+                        Subtask(n=st["n"], goal=st["goal"], files=list(st.get("files", [])))
+                        for st in p.get("subtasks", [])
+                    ],
+                )
+                pre_plans.append(dec)
+
+    # 3. Цикл выполнения
+    results: list[dict] = []
+    total_cost = 0.0
+    failed = 0
+    chain_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    chain_dir: Path | None = None
+    if journal:
+        chain_dir = project_root / cfg.output.dir / project_root.name / f"chain-{chain_ts}"
+        chain_dir.mkdir(parents=True, exist_ok=True)
+
+    for i, (issue, g) in enumerate(loaded):
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold]Chain {i + 1}/{len(loaded)}:[/bold] {issue.name}\n{g[:200]}",
+                title=f"chain {i + 1}",
+            )
+        )
+        entry: dict = {"issue": issue.name, "goal": g}
+        try:
+            if do_plan or do_decompose:
+                dec = run_agent_decompose_fn(
+                    goal=g,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=prompts_cfg,
+                    model=model,
+                    depth=depth,
+                    extra_exclude=extra_exclude,
+                    journal=journal,
+                    dry_run=dry_run,
+                    interactive=interactive,
+                    replan=replan,
+                    rollback_on_fail=rollback_on_fail,
+                    max_cost_rub=decompose_max_cost_rub,
+                    allow_blacklist=allow_blacklist,
+                    plan=pre_plans[i] if do_plan else None,
+                )
+                ok = dec.parse_error is None and all(
+                    r.get("success", False) for r in dec.subtask_results
+                )
+                cost = dec.cost_rub
+                entry["subtasks"] = len(dec.subtasks)
+            else:
+                lr = run_tool_loop_fn(
+                    goal=g,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=prompts_cfg,
+                    model=model,
+                    depth=depth,
+                    extra_exclude=extra_exclude,
+                    max_iterations=max_iterations,
+                    max_cost_rub=max_cost_rub,
+                    journal=journal,
+                    dry_run=dry_run,
+                    interactive=interactive,
+                    auto_commit=auto_commit,
+                )
+                ok = lr.success
+                cost = lr.total_cost_rub
+                entry["iterations"] = lr.iterations
+                entry["stopped_reason"] = lr.stopped_reason
+            entry["success"] = ok
+            entry["cost_rub"] = cost
+            total_cost += cost
+        except Exception as e:
+            entry["success"] = False
+            entry["error"] = str(e)
+            entry["cost_rub"] = 0.0
+            ok = False
+
+        results.append(entry)
+        status = "[green]✅[/green]" if entry["success"] else "[red]❌[/red]"
+        console.print(f"{status} {issue.name} — {entry['cost_rub']:.4f} RUB")
+
+        if not entry["success"]:
+            failed += 1
+            if not continue_on_fail:
+                console.print("[yellow]Остановка (--stop-on-fail).[/yellow]")
+                break
+
+    return {
+        "results": results,
+        "failed": failed,
+        "total_cost_rub": total_cost,
+        "journal_dir": chain_dir,
+    }
+
+
+def _print_chain_report(chain_result: dict, project_root: Path) -> None:
+    """Итоговая таблица chain."""
+    from rich.table import Table
+
+    console.print()
+    table = Table(title="Chain — итог")
+    table.add_column("#", justify="right")
+    table.add_column("Задача", style="cyan")
+    table.add_column("Статус")
+    table.add_column("RUB", justify="right")
+    table.add_column("Детали", style="dim")
+    for i, r in enumerate(chain_result["results"], 1):
+        st = "[green]✅[/green]" if r["success"] else "[red]❌[/red]"
+        details = ""
+        if "error" in r:
+            details = r["error"][:40]
+        elif "stopped_reason" in r:
+            details = r.get("stopped_reason", "")
+        elif "subtasks" in r:
+            details = f"{r['subtasks']} подзадач"
+        table.add_row(str(i), r["issue"], st, f"{r['cost_rub']:.4f}", details)
+    console.print(table)
+    console.print(
+        Panel.fit(
+            f"Задач: {len(chain_result['results'])}, "
+            f"успешно: {len(chain_result['results']) - chain_result['failed']}, "
+            f"провалено: [red]{chain_result['failed']}[/red]\n"
+            f"Стоимость всего: [cyan]{chain_result['total_cost_rub']:.4f} RUB[/cyan]",
+            title="Chain",
+        )
+    )
+    if chain_result.get("journal_dir"):
+        try:
+            rel = chain_result["journal_dir"].relative_to(project_root)
+            console.print(f"[dim]Журнал: {rel}[/dim]")
+        except ValueError:
+            console.print(f"[dim]Журнал: {chain_result['journal_dir']}[/dim]")
+
+
 @app.command("agent")
 def agent_cmd(
     goal: str = typer.Argument(
@@ -906,6 +1248,16 @@ def agent_cmd(
             "и roadmap-задач."
         ),
     ),
+    chain: Path | None = typer.Option(
+        None,
+        "--chain",
+        help="Каталог с issues/*.md — выполнить все по очереди (по имени).",
+    ),
+    continue_on_fail: bool = typer.Option(
+        False,
+        "--continue-on-fail/--stop-on-fail",
+        help="Chain: продолжать при провале задачи (по умолчанию — остановиться).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -922,29 +1274,13 @@ def agent_cmd(
         if goal:
             console.print("[red]--issue и goal несовместимы (выбери одно)[/red]")
             raise typer.Exit(1)
-        issue_path = issue.resolve()
-        if not issue_path.is_file():
-            console.print(f"[red]Файл issue не найден:[/red] {issue_path}")
-            raise typer.Exit(1)
         try:
-            raw = issue_path.read_text(encoding="utf-8")
-        except OSError as e:
-            console.print(f"[red]Не удалось прочитать issue:[/red] {e}")
+            goal = _read_issue_file(issue.resolve())
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
             raise typer.Exit(1)
-        lines = raw.splitlines()
-        # отбрасываем первую строку-заголовок "# task: ..."
-        if lines and lines[0].lstrip().startswith("# "):
-            lines = lines[1:]
-        goal = "\n".join(lines).strip()
-        if not goal:
-            console.print(f"[red]Issue-файл пустой:[/red] {issue_path}")
-            raise typer.Exit(1)
-        # ограничение: 60 строк
-        goal_lines = goal.splitlines()
-        if len(goal_lines) > 60:
-            goal = "\n".join(goal_lines[:60]) + f"\n... [обрезано, всего {len(goal_lines)} строк]"
         console.print(
-            f"[dim]Задача из issue: {issue_path.name} "
+            f"[dim]Задача из issue: {issue.resolve().name} "
             f"({len(goal)} символов, {len(goal.splitlines())} строк)[/dim]"
         )
 
@@ -1028,10 +1364,92 @@ def agent_cmd(
             '[dim]  python -m ai_coder.cli agent "$(cat /tmp/task.txt)" . --tool-loop[/dim]'
         )
 
+    # --- hack: если goal — директория, считаем это path ---
+    if (chain is not None or issue is not None) and goal and Path(goal).is_dir():
+        path = Path(goal)
+        goal = ""
+
     project_root = path.resolve()
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
+
+    # --- NEW: --chain ---
+    if chain is not None:
+        from .agent import run_agent_decompose, run_planner_decompose, run_tool_loop
+
+        if not tool_loop:
+            console.print("[red]--chain требует --tool-loop[/red]")
+            raise typer.Exit(1)
+        if issue is not None:
+            console.print("[red]--chain и --issue несовместимы[/red]")
+            raise typer.Exit(1)
+        if goal:
+            console.print("[red]--chain и goal несовместимы[/red]")
+            raise typer.Exit(1)
+        chain_dir = chain.resolve()
+        if not chain_dir.is_dir():
+            console.print(f"[red]Каталог не найден:[/red] {chain_dir}")
+            raise typer.Exit(1)
+        issues = sorted(chain_dir.glob("*.md"))
+        if not issues:
+            console.print(f"[red]В {chain_dir} нет *.md[/red]")
+            raise typer.Exit(1)
+
+        console.print(
+            Panel.fit(
+                f"[bold]Chain:[/bold] {len(issues)} задач из {chain_dir}\n"
+                f"[bold]Проект:[/bold] {project_root}\n"
+                f"[bold]Модель tool loop:[/bold] {model or cfg.api.model}\n"
+                f"[bold]Режим:[/bold] "
+                + (
+                    "plan → подтверждение → decompose"
+                    if plan
+                    else ("decompose" if decompose else "tool loop")
+                )
+                + "\n"
+                "[bold]При провале:[/bold] " + ("continue" if continue_on_fail else "stop"),
+                title="ai-coder agent --chain",
+            )
+        )
+
+        try:
+            chain_result = _run_chain(
+                issues=issues,
+                project_root=project_root,
+                cfg=cfg,
+                prompts_cfg=pr_cfg,
+                model=model,
+                depth=depth,
+                extra_exclude=list(exclude) or None,
+                do_decompose=decompose or plan,
+                do_plan=plan,
+                journal=journal,
+                dry_run=dry_run,
+                interactive=interactive,
+                replan=decompose_replan,
+                rollback_on_fail=decompose_rollback_on_fail,
+                max_cost_rub=max_cost_rub,
+                decompose_max_cost_rub=decompose_max_cost_rub,
+                max_iterations=max_iterations,
+                continue_on_fail=continue_on_fail,
+                allow_blacklist=allow_blacklist,
+                auto_commit=commit,
+                verify_commands=verify_commands,
+                verify=verify,
+                max_fix_attempts=max_fix_attempts,
+                run_tool_loop_fn=run_tool_loop,
+                run_agent_decompose_fn=run_agent_decompose,
+                run_planner_decompose_fn=run_planner_decompose,
+            )
+        except typer.Exit:
+            raise
+        except Exception as e:
+            console.print(f"[red]Ошибка chain:[/red] {e}")
+            raise typer.Exit(1)
+
+        _print_chain_report(chain_result, project_root)
+        raise typer.Exit(0 if chain_result["failed"] == 0 else 1)
 
     # --- NEW: decompose / plan ---
     if decompose or plan:

@@ -467,3 +467,229 @@ def test_agent_plan_yes_executes(tmp_path: Path, monkeypatch):
     )
     assert result.exit_code == 0, result.stdout
     assert captured.get("plan") is dec, "должен передать готовый план в run_agent_decompose"
+
+
+# ---------- agent --chain ----------
+
+
+def test_chain_requires_tool_loop(tmp_path: Path):
+    """--chain без --tool-loop → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1.md").write_text("# task\n\nGoal.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", str(project), "--chain", str(issues)],
+    )
+    assert result.exit_code != 0
+    assert "tool-loop" in result.stdout.lower() or "tool loop" in result.stdout.lower()
+
+
+def test_chain_and_issue_conflict(tmp_path: Path):
+    """--chain + --issue → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1.md").write_text("# task\n\nGoal.\n", encoding="utf-8")
+    single = tmp_path / "single.md"
+    single.write_text("# task\n\nSingle.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            str(project),
+            "--chain",
+            str(issues),
+            "--issue",
+            str(single),
+            "--tool-loop",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "несовместим" in result.stdout.lower() or "conflict" in result.stdout.lower()
+
+
+def test_chain_and_goal_conflict(tmp_path: Path):
+    """--chain + непустой goal (не директория) → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1.md").write_text("# task\n\nGoal.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "это-не-директория",
+            "--chain",
+            str(issues),
+            "--tool-loop",
+        ],
+    )
+    assert result.exit_code != 0
+
+
+def test_chain_empty_dir(tmp_path: Path):
+    """--chain на пустую директорию → ошибка."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    issues = tmp_path / "issues"
+    issues.mkdir()  # пусто
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", str(project), "--chain", str(issues), "--tool-loop"],
+    )
+    assert result.exit_code != 0
+    assert "*.md" in result.stdout or "нет" in result.stdout.lower()
+
+
+def test_chain_two_issues_ok(tmp_path: Path, monkeypatch):
+    """--chain: 2 issue, обе ✅."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nFirst.\n", encoding="utf-8")
+    (issues / "2-b.md").write_text("# task\n\nSecond.\n", encoding="utf-8")
+
+    calls: list[str] = []
+
+    def fake_loop(**kwargs):
+        calls.append(kwargs["goal"])
+        return ToolLoopResult(success=True, summary="ok", iterations=1, total_cost_rub=0.05)
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", str(project), "--chain", str(issues), "--tool-loop"],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert len(calls) == 2, f"должно быть 2 вызова, было {len(calls)}"
+    assert "First" in calls[0]
+    assert "Second" in calls[1]
+
+
+def test_chain_stop_on_fail(tmp_path: Path, monkeypatch):
+    """--chain --stop-on-fail: первая упала → вторая НЕ запущена."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nFirst.\n", encoding="utf-8")
+    (issues / "2-b.md").write_text("# task\n\nSecond.\n", encoding="utf-8")
+
+    calls: list[str] = []
+
+    def fake_loop(**kwargs):
+        calls.append(kwargs["goal"])
+        if len(calls) == 1:
+            return ToolLoopResult(
+                success=False,
+                summary="fail",
+                iterations=5,
+                stopped_reason="max_iterations",
+                total_cost_rub=0.1,
+            )
+        return ToolLoopResult(success=True, summary="ok", iterations=1, total_cost_rub=0.05)
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", str(project), "--chain", str(issues), "--tool-loop"],
+    )
+    assert result.exit_code != 0  # есть fail → exit 1
+    assert len(calls) == 1, "вторая задача НЕ должна запуститься"
+    assert "Остановка" in result.stdout
+
+
+def test_chain_continue_on_fail(tmp_path: Path, monkeypatch):
+    """--chain --continue-on-fail: первая упала → вторая запущена."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nFirst.\n", encoding="utf-8")
+    (issues / "2-b.md").write_text("# task\n\nSecond.\n", encoding="utf-8")
+
+    calls: list[str] = []
+
+    def fake_loop(**kwargs):
+        calls.append(kwargs["goal"])
+        if len(calls) == 1:
+            return ToolLoopResult(
+                success=False,
+                summary="fail",
+                iterations=5,
+                stopped_reason="max_iterations",
+                total_cost_rub=0.1,
+            )
+        return ToolLoopResult(success=True, summary="ok", iterations=1, total_cost_rub=0.05)
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            str(project),
+            "--chain",
+            str(issues),
+            "--tool-loop",
+            "--continue-on-fail",
+        ],
+    )
+    assert result.exit_code != 0  # fail был → exit 1
+    assert len(calls) == 2, "обе задачи должны запуститься"

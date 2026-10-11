@@ -341,15 +341,18 @@ C/C++/JS/Go/Rust. Но **не блокирует** автономность на
 - Многошаговое планирование: разведка → план → выполнение.
 - Replan на основе найденного.
 
-**E. `--chain <dir>` (уровень 5) — 🟢 ~1 день**
-- Выполнить все `issues/*.md` по очереди.
-- `--continue-on-fail` / `--stop-on-fail`.
-- Итоговый отчёт (сделано/упало/стоимость).
+**✅ E. `--chain <dir>` (уровень 5) — ЗАКРЫТО 2026-10-11 (10.25)**
+- `agent --chain issues/ <project> --tool-loop` — цикл по `*.md`.
+- Три режима: `--tool-loop`, `--tool-loop --decompose`,
+  `--tool-loop --plan` (все планы → один `y/n/e` → decompose).
+- `--stop-on-fail` (default) / `--continue-on-fail`.
+- Итоговая таблица: задача / статус / RUB.
+- **E2E:** 3 режима, все ✅, 0.12–0.36 RUB.
 
 **Ценность:** ключевой шаг к уровню 4 автономности.
 
-**Приоритет:** 🟡 средний — **A/B сделаны** (10.24). Осталось
-C (`--interactive-plan`), D (`--context-search`), E (`--chain`).
+**Приоритет:** 🟡 средний — **A/B/E сделаны** (10.24, 10.25). Осталось
+C (`--interactive-plan`), D (`--context-search`).
 
 **См.** `docs/autonomy.md` → Этап 5.
 
@@ -455,8 +458,8 @@ C (`--interactive-plan`), D (`--context-search`), E (`--chain`).
 
 ### 🔴 Высокий (сначала)
 
-0. ✅ **Направление 10 — планировщик из human-goal**: `--plan`,
-   `--plan-review` — ЗАКРЫТО 2026-10-11 (10.24). Остаток: C/D/E;
+0. ✅ **Направление 10 — планировщик из human-goal**: `--plan` +
+   `--chain` — ЗАКРЫТО 2026-10-11 (10.24, 10.25). Остаток: C/D;
 1. **tools.py** — blacklist (с флагом `--allow-blacklist`) — S;
 2. **tools.py** — content-фильтр секретов — S;
 3. **apply.py** — `shell=True` → `shlex.split` — M;

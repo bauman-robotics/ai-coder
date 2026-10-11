@@ -4,6 +4,57 @@
 
 ---
 
+## [2026-10-11] iteration 10.25 — --chain: пакетное выполнение issues
+
+Направление 10, уровень E. Пользователь пишет N независимых issue
+(`issues/*.md`), одна команда выполняет все по очереди с итоговым
+отчётом.
+
+### Добавлено
+
+- **`agent --chain <dir>`** — цикл по `sorted(dir.glob("*.md"))`:
+  - три режима: `--tool-loop` (без decompose), `--tool-loop --decompose`,
+    `--tool-loop --plan` (показ всех планов + один `y/n/e` → decompose);
+  - `--stop-on-fail` (по умолчанию) / `--continue-on-fail`;
+  - итоговая таблица: `# | задача | статус | RUB | детали` + сумма.
+- **`_read_issue_file()`** — вынесена из `agent_cmd` для переиспользования.
+- **`--chain --plan`:** все планы через один `y/n/e`; один общий
+  `plan.yaml`; при `y` — `run_agent_decompose(plan=pre_plan)` **без
+  повторного планирования**.
+- **hack для `--chain`:** если `goal` — директория, считать это `path`
+  (как у `--issue`). Перенесён **выше** `project_root = path.resolve()`,
+  иначе chain правил не тот проект (баг найден на E2E).
+- **Хелперы:** `_run_chain`, `_print_chain_report`, `_print_chain_plans`,
+  `_save_chain_plan_yaml`, `_load_chain_plan_yaml`,
+  `_edit_chain_plans_and_reload`.
+
+### E2E
+
+Песочница `/tmp/chain-*`, `calc.py` + issues:
+
+- `--chain --tool-loop` (2 задачи) → 0.12 RUB, обе ✅.
+- `--chain --tool-loop --decompose` (1 задача) → 0.17 RUB, ✅.
+- `--chain --tool-loop --plan` + `n` (2 задачи) → 0.13 RUB, правок нет.
+- `--chain --tool-loop --plan` + `y` (2 задачи) → 0.36 RUB, обе ✅,
+  планирование **не повторяется** (2 вызова v4-pro, не 4).
+
+### Тесты
+
++7 (377 passed):
+
+- `test_chain_requires_tool_loop`, `test_chain_and_issue_conflict`,
+  `test_chain_and_goal_conflict`, `test_chain_empty_dir`,
+  `test_chain_two_issues_ok`, `test_chain_stop_on_fail`,
+  `test_chain_continue_on_fail`.
+
+### Roadmap
+
+Направление 10: уровни **A (`--plan`), B (`--plan-review`), E (`--chain`)**
+закрыты. Остаются C (`--interactive-plan`), D (`--context-search`).
+
+---
+
+
 ## [2026-10-11] iteration 10.24 — --plan: план → подтверждение → выполнение
 
 Направление 10 (планировщик из human-goal), MVP. Пользователь даёт
