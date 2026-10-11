@@ -501,8 +501,11 @@ def run_split_goals(
     Разбивает одну фразу на N независимых issues.
 
     Не выполняет — сохраняет issues/N-<slug>.md.
+
+    Модель: `cfg.agent.split_goals_model` или переданный `model`,
+    иначе `cfg.api.model`.
     """
-    model = model or cfg.api.model
+    model = model or getattr(cfg.agent, "split_goals_model", None) or cfg.api.model
 
     # metadata-scan
     scan_meta = scan_project_metadata(project_root, cfg.scanning, extra_exclude=extra_exclude)

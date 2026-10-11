@@ -1384,11 +1384,17 @@ def agent_cmd(
         from .agent import _slug_for_issue, run_split_goals
 
         if chain is not None or issue is not None:
-            console.print("[red]--split-goals несовместим с --chain / --issue[/red]")
+            console.print(
+                "[red]--split-goals несовместим с --chain / --issue.[/red]\n"
+                '[dim]Сначала: ai-coder agent "<goal>" <project> --split-goals\n'
+                "Потом: ai-coder agent <project> --chain issues/ --tool-loop --plan[/dim]"
+            )
             raise typer.Exit(1)
         if decompose or plan or tool_loop:
             console.print(
-                "[red]--split-goals несовместим с --plan / --decompose / --tool-loop[/red]"
+                "[red]--split-goals несовместим с --plan / --decompose / --tool-loop.[/red]\n"
+                "[dim]--split-goals только создаёт issues/*.md, не выполняет.\n"
+                "Дальше: ai-coder agent <project> --chain issues/ --tool-loop --plan[/dim]"
             )
             raise typer.Exit(1)
         if not goal:
@@ -1402,7 +1408,7 @@ def agent_cmd(
                     project_root=project_root,
                     cfg=cfg,
                     prompts_cfg=pr_cfg,
-                    model=model or cfg.agent.decompose_model,
+                    model=model,
                     depth=depth,
                     extra_exclude=list(exclude) or None,
                 )

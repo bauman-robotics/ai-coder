@@ -203,6 +203,7 @@ class AgentConfig(BaseModel):
     tool_loop_history_max_chars: int = 10_000
     tool_loop_history_other_max_chars: int = 500
     decompose_model: str | None = None
+    split_goals_model: str | None = None  # NEW: модель для --split-goals
     decompose_replan: bool = False
     decompose_rollback_on_fail: bool = False
 

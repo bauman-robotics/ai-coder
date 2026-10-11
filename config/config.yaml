@@ -131,6 +131,7 @@ agent:
   tool_loop_history_max_chars: 10000
   tool_loop_history_other_max_chars: 500
   decompose_model: "deepseek-v4-pro"
+  split_goals_model: "deepseek-flash"   # NEW: для --split-goals (проще, дешевле)
   decompose_replan: false
   decompose_rollback_on_fail: false
 
