@@ -1593,6 +1593,7 @@ def agent_cmd(
                     max_cost_rub=decompose_max_cost_rub,
                     allow_blacklist=allow_blacklist,
                     plan=pre_plan,
+                    max_iterations=max_iterations,
                 )
         except typer.Exit:
             raise

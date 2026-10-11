@@ -2033,6 +2033,79 @@ def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_c
     assert result.cost_rub == 0.223, "стоимость планирования + выполнения"
 
 
+def test_run_agent_decompose_passes_max_iterations(sample_project, minimal_cfg, prompts_cfg):
+    """max_iterations из аргумента должен уходить в run_tool_loop,
+    не подменяться на cfg.agent.max_steps."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="prebuilt",
+        subtasks=[_subtask(1, "do x")],
+        cost_rub=0.0,
+    )
+
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured["max_iterations"] = kwargs["max_iterations"]
+        return _ok_loop()
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose"),
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        run_agent_decompose(
+            goal="g",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            plan=dec,
+            max_iterations=42,
+        )
+
+    assert captured["max_iterations"] == 42, "аргумент должен победить cfg"
+
+
+def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg, prompts_cfg):
+    """Если max_iterations не передан — используется cfg.agent.max_steps."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+    minimal_cfg.agent.max_steps = 7  # намеренно не дефолт
+
+    dec = DecomposeResult(
+        explanation="prebuilt",
+        subtasks=[_subtask(1, "do x")],
+        cost_rub=0.0,
+    )
+
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured["max_iterations"] = kwargs["max_iterations"]
+        return _ok_loop()
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose"),
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        run_agent_decompose(
+            goal="g",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            plan=dec,
+        )
+
+    assert captured["max_iterations"] == 7, "fallback на cfg.agent.max_steps"
+
+
 # ---------- split-goals (10F) ----------
 
 
@@ -2202,3 +2275,37 @@ def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cf
         )
 
     assert result.subtask_results[0]["success"] is True
+
+
+def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_cfg, prompts_cfg):
+    """v4-pro retry (applied_ops=0) → subtask success=False, не ложный ✅."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    # Включаем retry — иначе ветка не сработает
+    minimal_cfg.agent.decompose_model = "deepseek-v4-pro"
+
+    dec = DecomposeResult(
+        explanation="one",
+        subtasks=[_subtask(1, "only")],
+    )
+
+    # side_effect: flash fail → retry v4-pro тоже без правок
+    side_effects = [_fail_loop("max_iterations"), _ok_loop_no_ops()]
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert len(result.subtask_results) == 1
+    assert result.subtask_results[0]["success"] is False, (
+        "retry applied_ops=0 → success=False (не ложный ✅)"
+    )

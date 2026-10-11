@@ -706,6 +706,7 @@ def run_agent_decompose(
     max_cost_rub: float | None = None,
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
     plan: DecomposeResult | None = None,  # NEW: готовый план (--plan)
+    max_iterations: int | None = None,  # NEW: лимит tool loop на подзадачу
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -713,6 +714,8 @@ def run_agent_decompose(
     Если передан `plan` — повторно не декомпозирует, использует его
     (для workflow `--plan`: показать → подтвердить → выполнить).
     """
+    eff_iters = max_iterations if max_iterations is not None else cfg.agent.max_steps
+
     # 1. Декомпозиция (через v4-pro, если задано)
     decompose_model = getattr(cfg.agent, "decompose_model", None) or model
     if plan is not None:
@@ -776,7 +779,7 @@ def run_agent_decompose(
             model=model,  # для tool loop — flash
             depth=depth,
             extra_exclude=extra_exclude,
-            max_iterations=cfg.agent.max_steps,
+            max_iterations=eff_iters,
             max_cost_rub=remaining,
             dry_run=dry_run,
             interactive=interactive,
@@ -825,7 +828,7 @@ def run_agent_decompose(
                     model=fallback_model,
                     depth=depth,
                     extra_exclude=extra_exclude,
-                    max_iterations=cfg.agent.max_steps,
+                    max_iterations=eff_iters,
                     max_cost_rub=remaining,
                     dry_run=dry_run,
                     interactive=interactive,
@@ -846,7 +849,7 @@ def run_agent_decompose(
                         "n": st.n,
                         "goal": st.goal,
                         "files": st.files,
-                        "success": loop_result.success,
+                        "success": loop_result.success and loop_result.applied_ops > 0,
                         "stopped_reason": loop_result.stopped_reason,
                         "cost_rub": prev_cost + loop_result.total_cost_rub,
                         "backup_dir": str(loop_result.backup_dir)
