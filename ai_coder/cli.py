@@ -996,8 +996,10 @@ def _run_chain(
                     allow_blacklist=allow_blacklist,
                     plan=pre_plans[i] if do_plan else None,
                 )
-                ok = dec.parse_error is None and all(
-                    r.get("success", False) for r in dec.subtask_results
+                ok = (
+                    dec.parse_error is None
+                    and bool(dec.subtask_results)
+                    and all(r.get("success", False) for r in dec.subtask_results)
                 )
                 cost = dec.cost_rub
                 entry["subtasks"] = len(dec.subtasks)
@@ -1017,10 +1019,11 @@ def _run_chain(
                     interactive=interactive,
                     auto_commit=auto_commit,
                 )
-                ok = lr.success
+                ok = lr.success and lr.applied_ops > 0
                 cost = lr.total_cost_rub
                 entry["iterations"] = lr.iterations
                 entry["stopped_reason"] = lr.stopped_reason
+                entry["applied_ops"] = lr.applied_ops
             entry["success"] = ok
             entry["cost_rub"] = cost
             total_cost += cost

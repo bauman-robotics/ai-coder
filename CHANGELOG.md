@@ -4,6 +4,63 @@
 
 ---
 
+## [2026-10-11] iteration 10.27 — applied_ops: успех = применённые правки
+
+Разбор E11 (self-hosted провал). Изначальный диагноз («applied_count == 0
+не помечается skipped») оказался **ошибочным** — код в `_run_agent_step`
+корректен. Реальный баг: **subtask.success = loop.success** независимо
+от того, применены ли правки.
+
+### Проблема
+
+- **`run_agent_decompose`:** `"success": loop_result.success`. Если
+  модель сделала `finish(success)`, но 0 правок — подзадача ✅.
+- **`_run_chain`:** `ok = lr.success` (tool loop) и
+  `all(subtask.success)` (decompose). Пустой список = True.
+- **E11 subtask 1 (v4-pro retry):** `success: True`, правок 0 —
+  формально «успех», фактически ничего.
+
+### Фикс
+
+- **`ToolLoopResult.applied_ops: int = 0`** — счётчик успешных
+  `write_file`/`edit_file`. Учитывает `--resume` (пересчёт из
+  загруженной history).
+- **`run_agent_decompose`:**
+  `"success": loop_result.success and loop_result.applied_ops > 0`.
+- **`_run_chain`:**
+  - decompose: `ok = parse_error is None and bool(subtask_results)
+    and all(r["success"])`;
+  - tool loop: `ok = lr.success and lr.applied_ops > 0`,
+    в entry добавляется `applied_ops`.
+
+### Тесты
+
+- `_ok_loop` → `applied_ops=1` (фикс мока).
+- `_ok_loop_no_ops` — новый мок (success=True, правок 0).
+- `test_run_agent_decompose_success_requires_applied_ops` — 0 правок
+  → subtask success=False.
+- `test_run_agent_decompose_success_with_applied_ops` — 1 правка
+  → success=True.
+- `test_chain_zero_ops_not_success` — chain: applied_ops=0 → ❌.
+
++4 (391 passed).
+
+### E11 — обновление
+
+- **Баг «applied_count == 0»** — ошибочный диагноз, **закрыт**.
+- **v4-pro был прав**, когда сказал «уже сделано».
+- **Новый TODO:** `--split-goals` не проверяет, решена ли задача.
+- **Открытый вопрос:** read-задачи (без правок) новый критерий
+  `applied_ops > 0` сломает. Нужен `read_ops` или явный тип read.
+
+### Docs
+
+- `docs/experiments.md` → E11 (поправка).
+- `TODO.md` → уточнение находок.
+
+---
+
+
 ## [2026-10-11] iteration 10.26 — --split-goals: одна фраза → N issues
 
 Направление 10, уровень F. Замыкает цепочку: `--split-goals` создаёт

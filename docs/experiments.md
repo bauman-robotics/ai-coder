@@ -61,23 +61,57 @@
 **Не заметил `if not apply`** — а нужный кейс (apply=True,
 applied_count == 0) **не покрыт**.
 
-### Баг (подтверждён)
+### Баг — ошибочная диагностика
 
-В `_run_agent_step` есть блок (сокращённо, отступ вместо fence):
+**Изначально думали**, что `applied_count == 0` при `apply=True`
+не помечается skipped. Проверка **опубликовала обратное**: в
+`_run_agent_step` **оба** блока корректны:
 
-        if not apply:
-            if write_plan is not None and not write_plan.operations:
-                result.skipped = True
-                result.skip_reason = "план не содержит операций"
-            return result
+1. `if not apply: ... return result` — правильный;
+2. `if not applied: ... skipped = True; return result` — правильный.
 
-**`skipped` ставится только при `apply=False`.** Если `apply=True`
-и `applied_count == 0` — `skipped` **не ставится**, `verify`
-**запускается** и, поскольку правок нет, **проходит** → chain
-считает «✅ успех».
+**Второй блок** (после `apply_plan`) ставит `skipped` и **возвращается
+до** `result.applied = True`. Инвариант **соблюдён**:
+`applied_count == 0` **возможно только** при `applied == []`, а тогда
+`skipped = True` и возврат.
 
-**Ирония:** задача была **починить именно это**, а баг **помешал**
-её решить.
+**Ирония:** задача E11 была **некорректной** — просила «починить» то,
+что уже работает. **v4-pro был прав**, когда сказал «уже сделано».
+Flash честно ничего не делал 10 итераций — тоже корректно.
+
+### Реальный баг (обнаружен после разбора)
+
+Не `applied_count == 0`, а **`subtask.success` в `run_agent_decompose`**:
+
+        "success": loop_result.success,  # ← success tool loop ≠ применены правки
+
+Если модель сделала `finish(success)`, но **0 правок** — подзадача
+считается ✅. Это позволило в E11 subtask 1 (v4-pro) формально
+«успешно завершиться», хотя правок не было.
+
+**Аналогично в `_run_chain`:** `ok = lr.success` для tool loop-ветки
+и `all(subtask.success)` для decompose-ветки (пустой список = True).
+
+### Фикс (10.27)
+
+- **`ToolLoopResult.applied_ops: int`** — счётчик успешных
+  `write_file`/`edit_file`. Учитывает resume.
+- **`run_agent_decompose`:** `"success": loop_result.success and
+  loop_result.applied_ops > 0`.
+- **`_run_chain`:**
+  - decompose: `ok = parse_error is None and bool(subtask_results)
+    and all(r["success"])`;
+  - tool loop: `ok = lr.success and lr.applied_ops > 0`.
+
+### Что чинить дальше (TODO)
+
+- **`--split-goals` не проверяет, решена ли задача.** E11-задача #1
+  была **уже реализована**, но `--split-goals` создал issue.
+  Возможный фикс: перед созданием issue — `read_symbol` + семантика
+  (проверка кода на наличие решения).
+- **Читающие задачи** (`read_file`, `read_symbol`, `list_files`
+  без правок) — новый критерий `applied_ops > 0` их ломает.
+  Нужен отдельный признак (`read_ops > 0` или явный тип read).
 
 ### Сопутствующие проблемы
 

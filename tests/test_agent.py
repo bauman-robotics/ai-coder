@@ -1562,6 +1562,20 @@ def _ok_loop() -> "object":
         summary="ok",
         iterations=1,
         total_cost_rub=0.1,
+        applied_ops=1,  # успешный loop: 1 правка
+    )
+
+
+def _ok_loop_no_ops() -> "object":
+    """Успешный tool loop БЕЗ применённых правок (skipped)."""
+    from ai_coder.agent import ToolLoopResult
+
+    return ToolLoopResult(
+        success=True,
+        summary="nothing to do",
+        iterations=1,
+        total_cost_rub=0.05,
+        applied_ops=0,
     )
 
 
@@ -2133,3 +2147,58 @@ def test_run_split_goals_nonempty_dir_uses_timestamp(sample_project, minimal_cfg
     assert result.output_dir is not None
     assert result.output_dir.name.startswith("issues-")
     assert not (result.output_dir / "existing.md").exists(), "не должен затирать старые"
+
+
+def test_run_agent_decompose_success_requires_applied_ops(sample_project, minimal_cfg, prompts_cfg):
+    """applied_ops=0 → subtask success=False (не «успех без правок»)."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+    dec = DecomposeResult(
+        explanation="one",
+        subtasks=[_subtask(1, "only")],
+    )
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", return_value=_ok_loop_no_ops()),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert len(result.subtask_results) == 1
+    assert result.subtask_results[0]["success"] is False, (
+        "loop.success=True без правок → subtask success=False"
+    )
+
+
+def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cfg, prompts_cfg):
+    """applied_ops > 0 → subtask success=True (нормальный кейс)."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+    dec = DecomposeResult(
+        explanation="one",
+        subtasks=[_subtask(1, "only")],
+    )
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert result.subtask_results[0]["success"] is True

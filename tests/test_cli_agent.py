@@ -590,7 +590,13 @@ def test_chain_two_issues_ok(tmp_path: Path, monkeypatch):
 
     def fake_loop(**kwargs):
         calls.append(kwargs["goal"])
-        return ToolLoopResult(success=True, summary="ok", iterations=1, total_cost_rub=0.05)
+        return ToolLoopResult(
+            success=True,
+            summary="ok",
+            iterations=1,
+            total_cost_rub=0.05,
+            applied_ops=1,
+        )
 
     monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
 
@@ -603,6 +609,42 @@ def test_chain_two_issues_ok(tmp_path: Path, monkeypatch):
     assert len(calls) == 2, f"должно быть 2 вызова, было {len(calls)}"
     assert "First" in calls[0]
     assert "Second" in calls[1]
+
+
+def test_chain_zero_ops_not_success(tmp_path: Path, monkeypatch):
+    """--chain: tool loop success=True, но applied_ops=0 → НЕ успех."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nOnly.\n", encoding="utf-8")
+
+    def fake_loop(**kwargs):
+        return ToolLoopResult(
+            success=True,
+            summary="nothing to do",
+            iterations=1,
+            total_cost_rub=0.05,
+            applied_ops=0,  # ← 0 правок
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", str(project), "--chain", str(issues), "--tool-loop"],
+    )
+    # 0 правок → fail → exit 1
+    assert result.exit_code == 1, result.stdout
+    assert "провалено: 1" in result.stdout
 
 
 def test_chain_stop_on_fail(tmp_path: Path, monkeypatch):

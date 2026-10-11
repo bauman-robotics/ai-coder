@@ -795,7 +795,7 @@ def run_agent_decompose(
                 "n": st.n,
                 "goal": st.goal,
                 "files": st.files,
-                "success": loop_result.success,
+                "success": loop_result.success and loop_result.applied_ops > 0,
                 "stopped_reason": loop_result.stopped_reason,
                 "cost_rub": loop_result.total_cost_rub,
                 "backup_dir": str(loop_result.backup_dir) if loop_result.backup_dir else None,
@@ -1514,6 +1514,7 @@ class ToolLoopResult:
     backup_dir: Path | None = None
     commit_hash: str | None = None  # NEW
     verify_errors: list[str] = field(default_factory=list)
+    applied_ops: int = 0  # NEW: число успешных write_file/edit_file
 
 
 # ---------- декомпозиция задач ----------
@@ -2438,6 +2439,7 @@ def run_tool_loop(
 
     # --- история и стоимость ---
     history: list[tuple[ToolAction, ToolResult]] = []
+    applied_ops = 0  # NEW: считаем успешные write_file/edit_file
     total_cost_rub = 0.0
     total_cost_cny = 0.0
     total_cost_usd = 0.0
@@ -2465,6 +2467,9 @@ def run_tool_loop(
                 stopped_reason="resume_error",
             )
         history = loaded_history
+        applied_ops = sum(
+            1 for act, res in history if act.tool in ("write_file", "edit_file") and res.ok
+        )
         start_iteration = len(history) + 1
         # журнал: используем существующий resume_from
         journal_dir = resume_from
@@ -2670,6 +2675,8 @@ def run_tool_loop(
             allow_blacklist=allow_blacklist,
         )
         history.append((action, tool_result))
+        if action.tool in ("write_file", "edit_file") and tool_result.ok:
+            applied_ops += 1
 
         if journal_dir is not None:
             _save_tool_loop_step(journal_dir, iteration, action, tool_result, llm_resp)
@@ -2752,6 +2759,7 @@ def run_tool_loop(
         backup_dir=backup_dir,
         commit_hash=commit_hash,  # NEW
         verify_errors=verify_errors,
+        applied_ops=applied_ops,  # NEW
     )
 
     if journal_dir is not None:
