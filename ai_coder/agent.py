@@ -368,6 +368,233 @@ def parse_decompose_response(content: str) -> DecomposeResult:
     return result
 
 
+def parse_split_goals_response(content: str) -> SplitGoalsResult:
+    """
+    Парсит ответ планировщика --split-goals.
+
+    Ожидает JSON:
+      {"issues": [{"title": "...", "goal": "..."}, ...]}
+
+    Устойчив к markdown-обёртке, мусору.
+    """
+    result = SplitGoalsResult(raw_json=content)
+    text = content.strip()
+
+    # markdown-обёртка
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    # вырезать первый {...}
+    if not text.startswith("{"):
+        start = text.find("{")
+        if start == -1:
+            result.parse_error = "no '{' found"
+            return result
+        text = text[start:]
+
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(text)
+    except json.JSONDecodeError as e:
+        result.parse_error = f"JSON parse error: {e}"
+        return result
+
+    if not isinstance(data, dict):
+        result.parse_error = f"expected dict, got {type(data).__name__}"
+        return result
+
+    issues_raw = data.get("issues", [])
+    if not isinstance(issues_raw, list):
+        result.parse_error = "'issues' must be a list"
+        return result
+
+    for i, s in enumerate(issues_raw, 1):
+        if not isinstance(s, dict):
+            continue
+        title = str(s.get("title", "")).strip()
+        goal = str(s.get("goal", "")).strip()
+        if not goal:
+            continue
+        if not title:
+            title = goal[:40]
+        result.issues.append(SplitIssue(n=i, title=title, goal=goal))
+
+    if not result.issues and result.parse_error is None:
+        result.parse_error = "empty issues"
+
+    return result
+
+
+# Транслит кириллицы для slug (минимальный, только строчные + прописные)
+_CYR_TO_LAT = {
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "h",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "sch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
+}
+
+
+def _slug_for_issue(text: str, max_len: int = 40) -> str:
+    """Slug для имени issue-файла. Транслитерирует кириллицу."""
+    import re
+
+    # транслит посимвольно (нижний регистр)
+    out_chars: list[str] = []
+    for ch in text.lower():
+        if ch in _CYR_TO_LAT:
+            out_chars.append(_CYR_TO_LAT[ch])
+        elif ch.isascii() and (ch.isalnum() or ch in "-_"):
+            out_chars.append(ch)
+        else:
+            out_chars.append("-")
+    s = "".join(out_chars)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if not s:
+        return "task"
+    return s[:max_len].rstrip("-")
+
+
+def run_split_goals(
+    *,
+    goal: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+    depth: str = "normal",
+    extra_exclude: list[str] | None = None,
+    out_dir: Path | None = None,
+) -> SplitGoalsResult:
+    """
+    Разбивает одну фразу на N независимых issues.
+
+    Не выполняет — сохраняет issues/N-<slug>.md.
+    """
+    model = model or cfg.api.model
+
+    # metadata-scan
+    scan_meta = scan_project_metadata(project_root, cfg.scanning, extra_exclude=extra_exclude)
+
+    prompt_entry = prompts_cfg.get("agent_split_goals_json")
+    metadata_block = render_metadata_block(scan_meta)
+    empty_scan = ScanResult(root=project_root)
+    system, user = render_prompt(
+        prompt_entry,
+        depth=depth,
+        scan=empty_scan,
+        extra={
+            "goal": goal,
+            "tree": scan_meta.tree,
+            "metadata": metadata_block,
+        },
+    )
+
+    # тариф и курсы
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    client = LLMClient(cfg.api)
+    llm_resp = client.chat(
+        system=system,
+        user=user,
+        model=model,
+        json_mode=True,
+        max_tokens=cfg.agent.step_max_output_tokens,
+    )
+
+    result = parse_split_goals_response(llm_resp.content)
+    result.llm = llm_resp
+
+    # стоимость
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+    result.cost_rub = cost.cost_rub
+    result.cost_cny = cost.cost_cny
+    result.cost_usd = cost.cost_usd
+
+    # учёт
+    output_root = project_root / cfg.output.dir
+    append_usage(
+        project_root=project_root,
+        output_root=output_root,
+        action="agent:split-goals",
+        project_name=project_root.name,
+        model=model,
+        depth=depth,
+        files_count=scan_meta.total_files,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok" if result.parse_error is None else "parse_error",
+        usage_cfg=cfg.usage,
+        iteration=0,
+        parent_action="agent",
+    )
+
+    if result.parse_error is not None or not result.issues:
+        return result
+
+    # --- сохранение issue-файлов ---
+    if out_dir is None:
+        out_dir = project_root / "issues"
+        if out_dir.exists() and any(out_dir.iterdir()):
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            out_dir = project_root / f"issues-{ts}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result.output_dir = out_dir
+
+    for iss in result.issues:
+        slug = _slug_for_issue(iss.title)
+        fname = f"{iss.n}-{slug}.md"
+        content = f"# task: {iss.title}\n\n{iss.goal}\n"
+        (out_dir / fname).write_text(content, encoding="utf-8")
+
+    return result
+
+
 def run_planner_decompose(
     *,
     goal: str,
@@ -1314,6 +1541,32 @@ class DecomposeResult:
     journal_dir: Path | None = None
     subtask_results: list[dict] = field(default_factory=list)
     rolled_back: bool = False
+
+
+# ---------- split-goals (10F) ----------
+
+
+@dataclass
+class SplitIssue:
+    """Одна независимая задача из --split-goals."""
+
+    n: int
+    title: str
+    goal: str
+
+
+@dataclass
+class SplitGoalsResult:
+    """Результат --split-goals."""
+
+    issues: list[SplitIssue] = field(default_factory=list)
+    parse_error: str | None = None
+    raw_json: str = ""
+    llm: LLMResponse | None = None
+    cost_rub: float = 0.0
+    cost_cny: float = 0.0
+    cost_usd: float = 0.0
+    output_dir: Path | None = None
 
 
 # ---------- исполнитель одного шага ----------

@@ -188,6 +188,10 @@ def prompts_cfg() -> PromptsConfig:
                 system="Replan: {{goal}}",
                 user="Failed: {{failed_goal}}, Error: {{error}}",
             ),
+            "agent_split_goals_json": PromptEntry(
+                system="Split: {{goal}}",
+                user="Tree: {{tree}}, metadata: {{metadata}}",
+            ),
         }
     )
 

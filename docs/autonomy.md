@@ -178,11 +178,14 @@ M функций».
 `sub` добавлен, `3 passed`.
 
 **Остаток:**
-- **10F** `--split-goals` — одна фраза → N issue-файлов
-  (готовит данные для `--chain`).
 - **10C** `--interactive-plan` — диалог с агентом
   (через `ask_user`, направление 6 в roadmap).
 - **10D** `--context-search` — агент сам ищет контекст.
+
+**✅ Закрыто в 10.26 (2026-10-11):** `--split-goals` — одна
+фраза → N issue-файлов. Полная цепочка:
+`--split-goals` → `issues/*.md` → `--chain --plan` → выполнить.
+E2E: 3 issues (0.19 RUB) → 3 задачи ✅ (0.77 RUB).
 
 **✅ Закрыто в 10.25 (2026-10-11):** `--chain <dir>` — все
 `issues/*.md` по очереди (`--stop-on-fail` / `--continue-on-fail`,

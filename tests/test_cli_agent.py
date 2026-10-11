@@ -693,3 +693,92 @@ def test_chain_continue_on_fail(tmp_path: Path, monkeypatch):
     )
     assert result.exit_code != 0  # fail был → exit 1
     assert len(calls) == 2, "обе задачи должны запуститься"
+
+
+# ---------- agent --split-goals ----------
+
+
+def test_split_goals_conflicts_with_chain(tmp_path: Path):
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1.md").write_text("# task\n\nGoal.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "big", str(project), "--split-goals", "--chain", str(issues)],
+    )
+    assert result.exit_code != 0
+    assert "несовместим" in result.stdout.lower()
+
+
+def test_split_goals_conflicts_with_tool_loop(tmp_path: Path):
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "big", str(project), "--split-goals", "--tool-loop"],
+    )
+    assert result.exit_code != 0
+    assert "несовместим" in result.stdout.lower()
+
+
+def test_split_goals_requires_goal(tmp_path: Path):
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "", str(project), "--split-goals"],
+    )
+    assert result.exit_code != 0
+    assert "goal" in result.stdout.lower()
+
+
+def test_split_goals_ok(tmp_path: Path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import SplitGoalsResult, SplitIssue
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    sg = SplitGoalsResult(
+        issues=[
+            SplitIssue(n=1, title="add sub", goal="add sub to calc"),
+            SplitIssue(n=2, title="add mul", goal="add mul to calc"),
+        ],
+        cost_rub=0.04,
+    )
+    out = project / "issues"
+    sg.output_dir = out
+
+    monkeypatch.setattr("ai_coder.agent.run_split_goals", lambda **kw: sg)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "add sub and mul", str(project), "--split-goals"],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert "Split-goals" in result.stdout
+    assert "2" in result.stdout  # число issues
+    assert "add sub" in result.stdout

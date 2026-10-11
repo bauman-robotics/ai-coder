@@ -6,6 +6,91 @@
 
 ---
 
+## 2026-10-11 — E10: --split-goals + --chain (полная цепочка)
+
+**Гипотеза:** одна фраза → N issue-файлов → `--chain --plan` →
+готовые фичи. Устраняет ручную работу из E9 (там ты писал
+~15 issue-файлов вручную).
+
+**Что делали:** песочница `/tmp/split-test`, `calc.py` с `add`.
+
+### Прогон 1 — `--split-goals`
+
+    ai-coder agent "Добавь в calc.py sub, mul, div. Плюс README. \
+    И тесты в test_calc.py." /tmp/split-test --split-goals
+
+**Результат:** 3 issues, **0.1856 RUB**.
+
+- `1-add-arithmetic-functions.md` (sub+mul+div);
+- `2-create-readme.md` (README);
+- `3-add-calc-tests.md` (тесты).
+
+v4-pro разбил **разумно**: 3 issues, не 10. Порядок правильный
+(код → README → тесты). **Язык** — английский, хотя фраза русская.
+Слаги — транслит: `1-add-arithmetic-functions`, `2-create-readme`,
+`3-add-calc-tests`.
+
+### Прогон 2 — `--chain --plan`
+
+    ai-coder agent /tmp/split-test \
+        --chain /tmp/split-test/issues \
+        --tool-loop --plan \
+        --verify-commands "python -m py_compile calc.py"
+
+**Ответ:** `y`.
+
+**Результат:** 3 задачи ✅, **0.7659 RUB**.
+
+- Планирование: 3 вызова v4-pro (~0.13 RUB).
+- Выполнение: 3 decompose (~0.64 RUB).
+- **Планирование не повторяется** — 3 вызова, не 6.
+
+### Итог E2E
+
+- `calc.py`: `add`, `sub`, `mul`, `div` + `ZeroDivisionError`.
+- `README.md`: описание, usage, таблица функций.
+- `test_calc.py`: 5 тестов.
+- `pytest` → **5 passed**.
+- **Полная цепочка: ~0.95 RUB.**
+
+### Уроки
+
+1. **Разбиение адекватное** — 3 issues по фичам, порядок
+   код → README → тесты.
+2. **Планирование не повторяется** — `run_agent_decompose(plan=...)`
+   получает готовый план, `run_planner_decompose` не вызывается
+   второй раз. Экономия ~0.13 RUB на 3 задачах.
+3. **Язык issues** — английский, хотя goal русский. **TODO.**
+   Фикс: в промпт `agent_split_goals_json` — «отвечай на языке goal».
+4. **Модель дорогая** — `decompose_model` (v4-pro) на простой
+   задаче разбиения. flash хватило бы. **TODO:**
+   `agent.split_goals_model`.
+5. **Порядок валидаций** — `--split-goals` должен проверяться
+   **раньше** `--chain`, иначе конфликт (`--split-goals --chain`)
+   ловится не той веткой. Исправлено (10.26).
+6. **Hack goal-директория** — работает для `--split-goals`
+   (`agent /tmp/split-test --split-goals` → path). Достаточно
+   `goal and Path(goal).is_dir()` перед `project_root = path.resolve()`.
+
+### Артефакты
+
+- `/tmp/split-test/issues/` — 3 issue-файла (в gitignore, не мешают).
+- `/tmp/split-test/.ai-out/split-test/chain-plan-<ts>/plan.yaml` —
+  все планы chain.
+- `/tmp/split-test/.ai-out/split-test/chain-<ts>/` — общий журнал.
+- `/tmp/split-test/.ai-out/split-test/decompose-<ts>/` — по одной
+  на задачу.
+
+### Ссылки
+
+- CHANGELOG 10.26.
+- `docs/roadmap.md` → направление 10, F.
+- `docs/examples.md` → раздел 13.
+- `docs/autonomy.md` → Этап 5, 10F закрыт.
+- TODO.md → 3 мелочи после E10.
+
+---
+
 ## 2026-10-10 — E9: ai-coder в чужом проекте (youtube-playlist-downloader)
 
 **Гипотеза:** `--issue` + `--tool-loop` справятся с большим чужим

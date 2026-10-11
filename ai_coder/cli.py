@@ -1258,6 +1258,11 @@ def agent_cmd(
         "--continue-on-fail/--stop-on-fail",
         help="Chain: продолжать при провале задачи (по умолчанию — остановиться).",
     ),
+    split_goals: bool = typer.Option(
+        False,
+        "--split-goals",
+        help="Разбить фразу на N независимых issues/*.md (не выполняет).",
+    ),
 ):
     """Запустить агента: LLM строит план шагов и выполняет их по цели."""
     cfg, pr_cfg = _load(config, prompts)
@@ -1373,6 +1378,68 @@ def agent_cmd(
     if not project_root.is_dir():
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
+
+    # --- NEW: --split-goals ---
+    if split_goals:
+        from .agent import _slug_for_issue, run_split_goals
+
+        if chain is not None or issue is not None:
+            console.print("[red]--split-goals несовместим с --chain / --issue[/red]")
+            raise typer.Exit(1)
+        if decompose or plan or tool_loop:
+            console.print(
+                "[red]--split-goals несовместим с --plan / --decompose / --tool-loop[/red]"
+            )
+            raise typer.Exit(1)
+        if not goal:
+            console.print("[red]--split-goals требует goal (большая задача)[/red]")
+            raise typer.Exit(1)
+
+        try:
+            with console.status("[cyan]Разбиваю на issues..."):
+                sg_result = run_split_goals(
+                    goal=goal,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=pr_cfg,
+                    model=model or cfg.agent.decompose_model,
+                    depth=depth,
+                    extra_exclude=list(exclude) or None,
+                )
+        except Exception as e:
+            console.print(f"[red]Ошибка split-goals:[/red] {e}")
+            raise typer.Exit(1)
+
+        if sg_result.parse_error is not None:
+            console.print(f"[red]Разбиение не удалось:[/red] {sg_result.parse_error}")
+            raise typer.Exit(1)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold]Split-goals[/bold]\n"
+                f"Issues: [cyan]{len(sg_result.issues)}[/cyan]\n"
+                f"Стоимость: [cyan]{sg_result.cost_rub:.4f} RUB[/cyan]",
+                title="--split-goals",
+            )
+        )
+        from rich.table import Table
+
+        table = Table(title="Issues")
+        table.add_column("#", justify="right")
+        table.add_column("Заголовок", style="cyan")
+        table.add_column("Файл", style="dim")
+        for iss in sg_result.issues:
+            fname = f"{iss.n}-{_slug_for_issue(iss.title)}.md"
+            table.add_row(str(iss.n), iss.title, fname)
+        console.print(table)
+        if sg_result.output_dir:
+            console.print(f"[green]Сохранено:[/green] {sg_result.output_dir}")
+            console.print(
+                f"[dim]Дальше: ai-coder agent {project_root} "
+                f"--chain {sg_result.output_dir} --tool-loop --plan[/dim]"
+            )
+        raise typer.Exit(0)
 
     # --- NEW: --chain ---
     if chain is not None:

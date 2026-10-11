@@ -4,6 +4,70 @@
 
 ---
 
+## [2026-10-11] iteration 10.26 — --split-goals: одна фраза → N issues
+
+Направление 10, уровень F. Замыкает цепочку: `--split-goals` создаёт
+issues → `--chain` их выполняет. Устраняет ручную работу из E9
+(~15 issue-файлов, написанных руками).
+
+### Добавлено
+
+- **`agent --split-goals "<goal>" <project>`** — разбивает фразу на N
+  **независимых** issues (v4-pro):
+  - сохраняет `issues/1-<slug>.md`, `2-<slug>.md`, ...;
+  - `# task: <title>` + тело (goal);
+  - **не выполняет** — только создаёт файлы;
+  - если `issues/` не пуст — пишет в `issues-<ts>/`;
+  - если фраза — одна задача, создаётся **один** файл.
+- **`_slug_for_issue(text)`** — транслит кириллицы:
+  «Добавь sub в calc.py» → `dobav-sub-v-calc-py`.
+- **`parse_split_goals_response(content)`** — парсер JSON
+  `{"issues": [{"title", "goal"}, ...]}`.
+- **`run_split_goals(...)`** — LLM-вызов + сохранение файлов.
+- **Промпт `agent_split_goals_json`** в `config/prompts.yaml`.
+- **Запрещено совмещать:** `--split-goals` + `--plan` /
+  `--decompose` / `--tool-loop` / `--chain` / `--issue`.
+
+### E2E
+
+Песочница `/tmp/split-test`, фраза «добавь sub, mul, div + README +
+тесты»:
+
+- `--split-goals` → **3 issues**, 0.1856 RUB.
+  - `1-add-arithmetic-functions.md`, `2-create-readme.md`,
+    `3-add-calc-tests.md`.
+- `--chain issues/ --plan --tool-loop` + `y` → 3 задачи ✅,
+  0.7659 RUB.
+- **Итог:** `calc.py` + `sub/mul/div`, `README.md`, `test_calc.py`
+  (5 тестов), `5 passed`.
+- **Полная цепочка:** 0.95 RUB.
+
+### Тесты
+
++10 (387 passed):
+
+- `test_parse_split_goals_valid`, `test_parse_split_goals_markdown_wrapper`,
+  `test_parse_split_goals_empty`, `test_parse_split_goals_invalid_json`,
+  `test_slug_for_issue_cyrillic`, `test_run_split_goals_saves_files`,
+  `test_run_split_goals_nonempty_dir_uses_timestamp`,
+  `test_split_goals_conflicts_with_chain`,
+  `test_split_goals_conflicts_with_tool_loop`,
+  `test_split_goals_requires_goal`, `test_split_goals_ok`.
+
+### Roadmap
+
+Направление 10: уровни **A, B, E, F** закрыты. Остаются C
+(`--interactive-plan`), D (`--context-search`).
+
+### TODO (мелочи после E2E)
+
+- язык issue (LLM пишет на английском, если goal русский);
+- отдельная модель `split_goals_model` (flash вместо v4-pro);
+- подсказка в ошибке `--split-goals` + `--plan`.
+
+---
+
+
 ## [2026-10-11] iteration 10.25 — --chain: пакетное выполнение issues
 
 Направление 10, уровень E. Пользователь пишет N независимых issue

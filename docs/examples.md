@@ -591,6 +591,134 @@
 
 ---
 
+## 13. --split-goals — одна фраза → N issues
+
+**Задача:** дать агенту **большую фразу**, получить **список
+независимых issue-файлов**. Потом — `--chain` их выполнит.
+
+**Зачем:** в E9 ты писал ~15 issue-файлов **вручную**. `--split-goals`
+делает это сам.
+
+### Базовый пример
+
+    ai-coder agent \
+      "Добавь в calc.py функции sub, mul, div. Плюс напиши \
+      README.md. И добавь тесты в test_calc.py." \
+      /tmp/proj --split-goals
+
+**Стоимость:** ~0.15–0.20 RUB (v4-pro).
+
+**Что:** создаёт в `/tmp/proj/issues/`:
+
+    issues/
+    ├── 1-add-arithmetic-functions.md
+    ├── 2-create-readme.md
+    └── 3-add-calc-tests.md
+
+Каждый файл:
+
+    # task: Add arithmetic functions
+
+    Add subtraction, multiplication, and division functions...
+
+**Не выполняет** — только создаёт файлы. Правки можно внести вручную.
+
+### Полная цепочка — «фраза → готовые фичи»
+
+    # Шаг 1: фраза → issues/
+    ai-coder agent "..." /tmp/proj --split-goals
+
+    # Шаг 2 (по желанию): посмотреть и поправить файлы вручную
+    nano /tmp/proj/issues/*.md
+
+    # Шаг 3: выполнить все issues
+    ai-coder agent /tmp/proj \
+        --chain /tmp/proj/issues \
+        --tool-loop --plan
+
+    # → План chain, y/n/e
+    # → 3 задачи ✅
+
+**Стоимость всего:** ~0.95 RUB на 3 задачи.
+
+### Правила
+
+- **Одна фраза = N независимых issues.** v4-pro решает, как разделить.
+- **Если фраза — одна задача** → создаётся **один** файл (не ошибка).
+- **Максимум 10 issues** (ограничение промпта).
+- **`issues/` не пуст** → писать в `issues-<ts>/` (не затирать).
+- **Файлы не выполняются** — только создаются.
+- **Слаги** — транслит кириллицы:
+  «Добавь sub в calc.py» → `dobav-sub-v-calc-py`.
+
+### Запрещённые комбинации
+
+`--split-goals` **несовместим** с:
+
+- `--plan`, `--decompose`, `--tool-loop` — потому что `--split-goals`
+  **не выполняет**, только создаёт;
+- `--chain`, `--issue` — оба про «выполнить», не про «создать».
+
+Если случайно указал — ошибка.
+
+### Когда использовать
+
+**Да:**
+- большая фраза с **несколькими фичами** («добавь X, Y, Z»);
+- хочешь **аудит** issues перед выполнением (посмотреть, поправить);
+- **чужие проекты** (как E9) — ты сам не знаешь, на что разбить,
+  а v4-pro разберётся;
+- **документация** процесса: issue-файлы в репозитории.
+
+**Нет:**
+- **одна** задача — обычный `--plan` или `--issue`;
+- уже есть список issues — сразу `--chain`.
+
+### Сравнение с соседями
+
+| Флаг | Что делает | Выполняет |
+|---|---|---|
+| `--split-goals "<goal>"` | фраза → N issue-файлов | ❌ |
+| `--chain <dir>` | N issue-файлов → выполнить по очереди | ✅ |
+| `--plan` | одна задача → план → y/n → выполнить | ✅ |
+| `--decompose` | одна задача → подзадачи → выполнить | ✅ |
+| `--issue <file>` | одна задача из файла | ✅ |
+
+**Идеальная цепочка:**
+- `--split-goals` → создаёт issues;
+- правишь/смотришь;
+- `--chain --plan` → выполняет.
+
+### Полный E2E-пример
+
+    rm -rf /tmp/split-test && mkdir /tmp/split-test
+    cd /tmp/split-test
+    cat > calc.py <<'PY'
+    def add(a, b):
+        return a + b
+    PY
+    git init -q
+
+    # Фраза → issues
+    ai-coder agent \
+      "Добавь sub, mul, div в calc.py. Плюс README. Плюс тесты." \
+      /tmp/split-test --split-goals
+
+    # → 3 issues: 1-add-arithmetic-functions.md, 2-create-readme.md,
+    #   3-add-calc-tests.md
+
+    # Chain + plan
+    printf 'y\n' | ai-coder agent /tmp/split-test \
+        --chain /tmp/split-test/issues \
+        --tool-loop --plan
+
+    # → calc.py: add, sub, mul, div
+    # → README.md, test_calc.py
+    # → 5 passed
+    # → ~0.95 RUB
+
+---
+
 ## Что дальше
 
 - **Теория** — [`scenarios.md`](scenarios.md) (12 сценариев).

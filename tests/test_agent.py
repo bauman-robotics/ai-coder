@@ -2017,3 +2017,119 @@ def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_c
     assert result is dec, "должен вернуть тот же объект плана"
     # 0.123 (план) + 0.1 (одна подзадача из _ok_loop) = 0.223
     assert result.cost_rub == 0.223, "стоимость планирования + выполнения"
+
+
+# ---------- split-goals (10F) ----------
+
+
+def test_parse_split_goals_valid():
+    from ai_coder.agent import parse_split_goals_response
+
+    content = '{"issues": [{"title": "A", "goal": "do A"}, {"title": "B", "goal": "do B"}]}'
+    result = parse_split_goals_response(content)
+    assert result.parse_error is None
+    assert len(result.issues) == 2
+    assert result.issues[0].n == 1
+    assert result.issues[0].title == "A"
+    assert result.issues[1].goal == "do B"
+
+
+def test_parse_split_goals_markdown_wrapper():
+    from ai_coder.agent import parse_split_goals_response
+
+    content = '```json\n{"issues": [{"title": "X", "goal": "do X"}]}\n```'
+    result = parse_split_goals_response(content)
+    assert result.parse_error is None
+    assert len(result.issues) == 1
+
+
+def test_parse_split_goals_empty():
+    from ai_coder.agent import parse_split_goals_response
+
+    result = parse_split_goals_response('{"issues": []}')
+    assert result.parse_error == "empty issues"
+    assert result.issues == []
+
+
+def test_parse_split_goals_invalid_json():
+    from ai_coder.agent import parse_split_goals_response
+
+    result = parse_split_goals_response("not json at all")
+    assert result.parse_error is not None
+    assert result.issues == []
+
+
+def test_slug_for_issue_cyrillic():
+    from ai_coder.agent import _slug_for_issue
+
+    assert _slug_for_issue("Добавь sub в calc.py") == "dobav-sub-v-calc-py"
+    assert _slug_for_issue("улучши GUI") == "uluchshi-gui"
+    assert _slug_for_issue("") == "task"
+    assert _slug_for_issue("!!!") == "task"
+
+
+def test_run_split_goals_saves_files(sample_project, minimal_cfg, prompts_cfg):
+    from ai_coder.agent import run_split_goals
+
+    content = '{"issues": [{"title": "add sub", "goal": "add sub to calc"}, {"title": "add mul", "goal": "add mul to calc"}]}'
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        MockClient.return_value.chat.return_value = _fake_llm_response(content)
+        from ai_coder.scanner import MetadataScanResult
+
+        mock_scan.return_value = MetadataScanResult(root=sample_project)
+        result = run_split_goals(
+            goal="add sub and mul",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            out_dir=sample_project / "issues",
+        )
+
+    assert result.parse_error is None, result.parse_error
+    assert len(result.issues) == 2
+    assert result.output_dir is not None
+    files = sorted(result.output_dir.glob("*.md"))
+    assert len(files) == 2
+    assert files[0].name == "1-add-sub.md"
+    assert files[1].name == "2-add-mul.md"
+    body0 = files[0].read_text(encoding="utf-8")
+    assert body0.startswith("# task: add sub")
+    assert "add sub to calc" in body0
+
+
+def test_run_split_goals_nonempty_dir_uses_timestamp(sample_project, minimal_cfg, prompts_cfg):
+    from ai_coder.agent import run_split_goals
+
+    # создадим непустой issues/
+    issues = sample_project / "issues"
+    issues.mkdir()
+    (issues / "existing.md").write_text("x", encoding="utf-8")
+
+    content = '{"issues": [{"title": "one", "goal": "do one"}]}'
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        MockClient.return_value.chat.return_value = _fake_llm_response(content)
+        from ai_coder.scanner import MetadataScanResult
+
+        mock_scan.return_value = MetadataScanResult(root=sample_project)
+        result = run_split_goals(
+            goal="do one",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            # out_dir не задан — должен сам выбрать issues-<ts>/
+        )
+
+    assert result.parse_error is None
+    assert result.output_dir is not None
+    assert result.output_dir.name.startswith("issues-")
+    assert not (result.output_dir / "existing.md").exists(), "не должен затирать старые"
