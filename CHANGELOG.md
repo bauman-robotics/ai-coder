@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-10-11] iteration 10.28 — max_iterations + fix applied_ops в retry
+
+Разбор E12 (decompose в чужом проекте). Нашли **неполноту фикса 10.27**:
+retry-путь v4-pro **не учитывал** `applied_ops > 0`. Плюс — отдельная
+правка `max_iterations` (из параллельной сессии).
+
+### Что нашли
+
+- **E12 subtask 2 (`gui.py`)** — формально ✅, но **0 правок**.
+  Причина: в `run_agent_decompose` **retry-путь** (v4-pro fallback)
+  записывал `"success": loop_result.success` **без** `applied_ops > 0`
+  (основной путь уже был пофикшен в 10.27).
+- **`max_iterations` из CLI** не доходил до `run_tool_loop` в
+  decompose — использовался `cfg.agent.max_steps` безусловно.
+
+### Фикс
+
+- **`run_agent_decompose`:** новый параметр `max_iterations: int | None`.
+  `eff_iters = max_iterations if not None else cfg.agent.max_steps`.
+  Применён в основном и retry-путях.
+- **retry-путь:** `"success": loop_result.success and
+  loop_result.applied_ops > 0` (как основной путь в 10.27).
+- **`cli.py`:** проброс `max_iterations` из `agent_cmd`.
+
+### Тесты
+
++3 (394 passed):
+
+- `test_run_agent_decompose_passes_max_iterations` — аргумент
+  перебивает `cfg.agent.max_steps`.
+- `test_run_agent_decompose_max_iterations_fallback` — без аргумента
+  используется `cfg.agent.max_steps`.
+- `test_run_agent_decompose_retry_zero_ops_not_success` — retry
+  (v4-pro) с `applied_ops=0` → subtask success=False.
+
+### E12 (в experiments.md)
+
+- Прогон 1 (verify по умолчанию): `parse_error` + verify_failed
+  на `legacy/test_url.py` (чужой тест). 4.57 RUB.
+- Прогон 2 (свой config без verify): отчёт ✅, 8.37 RUB.
+  - subtask 1 (`ytdl.py`) — ✅, изменения корректные.
+  - subtask 2 (`gui.py`) — **ложный ✅** (0 правок).
+- **Урок:** retry-путь — отдельная ветка, фиксы основного пути её
+  не покрывают.
+
+### Открыто (TODO)
+
+- **`--no-verify` / `--verify-commands` не работают** для
+  decompose/tool loop (только для простого `agent`). Workaround —
+  свой config с `verify_commands: []`.
+- **E12 перезапустить** после фиксов.
+
+---
+
+
 ## [2026-10-11] iteration 10.27 — applied_ops: успех = применённые правки
 
 Разбор E11 (self-hosted провал). Изначальный диагноз («applied_count == 0

@@ -6,6 +6,92 @@
 
 ---
 
+## 2026-10-11 — E12: decompose в чужом проекте (ytdl.py) — ✅ но с ложным ✅
+
+**Гипотеза:** `--decompose` справится с рефакторингом функции
+`download_single_video` в `youtube-playlist-downloader` (реальный
+чужой проект, ~15 файлов). Первый прогон дал verify_failed из-за
+чужого теста (`legacy/test_url.py`).
+
+**Что делали:** тот же проект, что в E9. Задача: `download_single_video`
+возвращает тройку `(success, stats_str, final_path)`, обновить вызовы.
+
+### Прогон 1 — c verify по умолчанию
+
+    python3 -m ai_coder.cli agent "<goal>" <project> \
+        --tool-loop --decompose --no-verify \
+        --exclude "legacy/**" --max-cost-rub 4
+
+**Результат:** decompose 2 подзадачи, subtask 1 (ytdl.py) — `parse_error`
++ verify_failed на `legacy/test_url.py`. Стоимость 4.57 RUB.
+Правки в `ytdl.py` **были** (18 строк), но verify их отверг.
+
+**Находка 1:** `--no-verify` **не работает** для decompose/tool loop.
+`run_agent_decompose` не принимает `verify`, `run_tool_loop` берёт
+`cfg.agent.verify_commands` напрямую. Workaround — свой config без verify.
+
+### Прогон 2 — со своим config (/tmp/no-verify.yaml)
+
+    python3 -m ai_coder.cli agent "<goal>" <project> \
+        --config /tmp/no-verify.yaml --prompts .../prompts.yaml \
+        --tool-loop --decompose --exclude "legacy/**" --max-cost-rub 5
+
+**Результат:** ✅ по отчёту, 2 подзадачи, 8.3701 RUB.
+
+- **subtask 1** (`ytdl.py`) — ✅, изменения корректные:
+  - `final_path = None` + `nonlocal final_path`;
+  - `if d['status'] == 'finished': final_path = str(Path(...).absolute())`;
+  - `return True, stats_str, final_path` и `return False, None, None`;
+  - обновлён `download_playlist`, `download_channel_videos` внутри файла.
+- **subtask 2** (`gui.py`) — **ложный ✅**, файл **не изменён**.
+
+**Находка 2 (баг):** в `run_agent_decompose` **retry-путь** (v4-pro
+fallback) не учитывал `applied_ops > 0`. Строка 852:
+`"success": loop_result.success` — без фикса 10.27. Flash флейкнул
+(subtask 2, max_iterations), v4-pro retry вернул `finish(success)` без
+правок → subtask 2 записан как ✅. Итог — «✅ успех» ложно.
+
+**Находка 3 (твоя, из параллельной сессии):**
+`max_iterations` из CLI **не доходил** до decompose (использовался
+`cfg.agent.max_steps`). Заменено на `eff_iters`.
+
+### Фикс (10.28)
+
+- **`run_agent_decompose`:** новый параметр `max_iterations: int | None`.
+  `eff_iters = max_iterations or cfg.agent.max_steps`. Применён в
+  основном и retry-пути.
+- **retry-путь:** `"success": loop_result.success and
+  loop_result.applied_ops > 0` (как основной путь в 10.27).
+- **CLI:** проброс `max_iterations` из `agent_cmd` в
+  `run_agent_decompose`.
+
+### Уроки
+
+1. **`--no-verify` и `--verify-commands` не работают** для
+   decompose/tool loop (только для простого `agent`). **TODO.**
+2. **Retry-путь v4-pro** — отдельная кодовая ветка. Фиксы основного
+   пути **не покрывают** её. **Проверять оба.**
+3. **Chужой verify (`legacy/test_url.py`) ломает прогон.** Нужно
+   уметь запускать на **проект-специфичных** командах.
+4. **v4-pro retry** формально «успешен» без правок. Фикс `applied_ops`
+   закрывает **основной** и **retry** пути.
+5. **Стоимость выросла ×2** из-за retry (8.37 RUB на 2 подзадачи).
+
+### Открытые вопросы
+
+- **`--no-verify` / `--verify-commands`** — не работают в
+  decompose/tool loop. Workaround: свой config.
+- **E12 перезапустить** после фиксов — проверить, что `gui.py`
+  **реально** обновится (или получит ❌, а не ложный ✅).
+
+### Ссылки
+
+- CHANGELOG 10.28.
+- TODO.md → «--no-verify / --verify-commands».
+- Коммиты: `653d87f` (10.27), `2a6dba8` (Table), `f572288` (10.28).
+
+---
+
 ## 2026-10-11 — E11: self-hosted на своём проекте — ❌ провал
 
 **Гипотеза:** `--split-goals` + `--chain --plan` справятся с задачами

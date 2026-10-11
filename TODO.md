@@ -6,11 +6,12 @@
 
 ## Из E11 (self-hosted провал) — 2026-10-11
 
-- [ ] **`applied_count == 0` + `apply=True` → `skipped`** (см. ниже
-      «Агент: честность про пустые шаги» — там подробнее).
-- [ ] **`--chain`: `applied_count == 0` ≠ «✅ успех».**
-      Считать «skipped», не успех. Иначе chain продолжает на пустых
-      шагах.
+- [x] **`applied_count == 0` + `apply=True` → `skipped`.** ЗАКРЫТО
+      10.27. Оказалось — **ошибочный диагноз** (код уже корректен);
+      реальный баг был в `subtask.success = loop.success`.
+- [x] **`--chain`: `applied_count == 0` ≠ «✅ успех».** ЗАКРЫТО
+      10.27: `ToolLoopResult.applied_ops` + фикс `run_agent_decompose`
+      + `_run_chain` (основной и retry-пути — 10.28).
 - [ ] **`--chain` журнал при провале.** Сейчас
       `.ai-out/<project>/chain-<ts>/` создаётся, но **пустой**, если
       все подзадачи упали. Писать `report.md` всегда.
@@ -23,6 +24,28 @@
       - `--max-iterations 15+`;
       - v4-pro вместо flash;
       - точная формулировка (файл + функция + строка).
+
+---
+
+## Из E12 (decompose в чужом проекте) — 2026-10-11
+
+- [ ] **`--no-verify` и `--verify-commands` не работают** для
+      decompose/tool loop. `run_agent_decompose` не принимает `verify`,
+      `run_tool_loop` берёт `cfg.agent.verify_commands` напрямую.
+      **Workaround:** свой config с `verify_commands: []`.
+      **Фикс:** прокинуть `verify` / `verify_commands` параметром в
+      `run_agent_decompose` и `run_tool_loop`.
+      Файлы: `ai_coder/agent.py`, `ai_coder/cli.py`.
+
+- [ ] **Verify на чужом проекте ломает прогон** (E12: `legacy/test_url.py`
+      — фикстура `url` не найдена). Нужна возможность **указывать
+      конкретный тест** или **исключать каталоги** из verify.
+
+- [ ] **Перезапустить E12** после фиксов. Проверить, что `gui.py`
+      **реально** обновляется (или ❌, а не ложный ✅).
+
+- [x] **`max_iterations` из CLI не доходил** до decompose. ЗАКРЫТО 10.28.
+- [x] **Retry-путь v4-pro не учитывал `applied_ops > 0`.** ЗАКРЫТО 10.28.
 
 ---
 
