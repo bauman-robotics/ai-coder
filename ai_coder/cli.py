@@ -642,7 +642,6 @@ def _run_dry(
 
 def _print_decompose_plan(dec_result) -> None:
     """Печатает план декомпозиции в виде таблицы."""
-    from rich.table import Table
 
     console.print()
     console.print(
@@ -816,7 +815,6 @@ def _edit_chain_plans_and_reload(project_root: Path, plans: list[dict]) -> list[
 
 def _print_chain_plans(plans: list[dict]) -> None:
     """Печатает все планы chain единым списком."""
-    from rich.table import Table
 
     total_tasks = sum(len(p.get("subtasks", [])) for p in plans)
     console.print()
@@ -1053,7 +1051,6 @@ def _run_chain(
 
 def _print_chain_report(chain_result: dict, project_root: Path) -> None:
     """Итоговая таблица chain."""
-    from rich.table import Table
 
     console.print()
     table = Table(title="Chain — итог")
@@ -1432,7 +1429,6 @@ def agent_cmd(
                 title="--split-goals",
             )
         )
-        from rich.table import Table
 
         table = Table(title="Issues")
         table.add_column("#", justify="right")
