@@ -475,21 +475,28 @@ def run_agent_decompose(
     rollback_on_fail: bool = False,
     max_cost_rub: float | None = None,
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
+    plan: DecomposeResult | None = None,  # NEW: готовый план (--plan)
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
+
+    Если передан `plan` — повторно не декомпозирует, использует его
+    (для workflow `--plan`: показать → подтвердить → выполнить).
     """
     # 1. Декомпозиция (через v4-pro, если задано)
     decompose_model = getattr(cfg.agent, "decompose_model", None) or model
-    dec_result = run_planner_decompose(
-        goal=goal,
-        project_root=project_root,
-        cfg=cfg,
-        prompts_cfg=prompts_cfg,
-        model=decompose_model,
-        depth=depth,
-        extra_exclude=extra_exclude,
-    )
+    if plan is not None:
+        dec_result = plan
+    else:
+        dec_result = run_planner_decompose(
+            goal=goal,
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=prompts_cfg,
+            model=decompose_model,
+            depth=depth,
+            extra_exclude=extra_exclude,
+        )
 
     if dec_result.parse_error is not None:
         _console.print(f"[red]Декомпозиция не удалась:[/red] {dec_result.parse_error}")

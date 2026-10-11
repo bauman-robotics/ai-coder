@@ -370,3 +370,100 @@ def test_agent_issue_empty_file(tmp_path: Path):
         ["agent", "--issue", str(issue), "--tool-loop"],
     )
     assert result.exit_code != 0
+
+
+# ---------- agent --plan ----------
+
+
+def test_agent_plan_requires_tool_loop(tmp_path: Path):
+    """--plan без --tool-loop → ошибка (как у --decompose)."""
+    from typer.testing import CliRunner
+
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "goal", str(project), "--plan"],
+    )
+    assert result.exit_code != 0
+    assert "tool-loop" in result.stdout.lower() or "tool loop" in result.stdout.lower()
+
+
+def test_agent_plan_no_cancels(tmp_path: Path, monkeypatch):
+    """--plan: показ плана, ответ 'n' → выход без выполнения."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import DecomposeResult, Subtask
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    dec = DecomposeResult(
+        explanation="plan",
+        subtasks=[Subtask(n=1, goal="do it", files=["x.py"])],
+        cost_rub=0.05,
+    )
+
+    called = {"exec": False}
+
+    def fake_exec(**kwargs):
+        called["exec"] = True
+        from ai_coder.agent import DecomposeResult as DR
+
+        return DR(explanation="", subtasks=[])
+
+    monkeypatch.setattr("ai_coder.agent.run_planner_decompose", lambda **kw: dec)
+    monkeypatch.setattr("ai_coder.agent.run_agent_decompose", fake_exec)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "goal", str(project), "--plan", "--tool-loop"],
+        input="n\n",
+    )
+    assert result.exit_code == 0, result.stdout
+    assert called["exec"] is False, "run_agent_decompose НЕ должен вызываться при 'n'"
+    assert "Отменено" in result.stdout
+
+
+def test_agent_plan_yes_executes(tmp_path: Path, monkeypatch):
+    """--plan + 'y' → run_agent_decompose вызван с plan=."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import DecomposeResult, Subtask
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    dec = DecomposeResult(
+        explanation="plan",
+        subtasks=[Subtask(n=1, goal="do it", files=["x.py"])],
+        cost_rub=0.05,
+    )
+
+    captured: dict = {}
+
+    def fake_exec(**kwargs):
+        captured.update(kwargs)
+        return DecomposeResult(explanation="", subtasks=[])
+
+    monkeypatch.setattr("ai_coder.agent.run_planner_decompose", lambda **kw: dec)
+    monkeypatch.setattr("ai_coder.agent.run_agent_decompose", fake_exec)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "goal", str(project), "--plan", "--tool-loop"],
+        input="y\n",
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured.get("plan") is dec, "должен передать готовый план в run_agent_decompose"

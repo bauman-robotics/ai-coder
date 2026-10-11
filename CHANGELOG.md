@@ -4,6 +4,57 @@
 
 ---
 
+## [2026-10-11] iteration 10.24 — --plan: план → подтверждение → выполнение
+
+Направление 10 (планировщик из human-goal), MVP. Пользователь даёт
+задачу человеческим языком — v4-pro разбивает на подзадачи, агент
+показывает план, спрашивает `y/n/e`, и только после `y` выполняет.
+
+### Добавлено
+
+- **`agent --plan`** — разбиение + показ + подтверждение + выполнение:
+  - `run_planner_decompose` → таблица подзадач (номер, задача, файлы);
+  - `plan.yaml` сохраняется в `.ai-out/<project>/plan-<ts>/`;
+  - вопрос `y/n/e` (`e` — открыть `plan.yaml` в `$EDITOR` и перечитать);
+  - при `y` — `run_agent_decompose(plan=pre_plan)` **без повторного
+    планирования** (экономия ~0.06–0.08 RUB на каждой задаче).
+- **`run_agent_decompose(plan=...)`** — принимает готовый `DecomposeResult`.
+  Обратная совместимость: `plan=None` → планирует сам, как раньше.
+- **Хелперы в `cli.py`:** `_print_decompose_plan`, `_save_plan_yaml`,
+  `_edit_plan_and_reload`, `_prompt_plan_review`, `_plan_yaml_path`.
+- **Edge-cases:**
+  - `except typer.Exit: raise` — `Exit(0)` при `n` больше не превращается
+    в `Ошибка decompose: 0`;
+  - `EOFError`/`KeyboardInterrupt` в prompt → отмена, не трейсбек;
+  - проверка `shutil.which(editor)` — понятное сообщение, если
+    `$EDITOR`/`vi` не найден.
+
+### E2E
+
+Песочница `/tmp/plan-test`, задача «добавь `sub` + тест»:
+
+- **`--plan` + `n`:** план на 2 подзадачи, 0.0837 RUB, правок нет. ✅
+- **`--plan` + `y`:** одна строка «Декомпозиция: 2 подзадач»
+  (не перепланирует), 0.2625 RUB, `sub` добавлен, `3 passed`. ✅
+
+### Тесты
+
++4 (370 passed):
+
+- `test_run_agent_decompose_accepts_plan` — не зовёт планировщик;
+- `test_agent_plan_requires_tool_loop` — ошибка без `--tool-loop`;
+- `test_agent_plan_no_cancels` — `n` → без выполнения;
+- `test_agent_plan_yes_executes` — `y` → с планом в `run_agent_decompose`.
+
+### Roadmap
+
+Направление 10, уровни **A (`--plan`) и B (`--plan-review`)** закрыты.
+Остаются C (`--interactive-plan`), D (`--context-search`),
+E (`--chain <dir>`).
+
+---
+
+
 ## [2026-10-10] iteration 10.23 — E9: ai-coder в чужом проекте
 
 Агент работал в `youtube-playlist-downloader` (~600 строк) через

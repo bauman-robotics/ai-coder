@@ -1982,3 +1982,38 @@ def test_extract_changed_files_skips_non_py():
         ),
     ]
     assert extract_changed_files(history) == []
+
+
+# ---------- run_agent_decompose: plan= (--plan) ----------
+
+
+def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_cfg):
+    """Если передан plan= — run_planner_decompose НЕ вызывается повторно."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="prebuilt",
+        subtasks=[_subtask(1, "only")],
+        cost_rub=0.123,
+    )
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose") as mock_planner,
+        patch("ai_coder.agent.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            plan=dec,
+        )
+
+    mock_planner.assert_not_called()
+    assert result is dec, "должен вернуть тот же объект плана"
+    # 0.123 (план) + 0.1 (одна подзадача из _ok_loop) = 0.223
+    assert result.cost_rub == 0.223, "стоимость планирования + выполнения"

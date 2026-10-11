@@ -637,6 +637,114 @@ def _run_dry(
     )
 
 
+# ---------- helpers: --plan ----------
+
+
+def _print_decompose_plan(dec_result) -> None:
+    """Печатает план декомпозиции в виде таблицы."""
+    from rich.table import Table
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold]План декомпозиции[/bold]\n"
+            f"Подзадач: [cyan]{len(dec_result.subtasks)}[/cyan]\n"
+            f"Стоимость планирования: [cyan]{dec_result.cost_rub:.4f} RUB[/cyan]"
+            + (f"\n[dim]{dec_result.explanation}[/dim]" if dec_result.explanation else ""),
+            title="--plan",
+        )
+    )
+    table = Table(title="Подзадачи")
+    table.add_column("#", justify="right")
+    table.add_column("Задача", style="cyan")
+    table.add_column("Файлы", style="dim")
+    for st in dec_result.subtasks:
+        files = ", ".join(st.files) if st.files else "—"
+        goal_short = st.goal if len(st.goal) <= 80 else st.goal[:77] + "..."
+        table.add_row(str(st.n), goal_short, files)
+    console.print(table)
+
+
+def _plan_yaml_path(project_root: Path) -> Path:
+    """Путь к plan.yaml текущей сессии (в .ai-out/<project>/)."""
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    d = project_root / ".ai-out" / project_root.name / f"plan-{ts}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "plan.yaml"
+
+
+def _save_plan_yaml(project_root: Path, dec_result) -> Path:
+    """Сохраняет план в YAML для возможного edit."""
+    import yaml
+
+    path = _plan_yaml_path(project_root)
+    data = {
+        "explanation": dec_result.explanation,
+        "subtasks": [
+            {"n": st.n, "goal": st.goal, "files": list(st.files)} for st in dec_result.subtasks
+        ],
+    }
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    console.print(f"[dim]План сохранён: {path}[/dim]")
+    return path
+
+
+def _edit_plan_and_reload(project_root: Path, dec_result):
+    """Открывает plan.yaml в $EDITOR, перечитывает, возвращает новый DecomposeResult."""
+    import os
+    import shutil
+    import subprocess
+
+    import yaml
+
+    from .agent import DecomposeResult, Subtask
+
+    base = project_root / ".ai-out" / project_root.name
+    plan_dirs = sorted(base.glob("plan-*"))
+    if not plan_dirs:
+        console.print("[red]plan.yaml не найден.[/red]")
+        return dec_result
+    path = plan_dirs[-1] / "plan.yaml"
+    editor = os.environ.get("EDITOR", "vi")
+    if shutil.which(editor) is None:
+        console.print(
+            f"[red]Редактор {editor!r} не найден.[/red] "
+            f"Открой план вручную: {path}, потом запусти снова."
+        )
+        return dec_result
+    subprocess.run([editor, str(path)], check=False)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return DecomposeResult(
+        explanation=data.get("explanation", ""),
+        subtasks=[
+            Subtask(n=s["n"], goal=s["goal"], files=list(s.get("files", [])))
+            for s in data.get("subtasks", [])
+        ],
+        llm=dec_result.llm,
+        cost_rub=dec_result.cost_rub,
+        cost_cny=dec_result.cost_cny,
+        cost_usd=dec_result.cost_usd,
+    )
+
+
+def _prompt_plan_review(project_root: Path, dec_result) -> str:
+    """Спрашивает y/n/e. Возвращает 'y', 'n' или 'e'."""
+    console.print()
+    console.print(
+        "[bold]Выполнить план?[/bold] [cyan]y[/cyan] — да, "
+        "[cyan]n[/cyan] — нет, [cyan]e[/cyan] — редактировать plan.yaml"
+    )
+    try:
+        ans = typer.prompt("y/n/e", default="y").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print("[yellow]Нет ввода — отмена.[/yellow]")
+        return "n"
+    if ans not in {"y", "n", "e"}:
+        console.print("[yellow]Не понял — считаю как 'n'.[/yellow]")
+        return "n"
+    return ans
+
+
 @app.command("agent")
 def agent_cmd(
     goal: str = typer.Argument(
@@ -762,6 +870,11 @@ def agent_cmd(
         None,
         "--decompose-max-cost-rub",
         help="Остановка decompose при превышении стоимости (RUB).",
+    ),
+    plan: bool = typer.Option(
+        False,
+        "--plan",
+        help="Показать план декомпозиции, спросить y/n/e, при y — выполнить.",
     ),
     allow_blacklist: bool = typer.Option(
         False,
@@ -920,9 +1033,9 @@ def agent_cmd(
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
 
-    # --- NEW: decompose ---
-    if decompose:
-        from .agent import run_agent_decompose
+    # --- NEW: decompose / plan ---
+    if decompose or plan:
+        from .agent import run_agent_decompose, run_planner_decompose
 
         if not tool_loop:
             console.print(
@@ -937,14 +1050,43 @@ def agent_cmd(
                 f"[bold]Модель tool loop:[/bold] {model or cfg.api.model}\n"
                 f"[bold]Модель decompose:[/bold] "
                 f"{cfg.agent.decompose_model or 'default'}\n"
-                f"[bold]Режим:[/bold] decompose + tool loop\n"
+                f"[bold]Режим:[/bold] "
+                + ("plan → подтверждение → decompose" if plan else "decompose")
+                + " + tool loop\n"
                 f"[bold]Max итераций на подзадачу:[/bold] {max_iterations}",
-                title="ai-coder agent --decompose",
+                title="ai-coder agent --plan" if plan else "ai-coder agent --decompose",
             )
         )
 
         try:
             with console.status("[cyan]Декомпозиция и выполнение..."):
+                pre_plan = None
+                if plan:
+                    pre_plan = run_planner_decompose(
+                        goal=goal,
+                        project_root=project_root,
+                        cfg=cfg,
+                        prompts_cfg=pr_cfg,
+                        model=cfg.agent.decompose_model or model,
+                        depth=depth,
+                        extra_exclude=list(exclude) or None,
+                    )
+                    _print_decompose_plan(pre_plan)
+                    if pre_plan.parse_error is not None:
+                        console.print(f"[red]Декомпозиция не удалась:[/red] {pre_plan.parse_error}")
+                        raise typer.Exit(1)
+                    if not pre_plan.subtasks:
+                        console.print("[yellow]План пуст — нечего выполнять.[/yellow]")
+                        raise typer.Exit(0)
+                    _save_plan_yaml(project_root, pre_plan)
+                    choice = _prompt_plan_review(project_root, pre_plan)
+                    if choice == "n":
+                        console.print("[yellow]Отменено.[/yellow]")
+                        raise typer.Exit(0)
+                    if choice == "e":
+                        pre_plan = _edit_plan_and_reload(project_root, pre_plan)
+                        _print_decompose_plan(pre_plan)
+
                 dec_result = run_agent_decompose(
                     goal=goal,
                     project_root=project_root,
@@ -960,7 +1102,10 @@ def agent_cmd(
                     rollback_on_fail=decompose_rollback_on_fail,
                     max_cost_rub=decompose_max_cost_rub,
                     allow_blacklist=allow_blacklist,
+                    plan=pre_plan,
                 )
+        except typer.Exit:
+            raise
         except Exception as e:
             console.print(f"[red]Ошибка decompose:[/red] {e}")
             raise typer.Exit(1)
