@@ -108,6 +108,7 @@
             <div id="command-result"></div>
 
             <pre id="run-output" class="command-output"></pre>
+            <div id="report-link"></div>
         </section>
     </main>
 
@@ -207,6 +208,7 @@
             runBtn.addEventListener("click", async function () {
                 if (currentAbort) { currentAbort.abort(); }
                 runOutput.textContent = "";
+                document.getElementById("report-link").innerHTML = "";
                 currentRunId = null;
                 setRunning(true);
 
@@ -245,6 +247,16 @@
                                     if (match) {
                                         currentRunId = match[1].trim();
                                         continue;
+                                    }
+                                    var jmatch = text.match(/^Журнал:\s*(.+)$/);
+                                    if (jmatch) {
+                                        var jpath = jmatch[1].trim();
+                                        if (jpath.startsWith(".ai-out/")) {
+                                            jpath = jpath.slice(".ai-out/".length);
+                                        }
+                                        var reportUrl = "/ai-out/" + jpath + "/report.md";
+                                        document.getElementById("report-link").innerHTML =
+                                            '<a href="' + reportUrl + '" target="_blank">Открыть отчёт</a>';
                                     }
                                     runOutput.textContent += text + "\n";
                                     runOutput.scrollTop = runOutput.scrollHeight;

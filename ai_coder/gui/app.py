@@ -17,6 +17,8 @@ from fastapi.templating import Jinja2Templates
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+# .ai-out — рабочие артефакты (журналы, отчёты). CWD при запуске uvicorn.
+AI_OUT_DIR = Path.cwd() / ".ai-out"
 
 app = FastAPI(title="ai-coder GUI")
 
@@ -27,6 +29,15 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Отчёты/журналы из .ai-out — статикой. Только localhost; .ai-out может
+# содержать секреты (usage.jsonl, raw-ответы LLM). Позже — фильтр *.md.
+if AI_OUT_DIR.is_dir():
+    app.mount(
+        "/ai-out",
+        StaticFiles(directory=str(AI_OUT_DIR)),
+        name="ai-out",
+    )
 
 
 def _escape_shell(text: str) -> str:
