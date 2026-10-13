@@ -61,7 +61,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `.ai-out/<project>/cache/<hash>.json`
 - Флаги `--no-cache` / `--refresh`
 
-### GUI (A.0–A.4)
+### GUI (A.0–A.6)
 
 Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
 
@@ -102,6 +102,21 @@ Python-проектов через DeepSeek API. Работает с git-про�
 **A.4:** `dry-run` checkbox → `check_mode` select (`normal`/`dry-run`/`dry-read`).
 - Кнопки «Запустить»/«Остановить» в браузере (fetch + ReadableStream).
 - `DEEPSEEK_API_KEY` — `uvicorn` должен запускаться с `export`.
+
+**A.5:** ссылка на отчёт после `/run`.
+- `app.py`: `mount("/ai-out", StaticFiles(...))` — статический доступ
+  к `.ai-out` (для `report.md`, `plan.json`, `step-N.md`).
+- JS в `index.html`: ловит `Журнал: <path>` в SSE (`data:`) →
+  ссылка «Открыть отчёт».
+
+**A.6:** рендер `report.md` в HTML.
+- `app.py`: `GET /reports/{project}/{journal}` — `markdown.markdown(...)`
+  → `report.html` (шаблон с `markdown-body`, тёмная тема).
+- `_safe_report_path` — защита от path traversal (`relative_to AI_OUT_DIR`).
+- `templates/report.html` — шаблон (header, nav, `{{ content|safe }}`).
+- `style.css` — стили markdown (h1-h3, code, pre, table, blockquote).
+- Ссылка в `index.html` → `/reports/<project>/<journal>` (вместо raw
+  `.md` — **отрендеренный** HTML).
 
 **Не умеет (A.3+):** встроенный терминал (PTY+WebSocket, этап B),
 история/статистика из `usage.jsonl`, ссылки на отчёты. См. `docs/ui-ideas.md`.

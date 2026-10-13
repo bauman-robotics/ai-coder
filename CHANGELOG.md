@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-10-13] iteration 10.38 — GUI A.5 + A.6 (ссылка на отчёт + рендер)
+
+Две фичи для отчётов в веб-панели.
+
+### A.5 — ссылка на отчёт после `/run`
+
+**`app.py`:**
+- `mount("/ai-out", StaticFiles(...))` — статический доступ к `.ai-out`
+  (для `report.md`, `plan.json`, `step-N.md`).
+
+**`index.html`:**
+- `div#report-link` — контейнер под `run-output`.
+- JS в обработчике `data:`: ловит `Журнал: <path>` → формирует
+  URL → «Открыть отчёт» (открывается в новой вкладке).
+- Очистка `#report-link` при новом запуске.
+
+### A.6 — рендер `report.md` в HTML
+
+**`app.py`:**
+- `GET /reports/{project}/{journal}` — читает `.ai-out/<project>/<journal>/report.md`,
+  `markdown.markdown(extensions=["fenced_code", "tables", "sane_lists"])`,
+  рендерит через `report.html`.
+- `_safe_report_path` — защита от path traversal: `(AI_OUT_DIR / project /
+  journal).resolve()` + `relative_to(AI_OUT_DIR.resolve())`.
+
+**`templates/report.html`:**
+- Шаблон с `header` (project / journal, nav) и `<main class="markdown-body">`.
+- Nav: «← к панели», «raw .md».
+
+**`style.css`:**
+- Стили markdown: `.markdown-body h1/h2/h3`, `code`, `pre`, `table`,
+  `th`, `td`, `blockquote`, `a`.
+
+**`index.html`:**
+- Ссылка «Открыть отчёт» → `/reports/<project>/<journal>`
+  (вместо `/ai-out/.../report.md`).
+
+**`pyproject.toml`:**
+- `markdown>=3.5` в `[gui]`.
+
+### Как сделано
+
+**Оба — вручную** (связанные правки JS/Python, `--tool-loop` не использовался).
+**A.5:** ~15 мин. **A.6:** ~30 мин.
+
+### Ссылки
+
+- `docs/state.md` → раздел GUI (A.0–A.6).
+- `docs/ui-ideas.md` → секция 1.5 (A.0–A.6).
+
+---
+
 ## [2026-10-13] iteration 10.37 — GUI A.3 + A.4 (форма: select-ы, fix)
 
 Доработка формы GUI. Три улучшения + два фикса.
