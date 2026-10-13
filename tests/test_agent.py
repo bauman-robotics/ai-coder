@@ -2712,3 +2712,101 @@ def test_run_agent_calls_read_step_for_read_type(sample_project, minimal_cfg, pr
     assert calls == ["read"], f"ожидался один read-вызов, был {calls}"
     assert len(result.steps) == 1
     assert result.steps[0].read_answer == "объяснение"
+
+
+def test_run_tool_loop_partial_warns(sample_project, minimal_cfg, prompts_cfg):
+    """partial: одна правка ok, вторая отклонена blacklist → warnings."""
+    # Один файл в blacklist
+    minimal_cfg.write.blacklist_files = ["blocked.py"]
+
+    # Сценарий: write_file good.py → write_file blocked.py → finish
+    import json as _json
+
+    responses = [
+        _json.dumps(
+            {
+                "tool": "write_file",
+                "args": {"path": "good.py", "content": "x = 1\n"},
+                "reason": "создать good.py",
+            }
+        ),
+        _json.dumps(
+            {
+                "tool": "write_file",
+                "args": {"path": "blocked.py", "content": "y = 2\n"},
+                "reason": "создать blocked.py",
+            }
+        ),
+        _json.dumps({"finish": True, "summary": "done", "success": True}),
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test partial",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            step_type="edit",
+        )
+
+    # Успех — потому что одна правка применена
+    assert result.success is True
+    assert result.applied_ops == 1
+    # warnings: applied 1/2
+    assert len(result.warnings) == 1
+    assert "applied 1/2" in result.warnings[0]
+    # good.py создан, blocked.py — нет
+    assert (sample_project / "good.py").is_file()
+    assert not (sample_project / "blocked.py").is_file()
+
+
+def test_run_tool_loop_no_partial_when_all_applied(sample_project, minimal_cfg, prompts_cfg):
+    """Без partial: обе правки ok → warnings пуст."""
+    import json as _json
+
+    responses = [
+        _json.dumps(
+            {
+                "tool": "write_file",
+                "args": {"path": "a.py", "content": "x = 1\n"},
+                "reason": "a",
+            }
+        ),
+        _json.dumps(
+            {
+                "tool": "write_file",
+                "args": {"path": "b.py", "content": "y = 2\n"},
+                "reason": "b",
+            }
+        ),
+        _json.dumps({"finish": True, "summary": "ok", "success": True}),
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test full",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            step_type="edit",
+        )
+
+    assert result.success is True
+    assert result.applied_ops == 2
+    assert result.warnings == []

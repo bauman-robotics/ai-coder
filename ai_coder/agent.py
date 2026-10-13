@@ -1529,6 +1529,7 @@ class ToolLoopResult:
     verify_errors: list[str] = field(default_factory=list)
     applied_ops: int = 0  # NEW: число успешных write_file/edit_file
     read_ops: int = 0  # NEW: число успешных read_file/read_symbol/list_files
+    warnings: list[str] = field(default_factory=list)  # NEW: partial / blacklist
 
 
 # ---------- декомпозиция задач ----------
@@ -2555,6 +2556,7 @@ def run_tool_loop(
     # --- история и стоимость ---
     history: list[tuple[ToolAction, ToolResult]] = []
     applied_ops = 0  # NEW: считаем успешные write_file/edit_file
+    warnings: list[str] = []  # NEW: partial / blacklist
     read_ops = 0  # NEW: считаем успешные read_file/read_symbol/list_files
     total_cost_rub = 0.0
     total_cost_cny = 0.0
@@ -2761,6 +2763,15 @@ def run_tool_loop(
             else:
                 # edit-шаг: успех = хотя бы одна применённая правка
                 success = applied_ops > 0
+            # NEW: partial — правки применены, но не все (blacklist,
+            # duplicate, mismatch и т.п.). Не считаем полным провалом.
+            if success and action.tool not in ("read_file", "read_symbol", "list_files"):
+                # сколько попыток write/edit было в history
+                write_attempts = sum(1 for a, _ in history if a.tool in ("write_file", "edit_file"))
+                if write_attempts > applied_ops:
+                    warnings.append(
+                        f"applied {applied_ops}/{write_attempts} (часть операций отклонена)"
+                    )
             if journal_dir is not None:
                 _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
                 _save_tool_loop_history(journal_dir, history)
@@ -2896,6 +2907,7 @@ def run_tool_loop(
         verify_errors=verify_errors,
         applied_ops=applied_ops,  # NEW
         read_ops=read_ops,  # NEW
+        warnings=warnings,  # NEW: partial / blacklist
     )
 
     if journal_dir is not None:
@@ -3233,6 +3245,11 @@ def _save_tool_loop_report(
     if result.commit_hash is not None:
         lines.append(f"- **Коммит:** {result.commit_hash}")
     lines.append(f"- **Summary:** {result.summary}\n")
+    if result.warnings:
+        lines.append("## Предупреждения\n")
+        for w in result.warnings:
+            lines.append(f"- ⚠️ {w}")
+        lines.append("")
     lines.append("## История\n")
     for i, (action, tool_result) in enumerate(result.history, 1):
         if action.finish:

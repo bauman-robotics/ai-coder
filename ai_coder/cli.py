@@ -1897,6 +1897,10 @@ def agent_cmd(
             )
         )
 
+        # NEW: warnings (partial — применено не всё)
+        for w in loop_result.warnings:
+            console.print(f"[yellow]⚠️  {w}[/yellow]")
+
         if loop_result.history:
             console.print()
             table = Table(title="История")
