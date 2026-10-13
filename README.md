@@ -45,6 +45,8 @@ AI-ассистированный анализ git-проектов через D
   автономности (безопасность, автономность, архитектура).
 - **[docs/autonomy.md](docs/autonomy.md)** — автономность:
   принципы, 4 уровня, план E8-E9 (граница flash, улучшение replan).
+- **[docs/ui-ideas.md](docs/ui-ideas.md)** — идеи по графическому
+  интерфейсу (wizard, HTML-отчёты, TUI, Web GUI).
 - **[docs/reviews/](docs/reviews/)** — внешние обзоры:
   [v4-pro, 2026-10-07](docs/reviews/v4-pro-2026-10-07.md) ·
   [v4-pro, 2026-10-09 (full)](docs/reviews/v4-pro-2026-10-09-full.md).
