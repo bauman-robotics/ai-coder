@@ -12,7 +12,151 @@
         <h1>ai-coder GUI</h1>
     </header>
     <main>
-        <p>Веб-панель ai-coder. Здесь появятся действия, агент и отчёты.</p>
+        <p>Веб-панель ai-coder. Соберите команду для запуска агента.</p>
+
+        <section class="panel">
+            <h2>Сборка команды</h2>
+            <form id="build-form"
+                  hx-post="/build"
+                  hx-target="#command-result"
+                  hx-swap="innerHTML">
+                <div class="field">
+                    <label for="goal">Цель (goal)</label>
+                    <textarea id="goal" name="goal" rows="4"
+                              placeholder="Опишите задачу для агента"></textarea>
+                </div>
+
+                <div class="field">
+                    <label for="path">Путь (path)</label>
+                    <input id="path" name="path" list="path-history"
+                           placeholder="src/ или ai_coder/agent.py">
+                    <datalist id="path-history"></datalist>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="mode">Режим (mode)</label>
+                        <select id="mode" name="mode">
+                            <option value="plain">plain</option>
+                            <option value="tool-loop">tool-loop</option>
+                            <option value="decompose">decompose</option>
+                            <option value="plan">plan</option>
+                            <option value="chain">chain</option>
+                            <option value="split-goals">split-goals</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="model">Модель (model)</label>
+                        <select id="model" name="model">
+                            <option value="default">default</option>
+                            <option value="flash">flash</option>
+                            <option value="v4-pro">v4-pro</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="max-cost-rub">Макс. стоимость, ₽</label>
+                        <input id="max-cost-rub" name="max_cost_rub" type="number"
+                               min="0" step="1" placeholder="0">
+                    </div>
+                </div>
+
+                <div class="field flags">
+                    <span class="flags-label">Флаги</span>
+                    <label class="checkbox">
+                        <input type="checkbox" name="apply" value="true"> apply
+                    </label>
+                    <label class="checkbox">
+                        <input type="checkbox" name="commit" value="true"> commit
+                    </label>
+                    <label class="checkbox">
+                        <input type="checkbox" name="dry_run" value="true"> dry-run
+                    </label>
+                </div>
+
+                <details class="advanced">
+                    <summary>Дополнительные флаги</summary>
+                    <div class="field">
+                        <label for="advanced-flags">advanced-flags</label>
+                        <textarea id="advanced-flags" name="advanced_flags"
+                                  rows="2"
+                                  placeholder="--verbose --max-steps 20"></textarea>
+                    </div>
+                </details>
+
+                <div class="actions">
+                    <button type="submit" class="primary">Собрать команду</button>
+                    <button type="button" id="copy-btn">Скопировать</button>
+                </div>
+            </form>
+
+            <div id="command-result"></div>
+        </section>
     </main>
+
+    <script>
+        (function () {
+            var STORAGE_KEY = "ai-coder:paths";
+            var pathInput = document.getElementById("path");
+            var dataList = document.getElementById("path-history");
+
+            function loadPaths() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function renderPaths(paths) {
+                dataList.innerHTML = "";
+                paths.forEach(function (p) {
+                    var opt = document.createElement("option");
+                    opt.value = p;
+                    dataList.appendChild(opt);
+                });
+            }
+
+            function rememberPath(value) {
+                value = (value || "").trim();
+                if (!value) { return; }
+                var paths = loadPaths().filter(function (p) { return p !== value; });
+                paths.unshift(value);
+                paths = paths.slice(0, 20);
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(paths));
+                } catch (e) { /* ignore */ }
+                renderPaths(paths);
+            }
+
+            renderPaths(loadPaths());
+
+            document.addEventListener("htmx:afterRequest", function (evt) {
+                if (evt.detail && evt.detail.elt && evt.detail.elt.id === "build-form" && evt.detail.successful) {
+                    rememberPath(pathInput.value);
+                }
+            });
+
+            document.getElementById("copy-btn").addEventListener("click", function () {
+                var pre = document.querySelector("#command-result pre");
+                var text = pre ? (pre.textContent || "") : "";
+                if (!text) { return; }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text);
+                } else {
+                    var range = document.createRange();
+                    range.selectNodeContents(pre);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+                var btn = document.getElementById("copy-btn");
+                var prev = btn.textContent;
+                btn.textContent = "Скопировано";
+                setTimeout(function () { btn.textContent = prev; }, 1200);
+            });
+        })();
+    </script>
 </body>
 </html>

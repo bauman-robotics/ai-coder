@@ -63,3 +63,127 @@ pre {
     padding: 1rem;
     overflow-x: auto;
 }
+
+.panel {
+    background: #1e1e1e;
+    border: 1px solid #2e2e2e;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-top: 1rem;
+}
+
+.panel h2 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.9rem;
+}
+
+.field label,
+.flags-label {
+    font-size: 0.85rem;
+    color: #a0a0a0;
+}
+
+.field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.field-row .field {
+    flex: 1 1 180px;
+}
+
+input,
+select,
+textarea {
+    background: #141414;
+    color: #e0e0e0;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+    font: inherit;
+    width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: #6cb6ff;
+}
+
+textarea {
+    resize: vertical;
+    font-family: inherit;
+}
+
+.flags {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+}
+
+.checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.checkbox input {
+    width: auto;
+    accent-color: #6cb6ff;
+}
+
+.advanced {
+    margin-bottom: 0.9rem;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+}
+
+.advanced summary {
+    cursor: pointer;
+    color: #a0a0a0;
+    font-size: 0.9rem;
+}
+
+.advanced .field {
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+.actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+button.primary {
+    background: #2f6cb6;
+    border-color: #2f6cb6;
+    color: #fff;
+}
+
+button.primary:hover {
+    background: #3a7dcc;
+}
+
+#command-result {
+    margin-top: 1rem;
+}
+
+.command-output {
+    border: 1px solid #2e2e2e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
