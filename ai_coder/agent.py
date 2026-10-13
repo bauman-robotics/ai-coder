@@ -191,15 +191,16 @@ def parse_agent_plan(content: str, goal: str) -> AgentPlan:
             continue
         title = str(s.get("title", "")).strip()
         stype = str(s.get("type", "edit")).strip().lower()
-        if stype not in ("edit",):
+        if stype not in ("edit", "read"):
             continue
         if not title:
             continue
         details = str(s.get("details", "")).strip()
 
-        # NEW: пропускаем диагностические шаги (по сути read, не edit)
-        if _is_diagnostic_step(title, details):
-            continue
+        # 10.32: если LLM сказал "edit", но текст — read-маркеры,
+        # переклассифицируем в "read". Явный "read" не трогаем.
+        if stype == "edit" and _is_diagnostic_step(title, details):
+            stype = "read"
 
         tf = s.get("target_files", [])
         target_files = [str(x) for x in tf] if isinstance(tf, list) else []
@@ -2072,6 +2073,17 @@ def run_agent(
                 )
                 result.stopped_reason = "max_cost"
                 break
+
+        # 10.32: read-шаги в простом агенте не поддержаны
+        # (нет apply_plan-операций для read). Пропускаем с предупреждением.
+        # Read работает через --tool-loop (chain, decompose).
+        if step.type == "read":
+            _console.print(
+                f"[yellow]Шаг {step.n} ({step.title}): "
+                f"read-шаг пропущен (простой агент read не умеет). "
+                f"Используй --tool-loop.[/yellow]"
+            )
+            continue
 
         step_result = _run_agent_step(
             goal=goal,

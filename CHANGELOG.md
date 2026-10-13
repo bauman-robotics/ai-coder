@@ -4,6 +4,134 @@
 
 ---
 
+## [2026-10-13] iteration 10.32 — read-шаги в плане агента
+
+Завершение направления «read-задачи». В 10.31 введён `step_type`
+(edit/read) для `run_tool_loop`, но **`parse_agent_plan` продолжал
+отбрасывать read-шаги** — и промпт запрещал `type: "read"`.
+
+### Что сделано
+
+- **`parse_agent_plan`:** принимает `type: "read"` (было: только `"edit"`).
+- **`_is_diagnostic_step`:** переклассифицирует `edit` → `read`, если
+  текст шага содержит read-маркеры («прочитай», «проанализируй»,
+  «опиши»). **Больше не отбрасывает** шаг.
+- **Промпт `agent_plan_json`:** разрешён `type: "read"` для read-only
+  задач (объяснить, найти, показать, проанализировать).
+- **`run_agent` (простой агент):** read-шаги **пропускаются** с
+  предупреждением — `apply_plan` их не умеет. Read работает через
+  `--tool-loop` (chain, decompose).
+
+### Что НЕ сделано (TODO)
+
+- **`run_agent` не умеет read** — только отбрасывает. Полная
+  поддержка (read через tool loop в простом агенте) — отдельная задача.
+
+### Тесты
+
++2 (405 passed):
+
+- `test_parse_agent_plan_accepts_read_type` — `type: "read"` принят.
+- `test_parse_agent_plan_reclassifies_diagnostic_edit_to_read` — `edit`
+  с read-маркерами → `read`.
+
+Переделаны:
+
+- `test_parse_agent_plan_skips_diagnostic_steps` →
+  `test_parse_agent_plan_reclassifies_diagnostic_to_read`.
+- `test_parse_agent_plan_all_steps_diagnostic_becomes_empty` →
+  `test_parse_agent_plan_all_diagnostic_become_read`.
+
+### Связь с 10.31
+
+- 10.31: механизм (`step_type`, `read_ops`, критерий успеха).
+- 10.32: доступ (`parse_agent_plan`, промпт, `run_agent`).
+
+---
+
+
+## [2026-10-13] iteration 10.31 — step_type + read_ops: критерий по типу шага
+
+Механизм для read-задач. Правило 10.27 (`success = applied_ops > 0`)
+**философски неверно** для read-задач: агент читает, отвечает, но
+«провал» — потому что 0 правок. Введён `step_type`.
+
+### Добавлено
+
+- **`ToolLoopResult.read_ops: int = 0`** — счётчик успешных
+  `read_file` / `read_symbol` / `list_files`.
+- **`run_tool_loop(step_type: str | None = None)`** — критерий успеха
+  по типу шага:
+  - `None` — `success = action.success` (обратная совместимость);
+  - `"edit"` — `action.success AND applied_ops > 0` (правило 10.27);
+  - `"read"` — `action.success AND read_ops > 0` (новое).
+- **Resume** — пересчёт `read_ops` из history.
+- **`run_agent_decompose`** — `step_type="edit"` в оба `run_tool_loop`.
+- **`_run_chain`** — `step_type="edit"` + доверяет `lr.success`
+  (больше не проверяет `applied_ops` снаружи).
+
+### Убрано
+
+- **`run_agent_decompose`:** внешняя проверка `loop_result.applied_ops > 0`
+  — переехала в `run_tool_loop`.
+- **`_run_chain`:** внешняя проверка `lr.applied_ops > 0` — то же.
+
+### Тесты
+
+Переделаны (моки стали честными):
+
+- `_ok_loop_no_ops` → `success=False, stopped_reason="no_ops"`.
+- `test_run_agent_decompose_success_requires_applied_ops` —
+  decompose доверяет `loop.success`.
+- `test_run_agent_decompose_retry_zero_ops_not_success` — то же.
+- `test_chain_zero_ops_not_success` — мок `success=False`.
+
+405 passed (вместе с 10.32).
+
+---
+
+
+## [2026-10-13] iteration 10.30 — chain report.md при полном провале
+
+Разбор E12/chain: `chain-<ts>/` создавался, но **пустой**, если все
+задачи упали. Пользователь открывает журнал — тишина, отладка
+невозможна.
+
+### Добавлено
+
+- **`_save_chain_report(chain_dir, chain_result, loaded)`** — пишет
+  `report.md`:
+  - шапка (дата, задач, успешно/провалено, суммарная стоимость);
+  - markdown-таблица `# | Issue | Статус | RUB | Детали`;
+  - секция «Goal каждой задачи».
+- **`_run_chain`** вызывает `_save_chain_report` **перед return**,
+  если `chain_dir` создан. Пишется **всегда** — включая полный провал.
+- **`report_path`** в возвращаемом dict + вывод «Отчёт: ...» в
+  `_print_chain_report`.
+- **`stopped_reason="no_ops"`** при `success=True, applied_ops=0`
+  (вместо вводящего в заблуждение `completed`).
+
+### Тесты
+
++4 (403 passed):
+
+- `test_chain_saves_report_on_success` — обе ✅ → `report.md`.
+- `test_chain_saves_report_on_all_fail` — все ❌ → `report.md` есть.
+- `test_chain_saves_report_on_partial_fail` — 1 ✅, 1 ❌ → `report.md`.
+- `test_chain_report_path_in_stdout` — «Отчёт:» в выводе.
+
+Расширен:
+
+- `test_chain_zero_ops_not_success` — проверяет `no_ops` в отчёте.
+
+### E2E
+
+Chain из 2 задач (1 ✅, 1 ❌) — отчёт создан, читаемый,
+markdown-таблица корректна.
+
+---
+
+
 ## [2026-10-13] iteration 10.29 — --no-verify отключает verify_commands
 
 Разбор E12. Нашли, что `--no-verify` в `agent_cmd` управлял **только**

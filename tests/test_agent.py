@@ -198,7 +198,8 @@ def test_run_planner_returns_plan(sample_project: Path, minimal_cfg):
     assert result.llm.content == plan_json
 
 
-def test_parse_agent_plan_skips_diagnostic_steps():
+def test_parse_agent_plan_reclassifies_diagnostic_to_read():
+    """10.32: edit с read-маркерами → type="read" (не отбрасывается)."""
     content = json.dumps(
         {
             "explanation": "",
@@ -222,11 +223,16 @@ def test_parse_agent_plan_skips_diagnostic_steps():
     plan = parse_agent_plan(content, "goal")
     assert plan.parse_error is None
     assert plan.empty is False
-    assert len(plan.steps) == 1
-    assert "докстринг" in plan.steps[0].title.lower()
+    assert len(plan.steps) == 2, "read-шаг больше не отбрасывается"
+    # Шаг 1 — read (был edit с read-маркерами)
+    assert plan.steps[0].type == "read"
+    # Шаг 2 — edit (не read-маркеры)
+    assert plan.steps[1].type == "edit"
+    assert "докстринг" in plan.steps[1].title.lower()
 
 
-def test_parse_agent_plan_all_steps_diagnostic_becomes_empty():
+def test_parse_agent_plan_all_diagnostic_become_read():
+    """10.32: все диагностические edit → все read, plan.empty=False."""
     content = json.dumps(
         {
             "explanation": "",
@@ -243,7 +249,9 @@ def test_parse_agent_plan_all_steps_diagnostic_becomes_empty():
     )
     plan = parse_agent_plan(content, "goal")
     assert plan.parse_error is None
-    assert plan.empty is True
+    assert plan.empty is False, "read-шаги больше не отбрасываются"
+    assert len(plan.steps) == 2
+    assert all(s.type == "read" for s in plan.steps)
 
 
 def test_run_agent_interactive_accept_all(sample_project, minimal_cfg, monkeypatch):
@@ -2453,3 +2461,40 @@ def test_run_agent_decompose_verify_commands_passthrough(sample_project, minimal
         )
 
     assert captured.get("verify_commands") == [], "пустой список ушёл в run_tool_loop"
+
+
+# ---------- 10.32: read-шаги в parse_agent_plan / run_agent ----------
+
+
+def test_parse_agent_plan_accepts_read_type():
+    """type: "read" принимается (не отбрасывается)."""
+    from ai_coder.agent import parse_agent_plan
+
+    content = """{
+      "explanation": "test",
+      "steps": [
+        {"n": 1, "title": "прочитать файл", "type": "read",
+         "details": "объяснить код", "target_files": ["x.py"]}
+      ]
+    }"""
+    plan = parse_agent_plan(content, goal="explain")
+    assert plan.parse_error is None
+    assert len(plan.steps) == 1
+    assert plan.steps[0].type == "read"
+
+
+def test_parse_agent_plan_reclassifies_diagnostic_edit_to_read():
+    """edit с read-маркерами ("прочитай", "проанализируй") → read."""
+    from ai_coder.agent import parse_agent_plan
+
+    content = """{
+      "explanation": "test",
+      "steps": [
+        {"n": 1, "title": "Проанализируй код", "type": "edit",
+         "details": "разберись, что делает функция", "target_files": ["x.py"]}
+      ]
+    }"""
+    plan = parse_agent_plan(content, goal="analyze")
+    assert plan.parse_error is None
+    assert len(plan.steps) == 1
+    assert plan.steps[0].type == "read", "edit с read-маркерами должен стать read"
