@@ -4,6 +4,55 @@
 
 ---
 
+## [2026-10-13] iteration 10.35 — GUI A.2 (запуск + стриминг)
+
+Запуск команды из веб-панели со стримингом вывода в браузер.
+
+### Что сделано
+
+**`app.py`:**
+- `POST /run` — `subprocess.Popen([sys.executable, "-m", "ai_coder.cli", ...],
+  stdout=PIPE, stderr=STDOUT, text=True, bufsize=1)`,
+  `StreamingResponse(media_type="text/event-stream")`, формат `data: <строка>\n\n`.
+- `POST /stop/{run_id}` — SIGTERM.
+- `RUNNING: dict[str, Popen]` — реестр.
+- `_build_argv` — `shlex.split(_build_command(...))` + замена префикса.
+- `_stream_process` — построчно + cleanup в `finally`.
+
+**`index.html`:**
+- Кнопки «Запустить»/«Остановить».
+- `fetch("/run", {method: "POST", body: FormData})` + `ReadableStream`.
+- Парсинг `data: ` вручную, `run_id` из первого события.
+- `AbortController` для прерывания стрима.
+
+**`style.css`:**
+- Стили `#run-output`.
+
+### Фикс после агента
+
+Агент написал `@app.post("/run")` **и** JS `EventSource("/run?")`.
+`EventSource` шлёт **только GET** → `GET /run → 405`. Все куски
+правильные, связка — нет.
+
+**Фикс:** JS → `fetch + ReadableStream` (POST).
+
+### E15
+
+См. `docs/experiments.md` → E15.
+
+- A.2: **8 итераций, 1.26 RUB, 1 фикс**.
+- Гипотеза «агент не справится с SSE» — **опровергнута**.
+- Явное указание API в промпте — решающий фактор.
+- Новый баг-паттерн: «куски правильные, связка — нет» → reverse-check.
+
+### Побочно — `--dry-run` вредит read-задачам
+
+Прогон «Найди все TODO в проекте» с `--dry-run`: `grep` **симулирован**,
+результата нет. Агент **честно** пишет в summary. Нужен `--dry-read`
+(read-only shell разрешён). См. TODO.
+
+---
+
 ## [2026-10-13] iteration 10.34 — GUI A.0 + A.1 (веб-панель)
 
 Начало направления UI. Веб-панель на FastAPI + Jinja2 + HTMX

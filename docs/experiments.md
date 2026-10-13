@@ -6,6 +6,72 @@
 
 ---
 
+## 2026-10-13 — E15: агент на SSE + subprocess + stream (GUI A.2)
+
+**Гипотеза:** агент справится с SSE (`StreamingResponse`) + `subprocess.Popen`
++ process management, **если промпт явно указывает API**.
+
+**Задача:** добавить в веб-панель (GUI A.2) запуск команды `ai-coder agent`
+со стримингом вывода в браузер.
+
+**Промпт:** 14 строк, **явно указано**:
+- `sys.executable -m ai_coder.cli`, не `ai-coder`;
+- `subprocess.Popen(..., stdout=PIPE, stderr=STDOUT, text=True, bufsize=1)`;
+- `StreamingResponse(media_type="text/event-stream")`, формат `data: <строка>\n\n`;
+- `RUNNING: dict[str, Popen]` + `POST /stop/{run_id}` (SIGTERM).
+
+### Результаты
+
+| Задача | Итераций | RUB | Фиксов после |
+|---|---|---|---|
+| A.0 (скелет) | 13 | 0.93 | 2 |
+| A.1 (форма) | 6 | 0.95 | 2 |
+| **A.2 (SSE + subprocess)** | **8** | **1.26** | **1** |
+
+**Что сделал правильно (без фиксов):**
+- Импорты полные: `subprocess, sys, uuid, signal, shlex, Iterator, StreamingResponse`.
+- `_build_argv`: `shlex.split(_build_command(...))` + замена `ai-coder` на
+  `[sys.executable, "-m", "ai_coder.cli"]`. **Переиспользует** `_build_command`.
+- `_stream_process`: `for line in proc.stdout` → `yield f"data: {line.rstrip(chr(10))}\n\n"`.
+  `finally: proc.wait(); RUNNING.pop(...); yield f"data: [exit N]\n\n"`.
+- `StreamingResponse(..., headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})`
+  — **профессионально**, `X-Accel-Buffering` для nginx reverse proxy.
+- `POST /stop/{run_id}`: `SIGTERM`, `proc.poll() is None`, `{"ok": True}`.
+- **Не тронул** `cli.py`, `agent.py`, `config.py`.
+
+**Баг агента (1 фикс):**
+- `@app.post("/run")` + JS `new EventSource("/run?" + params)` — EventSource
+  шлёт **только GET**. `GET /run → 405`. Все **куски** правильные, **связка** — нет.
+- Фикс: JS → `fetch("/run", {method: "POST", body: FormData})` + `ReadableStream`.
+  `currentAbort.abort()` для прерывания.
+
+### Выводы
+
+1. **Явное указание API в промпте** — решающий фактор. A.0 (13 итер, 2 фикса)
+   → A.2 (8 итер, 1 фикс). Гипотеза «агент не справится с SSE» — **опровергнута**.
+2. **Агент учится на примерах** проекта (A.0 → A.1 → A.2, тренд: 13 → 6 → 8).
+3. **Новый баг-паттерн:** «все куски правильные, связка — нет». Нужен **cross-check**
+   (reverse-check из `autonomy.md` → Уровень 2.5).
+4. **`X-Accel-Buffering: no`** — агент добавил **сам**. Знание о streaming в FastAPI — есть.
+
+### Побочное наблюдение — `--dry-run` и read-задачи
+
+Второй прогон (goal: «Найди все TODO в проекте», mode: tool-loop, dry-run ON):
+- 6 итераций, 0.53 RUB, ✅.
+- `run_shell grep -rn TODO` — **симулирован** (`(dry-run) RAN ... (simulated OK,
+  command NOT executed)`).
+- Агент **честно признал** в summary: «точную локализацию inline-комментариев
+  `# TODO` подтвердить не удалось — dry-run не выполняет grep».
+- **Вывод:** `--dry-run` **вредит read-задачам** (grep/read не дают результата).
+  Нужен `--dry-read` (read-only shell разрешён, write запрещён). См. TODO.
+
+### Стоимость
+
+- A.2: **1.26 RUB**.
+- Всего GUI: A.0 (0.93) + A.1 (0.95) + A.2 (1.26) = **3.14 RUB**.
+
+---
+
 ## 2026-10-13 — E14: синтетическая верификация `--no-verify`
 
 **Гипотеза:** фикс 10.29 (`--no-verify` отключает `verify_commands`)

@@ -83,8 +83,15 @@ Python-проектов через DeepSeek API. Работает с git-про�
     uvicorn ai_coder.gui.app:app --reload --port 8000
     # http://127.0.0.1:8000/
 
-**Не умеет (A.2+):** запуск команды в GUI, встроенный терминал,
-история/статистика (`usage.jsonl`), ссылки на отчёты. См. `docs/ui-ideas.md`.
+**A.2:** запуск команды со стримингом (SSE).
+- `POST /run` — `subprocess.Popen([sys.executable, "-m", "ai_coder.cli", ...])`,
+  `StreamingResponse(text/event-stream)`, формат `data: <строка>\n\n`.
+- `POST /stop/{run_id}` — SIGTERM процессу. `RUNNING: dict[str, Popen]`.
+- Кнопки «Запустить»/«Остановить» в браузере (fetch + ReadableStream).
+- `DEEPSEEK_API_KEY` — `uvicorn` должен запускаться с `export`.
+
+**Не умеет (A.3+):** встроенный терминал (PTY+WebSocket, этап B),
+история/статистика из `usage.jsonl`, ссылки на отчёты. См. `docs/ui-ideas.md`.
 
 ### Agent
 
