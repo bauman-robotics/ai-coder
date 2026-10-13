@@ -686,9 +686,9 @@
 - [x] **read-шаги в плане агента** — ЗАКРЫТО 10.32:
   `parse_agent_plan` принимает `type: "read"`, промпт разрешает,
   `run_tool_loop` использует `read_ops` для критерия успеха.
-- [ ] **read в простом агенте** (`run_agent`): сейчас шаги
-  **пропускаются** с предупреждением. Полная поддержка (read через
-  tool loop в `run_agent`) — отдельная задача.
+- [x] **read в простом агенте** (`run_agent`) — ЗАКРЫТО 10.33:
+  `_run_read_step` через `run_tool_loop(step_type="read")`.
+  `StepResult.read_answer`, verify не запускается.
 
 ---
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -2498,3 +2499,216 @@ def test_parse_agent_plan_reclassifies_diagnostic_edit_to_read():
     assert plan.parse_error is None
     assert len(plan.steps) == 1
     assert plan.steps[0].type == "read", "edit с read-маркерами должен стать read"
+
+
+# ---------- 10.33: read-шаги в run_agent через _run_read_step ----------
+
+
+def test_run_read_step_calls_tool_loop(sample_project, minimal_cfg, prompts_cfg):
+    """_run_read_step вызывает run_tool_loop со step_type='read'."""
+    from ai_coder.agent import AgentStep, _run_read_step
+
+    step = AgentStep(
+        n=1, title="Прочитай файл", type="read", details="объясни", target_files=["x.py"]
+    )
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured.update(kwargs)
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(
+            success=True,
+            summary="ответ",
+            iterations=1,
+            total_cost_rub=0.02,
+            read_ops=1,
+        )
+
+    with patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop):
+        result = _run_read_step(
+            step=step,
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            model=None,
+            depth="normal",
+            extra_exclude=None,
+            only_paths=None,
+            journal_subdir=None,
+        )
+
+    assert captured.get("step_type") == "read", "step_type должен быть 'read'"
+    assert "Прочитай файл" in captured.get("goal", "")
+    assert result.read_answer == "ответ"
+    assert result.applied is False
+    assert result.applied_count == 0
+    assert result.write_plan is None
+
+
+def test_run_read_step_success(sample_project, minimal_cfg, prompts_cfg):
+    """Успешный read → skipped=False, read_answer заполнен."""
+    from ai_coder.agent import AgentStep, ToolLoopResult, _run_read_step
+
+    step = AgentStep(n=1, title="read", type="read", details="", target_files=[])
+
+    with patch(
+        "ai_coder.agent.run_tool_loop",
+        return_value=ToolLoopResult(
+            success=True,
+            summary="функция X делает Y",
+            iterations=2,
+            total_cost_rub=0.03,
+            read_ops=2,
+        ),
+    ):
+        result = _run_read_step(
+            step=step,
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            model=None,
+            depth="normal",
+            extra_exclude=None,
+            only_paths=None,
+            journal_subdir=None,
+        )
+
+    assert result.skipped is False
+    assert result.read_answer == "функция X делает Y"
+    assert result.verify_errors == [], "read не проверяем"
+    assert result.errors == []
+
+
+def test_run_read_step_failure(sample_project, minimal_cfg, prompts_cfg):
+    """Провальный read → skipped=True, skip_reason=stopped_reason."""
+    from ai_coder.agent import AgentStep, ToolLoopResult, _run_read_step
+
+    step = AgentStep(n=1, title="read", type="read", details="", target_files=[])
+
+    with patch(
+        "ai_coder.agent.run_tool_loop",
+        return_value=ToolLoopResult(
+            success=False,
+            summary="ничего не прочитано",
+            iterations=3,
+            total_cost_rub=0.04,
+            read_ops=0,
+            stopped_reason="max_iterations",
+        ),
+    ):
+        result = _run_read_step(
+            step=step,
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            model=None,
+            depth="normal",
+            extra_exclude=None,
+            only_paths=None,
+            journal_subdir=None,
+        )
+
+    assert result.skipped is True
+    assert result.skip_reason == "max_iterations"
+    assert result.read_answer == "ничего не прочитано"
+
+
+def test_run_agent_calls_read_step_for_read_type(sample_project, minimal_cfg, prompts_cfg):
+    """run_agent для read-шага вызывает _run_read_step (не _run_agent_step)."""
+    from ai_coder.agent import (
+        AgentPlan,
+        AgentStep,
+        StepResult,
+        ToolLoopResult,
+        run_agent,
+    )
+    from ai_coder.llm import LLMResponse
+
+    # План из одного read-шага
+    plan = AgentPlan(
+        goal="объясни",
+        steps=[
+            AgentStep(n=1, title="Прочитай", type="read", details="x.py", target_files=["x.py"])
+        ],
+    )
+
+    # Синтетический StepResult
+    fake_step_result = StepResult(
+        step=plan.steps[0],
+        llm=LLMResponse(
+            content="x",
+            model="test-model",
+            prompt_tokens=0,
+            prompt_cache_hit_tokens=0,
+            prompt_cache_miss_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            duration_ms=0,
+            finish_reason="stop",
+        ),
+        applied=False,
+        applied_count=0,
+        errors=[],
+        verify_errors=[],
+        rolled_back=False,
+        cost_rub=0.02,
+        cost_cny=0.0,
+        cost_usd=0.0,
+        from_cache=False,
+        read_answer="объяснение",
+    )
+
+    calls: list[str] = []
+
+    def fake_read_step(**kwargs):
+        calls.append("read")
+        return fake_step_result
+
+    # Планировщик
+    now = datetime.now(timezone.utc)
+
+    def fake_planner(**kwargs):
+        from ai_coder.agent import PlannerResult
+
+        return PlannerResult(
+            plan=plan,
+            llm=LLMResponse(
+                content="plan",
+                model="test-model",
+                prompt_tokens=0,
+                prompt_cache_hit_tokens=0,
+                prompt_cache_miss_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                duration_ms=0,
+                finish_reason="stop",
+            ),
+            cost_rub=0.01,
+            cost_cny=0.0,
+            cost_usd=0.0,
+            is_peak=False,
+            peak_window=None,
+            started_at=now,
+            finished_at=now,
+        )
+
+    # 10.33: отключаем phase1, чтобы не ходить в LLM повторно
+    minimal_cfg.agent.phase1_enabled = False
+
+    with (
+        patch("ai_coder.agent.run_planner", side_effect=fake_planner),
+        patch("ai_coder.agent._run_read_step", side_effect=fake_read_step),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = run_agent(
+            goal="объясни",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    assert calls == ["read"], f"ожидался один read-вызов, был {calls}"
+    assert len(result.steps) == 1
+    assert result.steps[0].read_answer == "объяснение"

@@ -1486,6 +1486,7 @@ class StepResult:
     write_plan: "WritePlan | None" = None
     skipped: bool = False
     skip_reason: str = ""
+    read_answer: str = ""  # 10.33: текстовый ответ read-шага (step_type="read")
 
 
 @dataclass
@@ -1605,15 +1606,33 @@ def _run_agent_step(
     interactive: bool = False,  # NEW
     accept_all_ref: list[bool] | None = None,  # NEW
     only_paths: list[str] | None = None,  # NEW
+    journal_subdir: Path | None = None,  # NEW: куда писать журнал read-шага
 ) -> StepResult:
     """
     Выполняет один шаг: запрос к LLM → парсинг плана → (опц.) применение → верификация.
     Ничего не решает про контроль бюджета/шагов — только делает свою работу.
+
+    10.33: для read-шагов (step.type == "read") — вызывается _run_read_step
+    (через run_tool_loop), не обычный edit-путь.
     """
     from .actions import run_fix_action
     from .apply import rollback as do_rollback
 
     model = model or cfg.api.model
+
+    # --- 10.33: read-шаг → отдельный путь через tool loop ---
+    if step.type == "read":
+        return _run_read_step(
+            step=step,
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=prompts_cfg,
+            model=model,
+            depth=depth,
+            extra_exclude=extra_exclude,
+            only_paths=only_paths,
+            journal_subdir=journal_subdir,
+        )
 
     # --- пересканируем проект (файлы могли измениться предыдущими шагами) ---
     effective_exclude = list(extra_exclude or [])
@@ -2074,17 +2093,6 @@ def run_agent(
                 result.stopped_reason = "max_cost"
                 break
 
-        # 10.32: read-шаги в простом агенте не поддержаны
-        # (нет apply_plan-операций для read). Пропускаем с предупреждением.
-        # Read работает через --tool-loop (chain, decompose).
-        if step.type == "read":
-            _console.print(
-                f"[yellow]Шаг {step.n} ({step.title}): "
-                f"read-шаг пропущен (простой агент read не умеет). "
-                f"Используй --tool-loop.[/yellow]"
-            )
-            continue
-
         step_result = _run_agent_step(
             goal=goal,
             step=step,
@@ -2103,8 +2111,19 @@ def run_agent(
             interactive=interactive,
             accept_all_ref=accept_all_ref,
             only_paths=step_only_paths,  # NEW
+            journal_subdir=journal_dir,  # NEW: журнал read-шага
         )
         step_results.append(step_result)
+
+        # 10.33: показать ответ read-шага
+        if step_result.read_answer:
+            _console.print()
+            _console.print(
+                Panel.fit(
+                    step_result.read_answer,
+                    title=f"Ответ на шаг {step.n}: {step.title}",
+                )
+            )
 
         # --- журнал по шагу ---
         if journal_dir is not None:
@@ -2159,6 +2178,75 @@ def _save_plan_json(journal_dir: Path, plan: AgentPlan, llm: LLMResponse) -> Non
     }
     (journal_dir / "plan.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _run_read_step(
+    *,
+    step: AgentStep,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None,
+    depth: str,
+    extra_exclude: list[str] | None,
+    only_paths: list[str] | None,
+    journal_subdir: Path | None,
+    max_iterations: int = 10,
+) -> StepResult:
+    """10.33: read-шаг в простом агенте — через run_tool_loop(step_type="read").
+
+    Не применяет правки. Возвращает StepResult с read_answer=summary.
+    verify не запускается (read не меняет файлы).
+    """
+    goal_text = step.title
+    if step.details:
+        goal_text = f"{step.title}\n\n{step.details}"
+
+    loop_result = run_tool_loop(
+        goal=goal_text,
+        project_root=project_root,
+        cfg=cfg,
+        prompts_cfg=prompts_cfg,
+        model=model,
+        depth=depth,
+        extra_exclude=extra_exclude,
+        max_iterations=max_iterations,
+        journal=True,
+        journal_subdir=journal_subdir,
+        step_type="read",
+    )
+
+    from .llm import LLMResponse
+
+    synth_llm = LLMResponse(
+        content=loop_result.summary,
+        model=model or cfg.api.model,
+        prompt_tokens=0,
+        prompt_cache_hit_tokens=0,
+        prompt_cache_miss_tokens=0,
+        completion_tokens=0,
+        total_tokens=0,
+        duration_ms=0,
+        finish_reason="stop",
+    )
+
+    return StepResult(
+        step=step,
+        llm=synth_llm,
+        write_plan=None,
+        applied=False,
+        applied_count=0,
+        errors=[],
+        verify_errors=[],  # read не проверяем
+        rolled_back=False,
+        cost_rub=loop_result.total_cost_rub,
+        cost_cny=loop_result.total_cost_cny,
+        cost_usd=loop_result.total_cost_usd,
+        from_cache=False,
+        read_answer=loop_result.summary,
+        skipped=not loop_result.success,
+        skip_reason="" if loop_result.success else loop_result.stopped_reason,
     )
 
 

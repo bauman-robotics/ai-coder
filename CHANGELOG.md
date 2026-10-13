@@ -4,6 +4,46 @@
 
 ---
 
+## [2026-10-13] iteration 10.33 — read-шаги в простом агенте (run_agent)
+
+Завершение read-направления. В 10.31 введён `step_type="read"`, в 10.32
+`parse_agent_plan` принял `type: "read"`, но **простой агент** (`run_agent`)
+read-шаги **пропускал** — `apply_plan` не умеет read. Теперь работает.
+
+### Что сделано
+
+- **`StepResult.read_answer: str`** — текстовый ответ read-шага.
+- **`_run_read_step`** — новая функция: для read-шага вызывает
+  `run_tool_loop(step_type="read")`, собирает `StepResult`:
+  - `write_plan=None`, `applied=False`, `applied_count=0`;
+  - `read_answer = loop.summary`;
+  - **verify не запускается** (read не меняет файлы);
+  - `skipped=True`, `skip_reason=stopped_reason`, если loop не успешен.
+- **`_run_agent_step`** — ветка `if step.type == "read": return _run_read_step(...)`.
+  Новый параметр `journal_subdir` — чтобы read-журнал шёл в `agent-<ts>/`.
+- **`run_agent`**:
+  - **убран** пропуск read-шагов (10.32);
+  - передаётся `journal_subdir=journal_dir`;
+  - ответ read-шага **печатается** в консоль (`Panel.fit`).
+
+### Тесты
+
++4 (409 passed):
+
+- `test_run_read_step_calls_tool_loop` — `step_type="read"` уходит в tool loop.
+- `test_run_read_step_success` — успех, `read_answer` заполнен.
+- `test_run_read_step_failure` — fail, `skipped=True`, `skip_reason` из loop.
+- `test_run_agent_calls_read_step_for_read_type` — `run_agent` для read
+  вызывает `_run_read_step` (через `_run_agent_step`).
+
+### Связь с 10.31–10.32
+
+- 10.31: механизм (`step_type`, `read_ops`).
+- 10.32: доступ (`parse_agent_plan`, промпт).
+- 10.33: **простого агента научили read** — через tool loop.
+
+---
+
 ## [2026-10-13] iteration 10.32 — read-шаги в плане агента
 
 Завершение направления «read-задачи». В 10.31 введён `step_type`
