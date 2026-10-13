@@ -1,10 +1,10 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-13 (итерации 10.29–10.40: `--no-verify`, read-шаги, GUI A.0–A.7, partial warnings)
+**Дата обновления:** 2026-10-13 (итерации 10.29–10.42: `--no-verify`, read-шаги, GUI A.0–A.8, partial warnings)
 **Ветка:** main
 **Последний коммит:** `c0241ee` (10.40: GUI A.7 — /reports)
 **Тесты:** 419 passed | CI: pytest x3 + ruff + mypy — зелёный
-**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.7
+**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
 ---
 
@@ -61,7 +61,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `.ai-out/<project>/cache/<hash>.json`
 - Флаги `--no-cache` / `--refresh`
 
-### GUI (A.0–A.7)
+### GUI (A.0–A.8)
 
 Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
 
@@ -133,9 +133,19 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Живой прогон: **83 журнала** (67 tool-loop + 11 agent + 3 decompose
   + 2 autofix), `/reports/ai-coder/tool-loop-<ts>` → 200.
 
-**Не умеет (A.8+):** встроенный терминал (PTY+WebSocket, этап B),
-история/статистика из `usage.jsonl` (графики Chart.js),
-пагинация/фильтр по проекту. См. `docs/ui-ideas.md`.
+**A.8:** статистика расходов.
+- `app.py`: `GET /stats/data` — агрегаты из `usage.jsonl`
+  (по дням/моделям/действиям), `GET /stats` — страница.
+- `templates/stats.html` — 4 summary-карточки + 3 графика
+  (Chart.js 4.4: line + doughnut + bar).
+- `style.css`: `.stats-summary`, `.stat-card`, `.chart-wrap`,
+  `.panel-row`.
+- `index.html`: ссылка «Статистика» в nav.
+- Живой прогон: **525 записей, 106.24 RUB, 4.8M токенов, 7 дней**.
+
+**Не умеет (A.9+):** встроенный терминал (PTY+WebSocket, этап B),
+пагинация/фильтр по проекту в `/reports`, экспорт статистики
+в CSV/PNG. См. `docs/ui-ideas.md`.
 
 ### Agent
 

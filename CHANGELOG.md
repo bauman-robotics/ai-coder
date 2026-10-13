@@ -4,6 +4,56 @@
 
 ---
 
+## [2026-10-13] iteration 10.42 — GUI A.8 (статистика расходов, Chart.js)
+
+### Что сделано
+
+**`ai_coder/gui/app.py`:**
+- `USAGE_JSONL` — путь к `.ai-out/usage.jsonl`.
+- `_collect_stats()` — агрегаты из `usage.jsonl`:
+  - `summary`: total_rub, total_requests, total_tokens, days;
+  - `by_day`: `[{date, cost_rub, requests}]` (хронологически);
+  - `by_model`: `[{model, cost_rub, requests}]` (по убыванию);
+  - `by_action`: `[{action, cost_rub, requests}]` — `action.split(":")[0]`.
+- `GET /stats/data` — JSON для Chart.js.
+- `GET /stats` — HTML со графиками.
+- Устойчивость: битые JSON-строки — пропускаются; нет файла — пустые данные.
+
+**`templates/stats.html`** (новый):
+- 4 summary-карточки: RUB / запросов / токенов / дней.
+- 3 графика (Chart.js 4.4): line (по дням) + doughnut (модели)
+  + bar (действия).
+- Тёмная тема, `Intl.NumberFormat('ru-RU')`.
+
+**`static/style.css`:**
+- `.stats-summary` (grid 4 карточки, auto-fit min 150px).
+- `.stat-card`, `.stat-label`, `.stat-value`.
+- `.chart-wrap` (height 320px, relative).
+- `.panel-row` (grid 1fr 1fr, media query 900px).
+
+**`templates/index.html`:**
+- Ссылка «Статистика» в `<nav class="report-nav">`.
+
+### Живой прогон
+
+- `/stats/data` → `{summary: {total_rub: 106.24, total_requests: 525,
+  total_tokens: 4826409, days: 7}, ...}`.
+- `/stats` → HTTP 200.
+- 7 дней: 06.10–13.10. Пики: 07.10 (28.02 RUB / 21 запрос) и
+  09.10 (27.32 RUB / 162 запроса).
+
+### Как сделано
+
+**Вручную** (связанные правки Python+Jinja+JS+CSS, `--tool-loop`
+не использовался). ~1.5 ч.
+
+### Ссылки
+
+- `docs/state.md` → раздел GUI (A.0–A.8).
+- `docs/ui-ideas.md` → секция 1.5 (A.0–A.8).
+
+---
+
 ## [2026-10-13] iteration 10.40 — GUI A.7 (/reports — список журналов)
 
 ### Что сделано
