@@ -6,7 +6,8 @@
 
 ## Из GUI A.0/A.1 (сессия 2026-10-13)
 
-- [ ] **Агент пишет под устаревший API библиотек.**
+- [x] **Агент пишет под устаревший API библиотек.** ЗАКРЫТО 10.39:
+      правило 10 в `agent_tool_json`. Smoke-тест — TODO.
       FastAPI 0.143 в проекте, агент написал
       `TemplateResponse("index.html", {"request": request})` (API <0.108).
       Падало с HTTP 500 на `GET /`. `py_compile` и `pytest` не ловят.
@@ -18,14 +19,16 @@
       - Флаг `--verify-url http://localhost:8000/` — после finish дёрнуть URL.
       **Приоритет:** 🟡 средний.
 
-- [ ] **`success=False` при частичном применении плана.**
+- [x] **`success=False` при частичном применении плана.** ЗАКРЫТО 10.39:
+      `ToolLoopResult.warnings` + CLI + report.md.
       A.0: агент создал 5 файлов из 6 (pyproject.toml в blacklist),
       но `success=False, stopped_reason="completed"`. Вводит в заблуждение.
       **Фикс:** статус `partial` (когда `applied_ops > 0` и есть отклонённые
       операции), или `success=True, warnings=[...]`.
       **Приоритет:** 🟡 средний.
 
-- [ ] **`python-multipart` — не в зависимостях, `Form(...)` падает при импорте.**
+- [x] **`python-multipart` — не в зависимостях.** ЗАКРЫТО 10.39:
+      правило 9 в `agent_tool_json`.
       FastAPI >=0.113 требует `python-multipart` явно для `Form(...)`.
       Агент использовал `Form`, но не добавил зависимость.
       При импорте `app.py` — `RuntimeError` на `@app.post("/build")`,

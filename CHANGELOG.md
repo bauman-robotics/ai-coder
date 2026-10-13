@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-10-13] iteration 10.39 — 3 TODO из GUI-сессии (промпт, partial, warnings)
+
+Закрытие трёх пунктов из TODO, обнаруженных при создании GUI.
+
+### TODO 1 + 3 — правила в промпте
+
+**`config/prompts.yaml` → `agent_tool_json`:**
+- **Правило 9** (ЗАВИСИМОСТИ): если используешь `Form(...)`/`File(...)`
+  в FastAPI — добавь `python-multipart`; `jinja2`/`aiofiles`/`websockets`
+  — тоже должны быть в зависимостях.
+- **Правило 10** (ВЕРСИИ API): перед использованием API библиотеки —
+  посмотри версию в `pyproject.toml`. API мог измениться (пример:
+  FastAPI `<0.108` vs `>=0.108` — у `TemplateResponse` другой порядок
+  аргументов).
+- Правило **9. ПРИМЕРЫ** → **11. ПРИМЕРЫ** (нумерация сдвинута).
+
+### TODO 2 — partial (warnings)
+
+**`ai_coder/agent.py`:**
+- `ToolLoopResult.warnings: list[str]` — новое поле.
+- `run_tool_loop`: при `finish(success=True)` и `applied_ops <
+  write_attempts` → `warnings.append("applied N/M (часть операций
+  отклонена)")`.
+- `_save_tool_loop_report`: секция `## Предупреждения` в `report.md`.
+
+**`ai_coder/cli.py`:**
+- После панели «Tool Loop — итог» — печать `⚠️ <warning>` для каждого.
+
+**`tests/test_agent.py`:**
+- `test_run_tool_loop_partial_warns` — 1 ok + 1 blacklist → success=True,
+  applied_ops=1, warnings=["applied 1/2 ..."].
+- `test_run_tool_loop_no_partial_when_all_applied` — 2 ok → warnings=[].
+
+**Тесты:** 417 → **419**.
+
+### Как сделано
+
+**Вручную** (правка промпта — chicken-and-egg, partial — сложная логика).
+
+---
+
 ## [2026-10-13] iteration 10.38 — GUI A.5 + A.6 (ссылка на отчёт + рендер)
 
 Две фичи для отчётов в веб-панели.
