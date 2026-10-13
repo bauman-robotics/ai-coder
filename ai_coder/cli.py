@@ -862,7 +862,6 @@ def _run_chain(
     continue_on_fail: bool,
     allow_blacklist: bool,
     auto_commit: bool,
-    verify_commands: str | None,
     verify: bool,
     max_fix_attempts: int,
     run_tool_loop_fn,
@@ -1325,6 +1324,10 @@ def agent_cmd(
         cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
         cfg.agent.verify_commands = cmds
 
+    if not verify:
+        # --no-verify: отключить и py_compile, и verify_commands
+        cfg.agent.verify_commands = []
+
     if interactive and not apply and not tool_loop:
         console.print("[red]--interactive требует --apply (или --tool-loop)[/red]")
         raise typer.Exit(1)
@@ -1507,7 +1510,6 @@ def agent_cmd(
                 continue_on_fail=continue_on_fail,
                 allow_blacklist=allow_blacklist,
                 auto_commit=commit,
-                verify_commands=verify_commands,
                 verify=verify,
                 max_fix_attempts=max_fix_attempts,
                 run_tool_loop_fn=run_tool_loop,

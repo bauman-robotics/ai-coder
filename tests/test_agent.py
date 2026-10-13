@@ -2309,3 +2309,141 @@ def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_
     assert result.subtask_results[0]["success"] is False, (
         "retry applied_ops=0 → success=False (не ложный ✅)"
     )
+
+
+# ---------- 10.29: verify_commands как параметр ----------
+
+
+def test_run_tool_loop_verify_commands_explicit(sample_project, minimal_cfg, prompts_cfg):
+    """verify_commands=["true"] при cfg.agent.verify_commands=[] — verify зовётся."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    minimal_cfg.agent.verify_commands = []  # cfg пуст
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent.run_verify_commands", return_value=[]) as mock_verify,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="verify explicit",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            verify_commands=["true"],
+        )
+
+    mock_verify.assert_called_once()
+    assert mock_verify.call_args[0][0] == ["true"], "verify получил явный список"
+    assert result.success is True
+    assert result.verify_errors == []
+
+
+def test_run_tool_loop_verify_commands_empty_disables(sample_project, minimal_cfg, prompts_cfg):
+    """verify_commands=[] при cfg.agent.verify_commands=["false"] — verify не зовётся."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    minimal_cfg.agent.verify_commands = ["false"]  # cfg непустой — упал бы
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent.run_verify_commands") as mock_verify,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="verify disabled",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            verify_commands=[],  # явное «не проверять»
+        )
+
+    mock_verify.assert_not_called()
+    assert result.success is True, "verify не запускался → success без ошибок"
+
+
+def test_run_tool_loop_verify_commands_none_falls_back_to_cfg(
+    sample_project, minimal_cfg, prompts_cfg
+):
+    """verify_commands=None — fallback на cfg.agent.verify_commands."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    minimal_cfg.agent.verify_commands = ["false"]  # упадёт
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+        patch("ai_coder.agent.run_verify_commands", return_value=["boom"]) as mock_verify,
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _make_llm_response(
+            '{"finish": true, "summary": "done", "success": true}'
+        )
+
+        result = run_tool_loop(
+            goal="verify fallback",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            verify_commands=None,
+        )
+
+    mock_verify.assert_called_once()
+    assert mock_verify.call_args[0][0] == ["false"], "fallback на cfg"
+    assert result.success is False
+    assert result.stopped_reason == "verify_failed"
+
+
+def test_run_agent_decompose_verify_commands_passthrough(sample_project, minimal_cfg, prompts_cfg):
+    """verify_commands=[] в run_agent_decompose пробрасывается в run_tool_loop."""
+    from ai_coder.agent import DecomposeResult, run_agent_decompose
+
+    minimal_cfg.agent.decompose_model = None
+
+    dec = DecomposeResult(
+        explanation="prebuilt",
+        subtasks=[_subtask(1, "do x")],
+        cost_rub=0.0,
+    )
+
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured["verify_commands"] = kwargs.get("verify_commands")
+        return _ok_loop()
+
+    with (
+        patch("ai_coder.agent.run_planner_decompose"),
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        run_agent_decompose(
+            goal="goal",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            plan=dec,
+            verify_commands=[],
+        )
+
+    assert captured.get("verify_commands") == [], "пустой список ушёл в run_tool_loop"

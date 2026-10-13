@@ -29,10 +29,10 @@
 
 ## Из E12 (decompose в чужом проекте) — 2026-10-11
 
-- [ ] **`--no-verify` и `--verify-commands` не работают** для
-      decompose/tool loop. `run_agent_decompose` не принимает `verify`,
-      `run_tool_loop` берёт `cfg.agent.verify_commands` напрямую.
-      **Workaround:** свой config с `verify_commands: []`.
+- [x] **`--no-verify` / `--verify-commands` для decompose/tool loop.**
+      ЗАКРЫТО 10.29: `--no-verify` теперь отключает и `py_compile`,
+      и `verify_commands`. `run_tool_loop`/`run_agent_decompose`
+      принимают явный `verify_commands`.
       **Фикс:** прокинуть `verify` / `verify_commands` параметром в
       `run_agent_decompose` и `run_tool_loop`.
       Файлы: `ai_coder/agent.py`, `ai_coder/cli.py`.
@@ -41,8 +41,9 @@
       — фикстура `url` не найдена). Нужна возможность **указывать
       конкретный тест** или **исключать каталоги** из verify.
 
-- [ ] **Перезапустить E12** после фиксов. Проверить, что `gui.py`
-      **реально** обновляется (или ❌, а не ложный ✅).
+- [ ] **Перезапустить E12** после фиксов (10.28 + 10.29). Теперь
+      без своего config — `--no-verify` работает. Проверить, что
+      `gui.py` **реально** обновляется (или ❌, а не ложный ✅).
 
 - [x] **`max_iterations` из CLI не доходил** до decompose. ЗАКРЫТО 10.28.
 - [x] **Retry-путь v4-pro не учитывал `applied_ops > 0`.** ЗАКРЫТО 10.28.

@@ -4,6 +4,49 @@
 
 ---
 
+## [2026-10-13] iteration 10.29 — --no-verify отключает verify_commands
+
+Разбор E12. Нашли, что `--no-verify` в `agent_cmd` управлял **только**
+`py_compile`, а `cfg.agent.verify_commands` (запуск `pytest` и т.п.)
+**не трогал**. На чужом проекте это ломало прогон: verify чужого
+`legacy/test_url.py` падал → агент считал работу провалённой.
+
+### Фикс
+
+- **`run_tool_loop`:** новый параметр `verify_commands: list[str] | None`.
+  Fallback на `cfg.agent.verify_commands` при `None`. Позволяет
+  вызывать tool loop с явным списком или с `[]` (не проверять).
+- **`run_agent_decompose`:** новый параметр `verify_commands`.
+  Пробрасывается в оба `run_tool_loop` (основной + retry).
+- **`agent_cmd --no-verify`:** теперь отключает **и** `py_compile`,
+  **и** `verify_commands` (обнуляет `cfg.agent.verify_commands = []`).
+  Семантика: «не проверять вообще».
+- **`_run_chain`:** удалён мёртвый параметр `verify_commands: str | None`
+  (был в сигнатуре, не использовался).
+
+### Тесты
+
++5 (399 passed):
+
+- `test_run_tool_loop_verify_commands_explicit` — `verify_commands=["true"]`
+  при пустом cfg → verify зовётся.
+- `test_run_tool_loop_verify_commands_empty_disables` — `verify_commands=[]`
+  при непустом cfg → verify не зовётся.
+- `test_run_tool_loop_verify_commands_none_falls_back_to_cfg` — `None` →
+  fallback на cfg.
+- `test_run_agent_decompose_verify_commands_passthrough` — `[]` уходит
+  в `run_tool_loop` из decompose.
+- `test_agent_cmd_no_verify_disables_verify_commands` — CLI `--no-verify`
+  обнуляет `cfg.agent.verify_commands`.
+
+### TODO
+
+- **E12 перезапустить** после фиксов — теперь можно без своего config.
+- Workaround «свой config с `verify_commands: []`» — больше не нужен.
+
+---
+
+
 ## [2026-10-11] iteration 10.28 — max_iterations + fix applied_ops в retry
 
 Разбор E12 (decompose в чужом проекте). Нашли **неполноту фикса 10.27**:

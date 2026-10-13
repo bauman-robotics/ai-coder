@@ -707,6 +707,7 @@ def run_agent_decompose(
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
     plan: DecomposeResult | None = None,  # NEW: готовый план (--plan)
     max_iterations: int | None = None,  # NEW: лимит tool loop на подзадачу
+    verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -786,6 +787,7 @@ def run_agent_decompose(
             journal=journal,
             journal_subdir=subtask_subdir,
             allow_blacklist=allow_blacklist,
+            verify_commands=verify_commands,
         )
 
         dec_result.cost_rub += loop_result.total_cost_rub
@@ -835,6 +837,7 @@ def run_agent_decompose(
                     journal=journal,
                     journal_subdir=subtask_subdir,
                     allow_blacklist=allow_blacklist,
+                    verify_commands=verify_commands,
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub
                 dec_result.cost_cny += loop_result.total_cost_cny
@@ -2404,6 +2407,7 @@ def run_tool_loop(
     resume_from: Path | None = None,  # NEW
     journal_subdir: Path | None = None,  # NEW: куда писать журнал
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
+    verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -2707,10 +2711,11 @@ def run_tool_loop(
 
     # --- NEW: verify_commands после успеха ---
     verify_errors: list[str] = []
-    if success and cfg.agent.verify_commands and not dry_run:
-        _console.print(f"[dim]Проверка: {'; '.join(cfg.agent.verify_commands)}[/dim]")
+    eff_verify = verify_commands if verify_commands is not None else cfg.agent.verify_commands
+    if success and eff_verify and not dry_run:
+        _console.print(f"[dim]Проверка: {'; '.join(eff_verify)}[/dim]")
         verify_errors = run_verify_commands(
-            cfg.agent.verify_commands,
+            eff_verify,
             project_root,
             timeout_sec=cfg.agent.verify_timeout_sec,
             max_output_chars=cfg.agent.verify_max_output_chars,

@@ -824,3 +824,58 @@ def test_split_goals_ok(tmp_path: Path, monkeypatch):
     assert "Split-goals" in result.stdout
     assert "2" in result.stdout  # число issues
     assert "add sub" in result.stdout
+
+
+def test_agent_cmd_no_verify_disables_verify_commands(cli_env):
+    """--no-verify должен обнулять cfg.agent.verify_commands."""
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured["cfg"] = kwargs["cfg"]
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(
+            success=True,
+            summary="stub",
+            iterations=1,
+            total_cost_rub=0.01,
+            applied_ops=1,
+        )
+
+    # Подкладываем verify_commands в конфиг — проверим, что --no-verify обнулит
+    import yaml
+
+    cfg_data = yaml.safe_load(cli_env["config"].read_text(encoding="utf-8"))
+    cfg_data["agent"]["verify_commands"] = ["false"]
+    cli_env["config"].write_text(yaml.safe_dump(cfg_data, allow_unicode=True), encoding="utf-8")
+
+    with (
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--tool-loop",
+                "--no-verify",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
+
+    # CLI мог вернуть код 0 или 1 — важно, что cfg дошёл
+    if "cfg" not in captured:
+        # Если CLI не дошёл до run_tool_loop (валидация), покажем вывод
+        raise AssertionError(
+            f"run_tool_loop не вызван.\nexit_code={result.exit_code}\noutput={result.output[:2000]}"
+        )
+
+    assert captured["cfg"].agent.verify_commands == [], (
+        "--no-verify должен был обнулить verify_commands, "
+        f"а там {captured['cfg'].agent.verify_commands}"
+    )
