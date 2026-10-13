@@ -1016,17 +1016,14 @@ def _run_chain(
                     dry_run=dry_run,
                     interactive=interactive,
                     auto_commit=auto_commit,
+                    step_type="edit",
                 )
-                ok = lr.success and lr.applied_ops > 0
+                ok = lr.success  # 10.31: run_tool_loop сам решает (edit/read)
                 cost = lr.total_cost_rub
                 entry["iterations"] = lr.iterations
-                # Если LLM сказала finish(success), но правок нет — это
-                # не «completed», а «no_ops» (см. 10.27).
-                if lr.success and lr.applied_ops == 0:
-                    entry["stopped_reason"] = "no_ops"
-                else:
-                    entry["stopped_reason"] = lr.stopped_reason
+                entry["stopped_reason"] = lr.stopped_reason
                 entry["applied_ops"] = lr.applied_ops
+                entry["read_ops"] = lr.read_ops
             entry["success"] = ok
             entry["cost_rub"] = cost
             total_cost += cost

@@ -788,6 +788,7 @@ def run_agent_decompose(
             journal_subdir=subtask_subdir,
             allow_blacklist=allow_blacklist,
             verify_commands=verify_commands,
+            step_type="edit",
         )
 
         dec_result.cost_rub += loop_result.total_cost_rub
@@ -800,7 +801,7 @@ def run_agent_decompose(
                 "n": st.n,
                 "goal": st.goal,
                 "files": st.files,
-                "success": loop_result.success and loop_result.applied_ops > 0,
+                "success": loop_result.success,
                 "stopped_reason": loop_result.stopped_reason,
                 "cost_rub": loop_result.total_cost_rub,
                 "backup_dir": str(loop_result.backup_dir) if loop_result.backup_dir else None,
@@ -838,6 +839,7 @@ def run_agent_decompose(
                     journal_subdir=subtask_subdir,
                     allow_blacklist=allow_blacklist,
                     verify_commands=verify_commands,
+                    step_type="edit",
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub
                 dec_result.cost_cny += loop_result.total_cost_cny
@@ -852,7 +854,7 @@ def run_agent_decompose(
                         "n": st.n,
                         "goal": st.goal,
                         "files": st.files,
-                        "success": loop_result.success and loop_result.applied_ops > 0,
+                        "success": loop_result.success,
                         "stopped_reason": loop_result.stopped_reason,
                         "cost_rub": prev_cost + loop_result.total_cost_rub,
                         "backup_dir": str(loop_result.backup_dir)
@@ -1521,6 +1523,7 @@ class ToolLoopResult:
     commit_hash: str | None = None  # NEW
     verify_errors: list[str] = field(default_factory=list)
     applied_ops: int = 0  # NEW: число успешных write_file/edit_file
+    read_ops: int = 0  # NEW: число успешных read_file/read_symbol/list_files
 
 
 # ---------- декомпозиция задач ----------
@@ -2408,6 +2411,7 @@ def run_tool_loop(
     journal_subdir: Path | None = None,  # NEW: куда писать журнал
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
     verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
+    step_type: str | None = None,  # NEW: "edit" | "read" | None (без проверки)
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -2447,6 +2451,7 @@ def run_tool_loop(
     # --- история и стоимость ---
     history: list[tuple[ToolAction, ToolResult]] = []
     applied_ops = 0  # NEW: считаем успешные write_file/edit_file
+    read_ops = 0  # NEW: считаем успешные read_file/read_symbol/list_files
     total_cost_rub = 0.0
     total_cost_cny = 0.0
     total_cost_usd = 0.0
@@ -2476,6 +2481,11 @@ def run_tool_loop(
         history = loaded_history
         applied_ops = sum(
             1 for act, res in history if act.tool in ("write_file", "edit_file") and res.ok
+        )
+        read_ops = sum(
+            1
+            for act, res in history
+            if act.tool in ("read_file", "read_symbol", "list_files") and res.ok
         )
         start_iteration = len(history) + 1
         # журнал: используем существующий resume_from
@@ -2635,8 +2645,18 @@ def run_tool_loop(
 
         # --- finish ---
         if action.finish:
-            success = action.success
             summary = action.summary or "(no summary)"
+            if not action.success:
+                success = False
+            elif step_type is None:
+                # без типа: доверяем LLM (обратная совместимость)
+                success = True
+            elif step_type == "read":
+                # read-шаг: успех = хотя бы одно успешное чтение
+                success = read_ops > 0
+            else:
+                # edit-шаг: успех = хотя бы одна применённая правка
+                success = applied_ops > 0
             if journal_dir is not None:
                 _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
                 _save_tool_loop_history(journal_dir, history)
@@ -2684,6 +2704,8 @@ def run_tool_loop(
         history.append((action, tool_result))
         if action.tool in ("write_file", "edit_file") and tool_result.ok:
             applied_ops += 1
+        if action.tool in ("read_file", "read_symbol", "list_files") and tool_result.ok:
+            read_ops += 1
 
         if journal_dir is not None:
             _save_tool_loop_step(journal_dir, iteration, action, tool_result, llm_resp)
@@ -2768,6 +2790,7 @@ def run_tool_loop(
         commit_hash=commit_hash,  # NEW
         verify_errors=verify_errors,
         applied_ops=applied_ops,  # NEW
+        read_ops=read_ops,  # NEW
     )
 
     if journal_dir is not None:

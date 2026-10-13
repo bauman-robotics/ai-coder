@@ -627,12 +627,15 @@ def test_chain_zero_ops_not_success(tmp_path: Path, monkeypatch):
     (issues / "1-a.md").write_text("# task\n\nOnly.\n", encoding="utf-8")
 
     def fake_loop(**kwargs):
+        # 10.31: реальный run_tool_loop(step_type="edit") сам ставит
+        # success=False, stopped_reason="no_ops" при 0 правок.
         return ToolLoopResult(
-            success=True,
+            success=False,
             summary="nothing to do",
             iterations=1,
             total_cost_rub=0.05,
-            applied_ops=0,  # ← 0 правок
+            applied_ops=0,
+            stopped_reason="no_ops",
         )
 
     monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
@@ -653,10 +656,10 @@ def test_chain_zero_ops_not_success(tmp_path: Path, monkeypatch):
     assert report.exists()
     content = report.read_text(encoding="utf-8")
     assert "no_ops" in content, (
-        f"при applied_ops=0 в отчёте должен быть no_ops, а не completed.\n"
+        f"при 0 правок в отчёте должен быть no_ops, а не completed.\n"
         f"Содержимое report.md:\n{content}"
     )
-    assert "completed" not in content, "completed не должен встречаться, когда applied_ops=0"
+    assert "completed" not in content, "completed не должен встречаться, когда 0 правок"
 
 
 def test_chain_stop_on_fail(tmp_path: Path, monkeypatch):

@@ -1567,15 +1567,20 @@ def _ok_loop() -> "object":
 
 
 def _ok_loop_no_ops() -> "object":
-    """Успешный tool loop БЕЗ применённых правок (skipped)."""
+    """Имитация run_tool_loop(step_type="edit") с 0 правок.
+
+    10.31: реальный run_tool_loop сам возвращает success=False,
+    stopped_reason="no_ops" — мок это отражает.
+    """
     from ai_coder.agent import ToolLoopResult
 
     return ToolLoopResult(
-        success=True,
+        success=False,
         summary="nothing to do",
         iterations=1,
         total_cost_rub=0.05,
         applied_ops=0,
+        stopped_reason="no_ops",
     )
 
 
@@ -2223,7 +2228,7 @@ def test_run_split_goals_nonempty_dir_uses_timestamp(sample_project, minimal_cfg
 
 
 def test_run_agent_decompose_success_requires_applied_ops(sample_project, minimal_cfg, prompts_cfg):
-    """applied_ops=0 → subtask success=False (не «успех без правок»)."""
+    """10.31: decompose доверяет loop.success — 0 правок → loop.success=False."""
     from ai_coder.agent import DecomposeResult, run_agent_decompose
 
     minimal_cfg.agent.decompose_model = None
@@ -2247,7 +2252,7 @@ def test_run_agent_decompose_success_requires_applied_ops(sample_project, minima
 
     assert len(result.subtask_results) == 1
     assert result.subtask_results[0]["success"] is False, (
-        "loop.success=True без правок → subtask success=False"
+        "loop.success=False (0 правок) → subtask success=False"
     )
 
 
@@ -2278,7 +2283,8 @@ def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cf
 
 
 def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_cfg, prompts_cfg):
-    """v4-pro retry (applied_ops=0) → subtask success=False, не ложный ✅."""
+    """10.31: retry (0 правок) → loop.success=False → subtask success=False."""
+
     from ai_coder.agent import DecomposeResult, run_agent_decompose
 
     # Включаем retry — иначе ветка не сработает
