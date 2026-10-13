@@ -853,6 +853,7 @@ def _run_chain(
     do_plan: bool,
     journal: bool,
     dry_run: bool,
+    dry_read: bool,
     interactive: bool,
     replan: bool,
     rollback_on_fail: bool,
@@ -987,6 +988,7 @@ def _run_chain(
                     extra_exclude=extra_exclude,
                     journal=journal,
                     dry_run=dry_run,
+                    dry_read=dry_read,
                     interactive=interactive,
                     replan=replan,
                     rollback_on_fail=rollback_on_fail,
@@ -1014,6 +1016,7 @@ def _run_chain(
                     max_cost_rub=max_cost_rub,
                     journal=journal,
                     dry_run=dry_run,
+                    dry_read=dry_read,
                     interactive=interactive,
                     auto_commit=auto_commit,
                     step_type="edit",
@@ -1234,6 +1237,15 @@ def agent_cmd(
         False,
         "--dry-run",
         help="Tool loop: dangerous-инструменты не выполняются (только логи).",
+    ),
+    dry_read: bool = typer.Option(
+        False,
+        "--dry-read",
+        help=(
+            "Tool loop: read-only команды (ls/cat/grep/find/head/tail/wc, "
+            "git status/diff/log/show/branch/rev-parse/ls-files) выполняются "
+            "реально, write_file/edit_file блокируются. Несовместим с --dry-run."
+        ),
     ),
     only_path: list[str] = typer.Option(
         [],
@@ -1569,6 +1581,7 @@ def agent_cmd(
                 do_plan=plan,
                 journal=journal,
                 dry_run=dry_run,
+                dry_read=dry_read,
                 interactive=interactive,
                 replan=decompose_replan,
                 rollback_on_fail=decompose_rollback_on_fail,
@@ -1657,6 +1670,7 @@ def agent_cmd(
                     extra_exclude=list(exclude) or None,
                     journal=journal,
                     dry_run=dry_run,
+                    dry_read=dry_read,
                     interactive=interactive,
                     replan=decompose_replan,
                     rollback_on_fail=decompose_rollback_on_fail,
@@ -1722,6 +1736,10 @@ def agent_cmd(
             console.print("[red]Нельзя одновременно --dry-run и --interactive[/red]")
             raise typer.Exit(1)
 
+        if dry_run and dry_read:
+            console.print("[red]Нельзя одновременно --dry-run и --dry-read[/red]")
+            raise typer.Exit(1)
+
         try:
             with console.status("[cyan]Tool loop работает..."):
                 loop_result = run_tool_loop(
@@ -1736,6 +1754,7 @@ def agent_cmd(
                     max_cost_rub=max_cost_rub,
                     journal=journal,
                     dry_run=dry_run,
+                    dry_read=dry_read,
                     interactive=interactive,
                     auto_commit=commit,
                     resume_from=resume,  # NEW
@@ -1833,6 +1852,7 @@ def agent_cmd(
                         max_cost_rub=tests_budget,
                         journal=journal,
                         dry_run=dry_run,
+                        dry_read=dry_read,
                         interactive=interactive,
                         auto_commit=False,  # with-tests не коммитит сам
                         allow_blacklist=allow_blacklist,

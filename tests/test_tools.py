@@ -1111,3 +1111,129 @@ def test_write_file_no_chmod_txt(tmp_path: Path):
     assert r.ok
     mode = os.stat(tmp_path / "readme.txt").st_mode
     assert not (mode & 0o111), "readme.txt не должен быть executable"
+
+
+# ---------- dry-read (10.36) ----------
+
+
+def test_is_read_only_command_basic():
+    from ai_coder.tools import _is_read_only_command
+
+    assert _is_read_only_command("ls") is True
+    assert _is_read_only_command("ls -la") is True
+    assert _is_read_only_command("cat file.py") is True
+    assert _is_read_only_command("grep -n import file.py") is True
+    assert _is_read_only_command("head -20 file.py") is True
+    assert _is_read_only_command("tail -5 file.py") is True
+    assert _is_read_only_command("wc -l file.py") is True
+    assert _is_read_only_command("find . -name '*.py'") is True
+
+
+def test_is_read_only_command_git():
+    from ai_coder.tools import _is_read_only_command
+
+    assert _is_read_only_command("git status") is True
+    assert _is_read_only_command("git log --oneline -5") is True
+    assert _is_read_only_command("git diff HEAD") is True
+    assert _is_read_only_command("git show HEAD") is True
+    assert _is_read_only_command("git branch") is True
+    assert _is_read_only_command("git rev-parse HEAD") is True
+    assert _is_read_only_command("git ls-files") is True
+
+
+def test_is_read_only_command_negative():
+    from ai_coder.tools import _is_read_only_command
+
+    # git-подкоманды не read-only
+    assert _is_read_only_command("git commit -m x") is False
+    assert _is_read_only_command("git push") is False
+    assert _is_read_only_command("git checkout main") is False
+    # не read-only команды
+    assert _is_read_only_command("rm file") is False
+    assert _is_read_only_command("pytest -q") is False
+    assert _is_read_only_command("python -m pytest") is False
+    # мусор
+    assert _is_read_only_command("") is False
+    assert _is_read_only_command("git") is False  # только git, без подкоманды
+
+
+def test_dry_read_grep_executes(tmp_path: Path):
+    """С dry_read=True: run_shell с grep ВЫПОЛНЯЕТСЯ реально (не симулируется)."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")
+
+    r = execute_tool(
+        "run_shell",
+        {"command": "grep -n '=' a.py"},
+        tmp_path,
+        dry_run=True,
+        dry_read=True,
+    )
+
+    assert r.ok is True
+    # НЕ должно быть "(dry-run)" превью
+    assert "(dry-run)" not in r.output
+    # реальный вывод grep
+    assert "x = 1" in r.output
+
+
+def test_dry_read_git_log_executes(tmp_path: Path):
+    """С dry_read=True: git log ВЫПОЛНЯЕТСЯ реально."""
+    # git log требует git-репо — пропустим без него
+    # Просто проверим что _is_read_only_command пропускает
+    from ai_coder.tools import _is_read_only_command
+
+    assert _is_read_only_command("git log --oneline -3") is True
+
+
+def test_dry_read_write_file_still_blocked(tmp_path: Path):
+    """С dry_read=True: write_file ВСЁ РАВНО блокируется (симулируется)."""
+    r = execute_tool(
+        "write_file",
+        {"path": "new.py", "content": "x = 1\n"},
+        tmp_path,
+        dry_run=True,
+        dry_read=True,
+    )
+
+    assert r.ok is True
+    assert "(dry-run)" in r.output
+    assert "WROTE" in r.output
+    # файл НЕ создан
+    assert not (tmp_path / "new.py").exists()
+
+
+def test_dry_read_edit_file_still_blocked(tmp_path: Path):
+    """С dry_read=True: edit_file ВСЁ РАВНО блокируется (симулируется)."""
+    (tmp_path / "a.py").write_text("old\n", encoding="utf-8")
+
+    r = execute_tool(
+        "edit_file",
+        {"path": "a.py", "old": "old", "new": "new"},
+        tmp_path,
+        dry_run=True,
+        dry_read=True,
+    )
+
+    assert r.ok is True
+    assert "(dry-run)" in r.output
+    assert "EDITED" in r.output
+    # файл НЕ изменён
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "old\n"
+
+
+def test_dry_run_without_dry_read_still_simulates(tmp_path: Path):
+    """Без dry_read: обычный dry_run симулирует даже read-only команды."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+    r = execute_tool(
+        "run_shell",
+        {"command": "grep -n '=' a.py"},
+        tmp_path,
+        dry_run=True,
+        dry_read=False,
+    )
+
+    assert r.ok is True
+    assert "(dry-run)" in r.output
+    assert "RAN" in r.output

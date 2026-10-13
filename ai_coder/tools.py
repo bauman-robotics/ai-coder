@@ -118,6 +118,36 @@ _GIT_FORBIDDEN: frozenset[str] = frozenset(
     }
 )
 
+# Read-only команды: при --dry-read выполняются реально (без симуляции).
+READ_ONLY_COMMANDS: frozenset[str] = frozenset({"ls", "cat", "grep", "find", "head", "tail", "wc"})
+
+# Read-only git-подкоманды: при --dry-read выполняются реально.
+READ_ONLY_GIT_SUBCOMMANDS: frozenset[str] = frozenset(
+    {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files"}
+)
+
+
+def _is_read_only_command(cmd: str) -> bool:
+    """
+    Проверяет, является ли команда read-only.
+
+    True, если первый токен в READ_ONLY_COMMANDS,
+    или первый токен 'git' и второй — в READ_ONLY_GIT_SUBCOMMANDS.
+    При ошибке парсинга возвращает False.
+    """
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    if parts[0] in READ_ONLY_COMMANDS:
+        return True
+    if parts[0] == "git" and len(parts) >= 2 and parts[1] in READ_ONLY_GIT_SUBCOMMANDS:
+        return True
+    return False
+
+
 # Чёрный список флагов для простых команд.
 # Токен сравнивается целиком ИЛИ по префиксу до '=' (для --flag=value).
 # Whitelist по имени команды — уже есть; это дополнительный слой
@@ -842,6 +872,7 @@ def execute_tool(
     project_root: Path,
     *,
     dry_run: bool = False,
+    dry_read: bool = False,
     write_cfg: Any = None,
     allow_blacklist: bool = False,
 ) -> ToolResult:
@@ -881,6 +912,14 @@ def execute_tool(
                         f"{name}: path '{rel}' is blacklisted (use --allow-blacklist to override)"
                     ),
                 )
+
+    # dry-read: read-only команды (ls/cat/grep/find/head/tail/wc и
+    # безопасные git-подкоманды) выполняются реально даже при dry_run.
+    if dry_read and name == "run_shell" and _is_read_only_command(args.get("command", "")):
+        try:
+            return fn(args, project_root)
+        except Exception as e:
+            return ToolResult(ok=False, error=f"tool crashed: {type(e).__name__}: {e}")
 
     # dry-run: пропускаем dangerous, но сообщаем, что БЫЛО БЫ сделано.
     # Формулировка "EDITED/WROTE/RAN" (а не "would have called") — чтобы
