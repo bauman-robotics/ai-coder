@@ -706,3 +706,21 @@
 - [x] **`--chain`: журнал при полном провале** — ЗАКРЫТО 10.30:
   `_save_chain_report` пишет `report.md` всегда, даже если все
   задачи упали. `stopped_reason="no_ops"` при 0 правок.
+
+---
+
+## 10.34+: автономность — доработки
+
+- [ ] **«Признание сложности».** Если N попыток подряд провалились —
+  остановиться и сообщить: «задача сложна для <model>». Опционально:
+  флаг `--strict-autonomy`. См. `docs/autonomy.md` → Проблема 4.
+- [ ] **Память между запусками.** `.ai-out/<project>/tasks/<hash>/state.json`,
+  `--resume-last`. См. `docs/autonomy.md` → Этап 6.
+- [ ] **Конвенции проекта.** `.ai-out/<project>/conventions.md` —
+  тесты, docstrings, формат коммитов. См. `docs/autonomy.md` → Этап 7.
+- [ ] **Reverse-check.** LLM перечитывает свой diff после
+  `finish(success)`. См. `docs/autonomy.md` → Уровень 2.5.
+- [ ] **Улучшение replan: история подзадачи.** Передавать последние
+  5-10 шагов. См. `docs/autonomy.md` → Этап 2.
+- [ ] **Рекурсивный replan.** `modify` → fail → `modify` с
+  ограничением глубины. См. `docs/autonomy.md` → Этап 4.
