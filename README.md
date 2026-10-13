@@ -284,6 +284,24 @@ requirements-dev.txt      # dev-зависимости
 .gitignore
 ```
 
+## GUI
+
+Веб-панель на FastAPI + Jinja2 + HTMX.
+
+Установка:
+
+```bash
+pip install -e ".[gui]"
+```
+
+Запуск:
+
+```bash
+uvicorn ai_coder.gui.app:app --reload
+```
+
+Панель доступна на http://127.0.0.1:8000/, health-check — `/health`.
+
 ## Лицензия
 
 В проекте отсутствует явное указание лицензии (файл LICENSE не найден, поле license в pyproject.toml отсутствует).
