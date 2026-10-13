@@ -85,9 +85,19 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 **Запуск:**
 
-    pip install -e ".[gui]"
-    uvicorn ai_coder.gui.app:app --reload --port 8000
+    cp .env.example .env && nano .env   # вставь DEEPSEEK_API_KEY
+    chmod 600 .env                       # один раз
+    bash scripts/run_gui.sh 8000         # Ctrl+C — стоп
+    # или: bash scripts/run_gui.sh 8000 --reload
     # http://127.0.0.1:8000/
+
+**Остановка:**
+
+    bash scripts/stop_gui.sh 8000        # по порту
+    bash scripts/stop_gui.sh all         # все uvicorn ai_coder.gui
+
+**API-ключ:** `.env` (локальный) или `~/.ai-coder.env` (глобальный).
+`run_gui.sh` подхватывает автоматически. `.env` — в `.gitignore`.
 
 **A.2:** запуск команды со стримингом (SSE).
 - `POST /run` — `subprocess.Popen([sys.executable, "-m", "ai_coder.cli", ...])`,
