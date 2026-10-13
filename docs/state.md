@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-13 (итерация 10.29: `--no-verify` отключает verify_commands)
+**Дата обновления:** 2026-10-13 (итерации 10.29–10.32: `--no-verify`, chain report, read-шаги)
 **Ветка:** main
-**Последний коммит:** ba7e5e0 (docs(experiments): E13)
-**Тесты:** 399 passed | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** cac2dcc (feat(agent): read-шаги в плане)
+**Тесты:** 405 passed | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает
 
 ---
@@ -135,6 +135,25 @@ Python-проектов через DeepSeek API. Работает с git-про�
     - `_slug_for_issue` — транслит кириллицы.
     - E2E: 3 issues (0.19 RUB) → `--chain --plan` → 3 задачи ✅
       (0.77 RUB). Полная цепочка ~0.95 RUB.
+  - **chain report.md (10.30):**
+    - `_save_chain_report` пишет `report.md` в `chain-<ts>/`
+      **всегда** — включая полный провал.
+    - `stopped_reason="no_ops"` при `success=True, applied_ops=0`.
+    - `report_path` в dict + вывод «Отчёт: ...» в консоль.
+  - **step_type + read_ops (10.31):**
+    - `run_tool_loop(step_type)` — критерий успеха по типу шага:
+      `edit` → `applied_ops > 0`, `read` → `read_ops > 0`,
+      `None` → доверие LLM (обратная совместимость).
+    - `ToolLoopResult.read_ops` — счётчик чтений.
+    - Правило успеха **переехало** внутрь `run_tool_loop`
+      (было в `run_agent_decompose` и `_run_chain`).
+  - **read-шаги в плане (10.32):**
+    - `parse_agent_plan` принимает `type: "read"`.
+    - `_is_diagnostic_step` **переклассифицирует** `edit` → `read`
+      (было — отбрасывал).
+    - Промпт `agent_plan_json` разрешает `type: "read"`.
+    - `run_agent` read-шаги **пропускает** (apply_plan не умеет).
+      Полная поддержка — TODO (10.33).
   - **Автономность (10.22, в работе):**
     - `docs/autonomy.md` — принципы (4 уровня), план.
     - **Этап 1 (E8):** граница flash — серия задач нарастающей
@@ -156,7 +175,12 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Git-интеграция: ветки `ai-coder/<slug>-<ts>`, push, PR
   (автокоммит уже есть с 8.8)
 - **Направление 10, остаток:** `--interactive-plan` (C — диалог
-  уточнений), `--context-search` (D — агент сам ищет контекст)
+  уточнений), `--context-search` (D — агент сам ищет контекст).
+  Уровни **A, B, E, F** закрыты (10.24–10.26).
+- **read в `run_agent`** (10.33): сейчас read-шаги **пропускаются**
+  с предупреждением. Полная поддержка — через `run_tool_loop` в
+  `_run_agent_step`.
+- **`--split-goals`: pre-check «уже решено»** — не реализован.
 
 ---
 
