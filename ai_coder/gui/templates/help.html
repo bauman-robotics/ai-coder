@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Справка — ai-coder</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Справка — ai-coder</h1>
+        <nav class="report-nav">
+            <a href="/">← к панели</a>
+            <a href="/reports">Все отчёты</a>
+            <a href="/stats">Статистика</a>
+        </nav>
+    </header>
+    <main>
+        <p>Краткая справка по режимам, опциям и типовым сценариям
+            запуска агента ai-coder.</p>
+
+        <section class="panel markdown-body" id="modes">
+            <h2>Режимы</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Режим</th>
+                        <th>Флаг</th>
+                        <th>Что делает</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>plain</code></td>
+                        <td>— (по умолчанию)</td>
+                        <td>Один запрос к LLM: без доступа к файлам и
+                            инструментам. Быстро и дёшево — для вопросов,
+                            планов и генерации текста.</td>
+                    </tr>
+                    <tr>
+                        <td><code>tool-loop</code></td>
+                        <td><code>--tool-loop</code></td>
+                        <td>Цикл «мысль → вызов инструмента → результат».
+                            Агент читает файлы, правит их, запускает
+                            проверки. Основной рабочий режим.</td>
+                    </tr>
+                    <tr>
+                        <td><code>decompose</code></td>
+                        <td><code>--decompose</code></td>
+                        <td>Разбивает цель на подзадачи и выполняет их
+                            последовательно. Удобно для крупных
+                            многошаговых задач.</td>
+                    </tr>
+                    <tr>
+                        <td><code>plan</code></td>
+                        <td><code>--plan</code></td>
+                        <td>Только строит план работ без изменений в коде.
+                            Полезно перед запуском основного агента.</td>
+                    </tr>
+                    <tr>
+                        <td><code>chain</code></td>
+                        <td><code>--chain</code></td>
+                        <td>Цепочка шагов из плана: каждый пункт плана
+                            выполняется отдельным проходом.</td>
+                    </tr>
+                    <tr>
+                        <td><code>split-goals</code></td>
+                        <td><code>--split-goals</code></td>
+                        <td>Разбивает одну общую цель на несколько
+                            независимых целей и обрабатывает их
+                            по отдельности.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel markdown-body" id="options">
+            <h2>Опции</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Опция</th>
+                        <th>Описание</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--apply</code></td>
+                        <td>Применить предложенные агентом изменения к
+                            файлам проекта.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--commit</code></td>
+                        <td>Закоммитить изменения в git после
+                            успешного применения (обычно вместе с
+                            <code>--apply</code>).</td>
+                    </tr>
+                    <tr>
+                        <td><code>--dry-run</code></td>
+                        <td>Сухой прогон: ничего реально не пишется и не
+                            запускается, только журнал действий.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--dry-read</code></td>
+                        <td>Чтение разрешено, запись и выполнение команд
+                            блокируются. Безопасный анализ кода.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--max-cost-rub</code></td>
+                        <td>Ограничение стоимости запуска в рублях.
+                            Агент остановится при превышении лимита.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--max-iterations</code></td>
+                        <td>Максимальное число итераций цикла агента.
+                            Защита от зацикливания.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--auto-fix-issues</code></td>
+                        <td>Автоматически исправлять найденные проблемы
+                            (по результатам проверок).</td>
+                    </tr>
+                    <tr>
+                        <td><code>--with-tests</code></td>
+                        <td>Запускать тесты после изменений и учитывать
+                            их результат.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--issue</code></td>
+                        <td>Работа по конкретной issue: агент учитывает
+                            её описание как цель.</td>
+                    </tr>
+                    <tr>
+                        <td><code>--plan</code></td>
+                        <td>Режим построения плана (см. «Режимы»).</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel markdown-body" id="recommendations">
+            <h2>Рекомендации</h2>
+            <ul>
+                <li>Начинайте с <code>--plan</code> или
+                    <code>--dry-read</code>, чтобы оценить объём работ
+                    и стоимость до правок.</li>
+                <li>Всегда задавайте <code>--max-cost-rub</code> на
+                    незнакомых задачах — это ограничивает расход.</li>
+                <li>Для мелких однозначных правок достаточно
+                    <code>tool-loop</code> без лишних опций.</li>
+                <li>Перед <code>--commit</code> убедитесь, что рабочее
+                    дерево чистое и вы готовы принять изменения.</li>
+                <li>Комбинируйте <code>--apply --with-tests</code>,
+                    чтобы правки проверялись тестами автоматически.</li>
+                <li>Крупные задачи дробите через <code>decompose</code>
+                    или <code>split-goals</code> — так проще
+                    контролировать прогресс.</li>
+            </ul>
+        </section>
+
+        <section class="panel markdown-body" id="examples">
+            <h2>Примеры</h2>
+            <p>План работ без изменений в коде:</p>
+            <pre><code>ai-coder agent "Добавить ретраи в llm.py" . --plan</code></pre>
+
+            <p>Безопасный анализ с ограничением стоимости:</p>
+            <pre><code>ai-coder agent "Найти неиспользуемый код" ai_coder/ --dry-read --max-cost-rub 0.5</code></pre>
+
+            <p>Правка с проверкой тестами:</p>
+            <pre><code>ai-coder agent "Поправить парсинг дат" ai_coder/ --tool-loop --apply --with-tests</code></pre>
+
+            <p>Применить и закоммитить:</p>
+            <pre><code>ai-coder agent "Обновить README" . --tool-loop --apply --commit</code></pre>
+
+            <p>Крупная задача через декомпозицию:</p>
+            <pre><code>ai-coder agent "Перевести проект на новый API" . --decompose --max-cost-rub 5</code></pre>
+        </section>
+    </main>
+</body>
+</html>

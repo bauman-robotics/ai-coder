@@ -108,6 +108,12 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {})
 
 
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(request: Request) -> HTMLResponse:
+    """Страница справки по ai-coder."""
+    return templates.TemplateResponse(request, "help.html", {})
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Health-check."""
