@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-10-13] iteration 10.36 — --dry-read (read-выполняется, write-блокируется)
+
+Новый флаг `--dry-read` для `ai-coder agent --tool-loop`.
+
+### Что сделано
+
+**`ai_coder/tools.py`:**
+- `READ_ONLY_COMMANDS` (`ls, cat, grep, find, head, tail, wc`).
+- `READ_ONLY_GIT_SUBCOMMANDS` (`status, diff, log, show, branch,
+  rev-parse, ls-files`).
+- `_is_read_only_command(cmd)` — `shlex.split`, `try/except`,
+  для git — проверка `len >= 2`.
+- `execute_tool(..., dry_read: bool = False)`:
+  проверка **ПЕРЕД** `if dry_run and spec.dangerous` — read-only
+  `run_shell` → реальный запуск; `write_file`/`edit_file` —
+  как `dry_run`.
+
+**`ai_coder/agent.py`:**
+- `run_tool_loop(dry_read: bool = False)`.
+- `run_agent_decompose(dry_read: bool = False)`.
+- Проброс в оба `run_tool_loop` (основной + retry).
+
+**`ai_coder/cli.py`:**
+- `--dry-read` (несовместим с `--dry-run`, валидация).
+- Проброс в `_run_chain`, `run_agent_decompose`, оба `run_tool_loop`.
+
+**`tests/test_tools.py`:** +8 тестов.
+
+### E16 — доказательство
+
+Прямое сравнение (задача «Найди READ_ONLY_COMMANDS»):
+
+| Флаг | Итерации | RUB | Результат |
+|---|---|---|---|
+| `--dry-read` | **1** | **0.075** | ✅ |
+| `--dry-run` | 8 | 0.41 | ❌ max_iterations |
+
+`--dry-run` зацикливается на `(dry-run) RAN ... (simulated OK)`.
+`--dry-read` — **×8 быстрее, ×5.5 дешевле**.
+
+### Как сделано
+
+- Агент (`--tool-loop`, **21 итерация, 2.08 RUB**, `--max-cost-rub`):
+  `tools.py` + `agent.py` — **готовы** (42 строки).
+- **Не успел** `cli.py` + тесты — флейки на старте (10 из 21:
+  `parse_error`, `missing_args` × 3, `run_shell rejected`).
+- **Вручную:** `cli.py` (флаг + валидация + проброс), 8 тестов.
+
+См. `docs/experiments.md` → E16.
+
+---
+
 ## [2026-10-13] iteration 10.35 — GUI A.2 (запуск + стриминг)
 
 Запуск команды из веб-панели со стримингом вывода в браузер.

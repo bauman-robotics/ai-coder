@@ -23,6 +23,21 @@
 \* `run_shell` опасен тем, что выполняет внешние процессы, но ограничен
 whitelist-ом, таймаутом и лимитом вывода.
 
+> **`--dry-read`** (10.36) — режим «читать можно, писать нельзя».
+> Read-only команды (`ls/cat/grep/find/head/tail/wc`,
+> `git status/diff/log/show/branch/rev-parse/ls-files`)
+> выполняются **реально**; `write_file`/`edit_file` и остальные
+> `run_shell` — блокируются. **Несовместим с `--dry-run`.**
+>
+> **Зачем:** `--dry-run` для **read-задач** — антипаттерн. Агент
+> получает `(dry-run) RAN ... (simulated OK)` и **зацикливается**.
+> E16: «найди X» — `--dry-read` → **1 итерация, 0.075 RUB**;
+> `--dry-run` → **8 итераций, 0.41 RUB, max_iterations**.
+>
+> **Пример:**
+>
+>     ai-coder agent "Найди все TODO" . --tool-loop --dry-read
+
 > **`--no-verify`** в `agent` отключает **и** `py_compile`, **и**
 > `verify_commands` (`cfg.agent.verify_commands`). Если нужно
 > отключить только `py_compile` — используй `--verify-commands ""`.

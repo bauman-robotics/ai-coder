@@ -110,6 +110,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
   - инструменты: `read_file`, `list_files`, `write_file`,
     `edit_file`, `run_shell` (whitelist, timeout, лог);
   - `--dry-run` — dangerous не выполняются, только логи;
+- `--dry-read` — read-only команды (`ls/cat/grep/find/head/tail/wc`,
+  `git status/diff/log/show/branch/rev-parse/ls-files`) выполняются
+  реально; `write_file`/`edit_file` и остальные `run_shell` — блокируются.
+  Несовместим с `--dry-run`. Решает проблему `--dry-run` для read-задач
+  (E16: 1 итерация, 0.075 RUB vs 8 итераций, 0.41 RUB);
   - `--interactive` — подтверждение каждого dangerous (y/n/a/s/d);
   - `--max-iterations` — лимит итераций;
   - бэкап перед первым изменением + `ai-coder rollback` совместим;
