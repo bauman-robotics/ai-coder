@@ -35,7 +35,9 @@
                     <td class="nowrap">{{ j.mtime_iso }}</td>
                     <td>{{ j.project }}</td>
                     <td title="{{ j.title }}">{{ j.journal }}</td>
-                    <td class="{% if j.success == 'True' %}ok{% elif j.success == 'False' %}fail{% endif %}">{{ j.success }}</td>
+                    <td class="{% if j.success == 'True' %}ok{% elif j.success == 'False' %}fail{% elif j.success == 'preview' %}preview{% endif %}">
+                        {% if j.success == 'True' %}✅{% elif j.success == 'False' %}❌{% elif j.success == 'preview' %}<span title="preview only — правки не применялись">⏸</span>{% else %}—{% endif %}
+                    </td>
                     <td class="num">{{ j.iterations }}</td>
                     <td class="num nowrap">{{ j.cost }}</td>
                     <td>{{ j.reason }}</td>

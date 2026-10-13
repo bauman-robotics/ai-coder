@@ -232,6 +232,75 @@ async def stop(run_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+def _extract_success(meta: dict[str, str]) -> str:
+    """
+    Нормализует признак успеха из метаданных report.md.
+
+    Источники (в порядке приоритета):
+      1. "Успех" — True/False (tool-loop, autofix).
+      2. "Статус" — ✅ успех / ❌ неуспех (decompose).
+      3. "Причина остановки" — completed / error / max_iterations (agent).
+
+    Возвращает 'True' / 'False' / '—'.
+    """
+    # 1. Явное поле "Успех"
+    raw = meta.get("Успех", "").strip()
+    low = raw.lower()
+    if low in ("true", "success", "ok", "✅", "yes"):
+        return "True"
+    if low in ("false", "failed", "fail", "❌", "no"):
+        return "False"
+
+    # 2. Поле "Статус" (decompose) — содержит эмодзи
+    status = meta.get("Статус", "").strip()
+    if "✅" in status:
+        return "True"
+    if "❌" in status:
+        return "False"
+
+    # 3. Fallback по "Причина остановки" (agent).
+    # Реальные значения из 83 журналов:
+    #   completed (59), max_iterations (8), error (4), max_cost (3),
+    #   cancelled (2), parse_error (2), preview_only (2).
+    reason = meta.get("Причина остановки", "").strip().lower()
+    if reason in ("completed", "success", "finish", "finished"):
+        return "True"
+    if reason in (
+        "error",
+        "failed",
+        "cancelled",
+        "canceled",
+        "max_iterations",
+        "max_iterations_reached",
+        "max_cost",
+        "parse_error",
+    ):
+        return "False"
+    # preview_only — не провал, не успех: ничего не выполнялось.
+    if reason == "preview_only":
+        return "preview"
+
+    return "—"
+
+
+def _round_cost(raw: str) -> str:
+    """
+    Округляет стоимость из report.md до 4 знаков.
+
+    Вход: '0.060524 RUB' → '0.0605 RUB'.
+    Если не удалось распарсить — возвращает исходную строку.
+    """
+    if not raw or raw == "—":
+        return raw
+    parts = raw.split(maxsplit=1)
+    try:
+        num = float(parts[0])
+    except (ValueError, IndexError):
+        return raw
+    rounded = f"{num:.4f}"
+    return f"{rounded} {parts[1]}" if len(parts) > 1 else rounded
+
+
 def _parse_report_meta(report_path: Path) -> dict[str, str]:
     """
     Грубый парсер метаданных из report.md.
@@ -244,9 +313,15 @@ def _parse_report_meta(report_path: Path) -> dict[str, str]:
         text = report_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return meta
-    # Только первые ~30 строк — метаданные всегда в шапке.
-    for line in text.splitlines()[:30]:
-        m = re.match(r"-\s*\*\*(?P<key>[^:*]+):\*\*\s*(?P<val>.*)", line)
+    # Первые ~40 строк — метаданные всегда в шапке.
+    # Поддерживаем два формата:
+    #   - **Ключ:** значение   (tool-loop, autofix)
+    #   **Ключ:** значение      (decompose)
+    for line in text.splitlines()[:40]:
+        m = re.match(
+            r"-?\s*\*\*(?P<key>[^:*]+):\*\*\s*(?P<val>.*)",
+            line,
+        )
         if m:
             meta[m.group("key").strip()] = m.group("val").strip()
     return meta
@@ -286,6 +361,9 @@ def _collect_journals() -> list[dict[str, str]]:
             except ValueError:
                 continue
             meta = _parse_report_meta(report)
+            # У agent-* поля "Стоимость" нет — есть "Стоимость всего".
+            cost_raw = meta.get("Стоимость") or meta.get("Стоимость всего") or "—"
+            cost = _round_cost(cost_raw)
             mtime = report.stat().st_mtime
             # Первая строка report.md — заголовок.
             try:
@@ -302,8 +380,8 @@ def _collect_journals() -> list[dict[str, str]]:
                     .astimezone()
                     .strftime("%Y-%m-%d %H:%M"),
                     "url": f"/reports/{project_dir.name}/{journal_dir.name}",
-                    "success": meta.get("Успех", "—"),
-                    "cost": meta.get("Стоимость", "—"),
+                    "success": _extract_success(meta),
+                    "cost": cost,
                     "iterations": meta.get("Итераций", "—"),
                     "reason": meta.get("Причина остановки", "—"),
                     "title": title,

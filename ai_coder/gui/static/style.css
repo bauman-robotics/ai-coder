@@ -351,3 +351,7 @@ button.primary:hover {
 .reports-table a:hover {
     text-decoration: underline;
 }
+.reports-table .preview {
+    color: var(--muted, #888);
+    opacity: 0.7;
+}
