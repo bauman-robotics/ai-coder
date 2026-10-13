@@ -213,6 +213,16 @@
 
         <section class="panel markdown-body" id="examples">
             <h2>Примеры</h2>
+            <p>Первый запуск (безопасно, ничего не меняет):</p>
+            <pre><code># 1. Список действий (0 RUB, без API)
+ai-coder actions --verbose
+
+# 2. Обзор проекта (~0.05 RUB, ничего не меняет)
+ai-coder run greet . --depth normal
+
+# 3. Найти что-то в проекте (read-only, write блокируется)
+ai-coder agent "Найди все TODO в проекте" . --tool-loop --dry-read</code></pre>
+
             <p>План работ без изменений в коде:</p>
             <pre><code>ai-coder agent "Добавить ретраи в llm.py" . --plan</code></pre>
 
