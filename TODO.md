@@ -761,3 +761,21 @@
   5-10 шагов. См. `docs/autonomy.md` → Этап 2.
 - [ ] **Рекурсивный replan.** `modify` → fail → `modify` с
   ограничением глубины. См. `docs/autonomy.md` → Этап 4.
+
+---
+
+## GUI — сделано
+
+- [x] **A.0** — скелет FastAPI + Jinja2 + HTMX.
+- [x] **A.1** — форма сборки команд.
+- [x] **A.2** — запуск со стримингом (SSE + fetch).
+- [x] **A.3** — `max-cost-rub` select + copy-output-btn.
+- [x] **A.4** — `check_mode` select (normal/dry-run/dry-read).
+- [x] **A.5** — ссылка на отчёт после `/run` + mount `/ai-out`.
+- [x] **A.6** — рендер `report.md` в HTML.
+- [x] **A.7** — `/reports` — список всех журналов (2026-10-13, 10.40).
+
+**Осталось:**
+- [ ] **A.8** — история usage в GUI (графики Chart.js: по дням/моделям/проектам).
+- [ ] **A.9** — пагинация/фильтр в `/reports` (если журналов станет 500+).
+- [ ] **A.10** — встроенный терминал (PTY + WebSocket, этап B).

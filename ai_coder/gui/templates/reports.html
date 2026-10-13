@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Журналы — ai-coder</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Журналы</h1>
+        <nav class="report-nav">
+            <a href="/">← к панели</a>
+        </nav>
+    </header>
+    <main>
+        {% if journals %}
+        <p class="reports-count">Всего: {{ journals | length }}</p>
+        <table class="reports-table">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Проект</th>
+                    <th>Журнал</th>
+                    <th>Успех</th>
+                    <th>Итераций</th>
+                    <th>Стоимость</th>
+                    <th>Причина</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for j in journals %}
+                <tr>
+                    <td class="nowrap">{{ j.mtime_iso }}</td>
+                    <td>{{ j.project }}</td>
+                    <td title="{{ j.title }}">{{ j.journal }}</td>
+                    <td class="{% if j.success == 'True' %}ok{% elif j.success == 'False' %}fail{% endif %}">{{ j.success }}</td>
+                    <td class="num">{{ j.iterations }}</td>
+                    <td class="num nowrap">{{ j.cost }}</td>
+                    <td>{{ j.reason }}</td>
+                    <td><a href="{{ j.url }}">открыть →</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Журналов пока нет. Запустите агента — и он появится здесь.</p>
+        {% endif %}
+    </main>
+</body>
+</html>

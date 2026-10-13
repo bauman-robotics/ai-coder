@@ -293,3 +293,61 @@ button.primary:hover {
 .markdown-body a {
     color: #6cb6ff;
 }
+
+/* ── /reports — таблица журналов ──────────────────────────────── */
+
+.reports-count {
+    color: var(--muted, #888);
+    margin: 0 0 1rem;
+}
+
+.reports-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+
+.reports-table th,
+.reports-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border, #333);
+    vertical-align: top;
+}
+
+.reports-table th {
+    color: var(--muted, #aaa);
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-strong, #555);
+}
+
+.reports-table tbody tr:hover {
+    background: var(--row-hover, rgba(255, 255, 255, 0.03));
+}
+
+.reports-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.reports-table .nowrap {
+    white-space: nowrap;
+}
+
+.reports-table .ok {
+    color: var(--ok, #4caf50);
+}
+
+.reports-table .fail {
+    color: var(--fail, #e57373);
+}
+
+.reports-table a {
+    color: var(--link, #64b5f6);
+    text-decoration: none;
+}
+
+.reports-table a:hover {
+    text-decoration: underline;
+}

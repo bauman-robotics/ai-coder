@@ -1,10 +1,10 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-13 (итерации 10.29–10.39: `--no-verify`, read-шаги, GUI A.0–A.6, partial warnings)
+**Дата обновления:** 2026-10-13 (итерации 10.29–10.40: `--no-verify`, read-шаги, GUI A.0–A.7, partial warnings)
 **Ветка:** main
 **Последний коммит:** `4638b2b` (10.39: partial warnings) + docs
 **Тесты:** 409 passed | CI: pytest x3 + ruff + mypy — зелёный
-**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.6
+**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.7
 
 ---
 
@@ -61,7 +61,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `.ai-out/<project>/cache/<hash>.json`
 - Флаги `--no-cache` / `--refresh`
 
-### GUI (A.0–A.6)
+### GUI (A.0–A.7)
 
 Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
 
@@ -118,8 +118,24 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Ссылка в `index.html` → `/reports/<project>/<journal>` (вместо raw
   `.md` — **отрендеренный** HTML).
 
-**Не умеет (A.3+):** встроенный терминал (PTY+WebSocket, этап B),
-история/статистика из `usage.jsonl`, ссылки на отчёты. См. `docs/ui-ideas.md`.
+**A.7:** список журналов.
+- `app.py`: `GET /reports` — обход `.ai-out/*/*/report.md`,
+  сортировка по mtime desc, рендер `reports.html`.
+- `_collect_journals()` — защита от symlink-выхода за `AI_OUT_DIR`.
+- `_parse_report_meta()` — парсер `- **Ключ:** значение` из шапки
+  `report.md` (Успех / Стоимость / Итераций / Причина остановки).
+- `_is_journal_dir()` + `JOURNAL_PREFIXES` — whitelist префиксов;
+  backup/cache отсекаются отсутствием `report.md`.
+- `templates/reports.html` — таблица (Дата / Проект / Журнал / Успех
+  / Итераций / Стоимость / Причина / ссылка), 8 колонок.
+- `index.html`: `<nav class="report-nav">` в `<header>` → «Все отчёты».
+- `style.css`: `.reports-table` (тёмная тема, `ok`/`fail`/`num`).
+- Живой прогон: **83 журнала** (67 tool-loop + 11 agent + 3 decompose
+  + 2 autofix), `/reports/ai-coder/tool-loop-<ts>` → 200.
+
+**Не умеет (A.8+):** встроенный терминал (PTY+WebSocket, этап B),
+история/статистика из `usage.jsonl` (графики Chart.js),
+пагинация/фильтр по проекту. См. `docs/ui-ideas.md`.
 
 ### Agent
 

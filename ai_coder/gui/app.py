@@ -1,11 +1,13 @@
 """FastAPI-приложение веб-панели ai-coder."""
 
+import re
 import shlex
 import signal
 import subprocess
 import sys
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from html import escape as html_escape
 from pathlib import Path
 
@@ -25,6 +27,17 @@ app = FastAPI(title="ai-coder GUI")
 
 # Реестр запущенных процессов: run_id -> Popen.
 RUNNING: dict[str, subprocess.Popen] = {}
+
+# Whitelist префиксов журналов для /reports (backup/cache отсекаются).
+JOURNAL_PREFIXES = (
+    "tool-loop-",
+    "agent-",
+    "decompose-",
+    "chain-plan-",  # до chain-, чтобы не перехватить chain-plan
+    "chain-",
+    "autofix-",
+    "plan-",
+)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -219,6 +232,87 @@ async def stop(run_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+def _parse_report_meta(report_path: Path) -> dict[str, str]:
+    """
+    Грубый парсер метаданных из report.md.
+
+    Ищет строки вида `- **Ключ:** значение`. Достаточно для
+    Успех / Стоимость / Итераций / Причина остановки.
+    """
+    meta: dict[str, str] = {}
+    try:
+        text = report_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return meta
+    # Только первые ~30 строк — метаданные всегда в шапке.
+    for line in text.splitlines()[:30]:
+        m = re.match(r"-\s*\*\*(?P<key>[^:*]+):\*\*\s*(?P<val>.*)", line)
+        if m:
+            meta[m.group("key").strip()] = m.group("val").strip()
+    return meta
+
+
+def _is_journal_dir(name: str) -> bool:
+    """True, если имя директории похоже на журнал агента."""
+    return name.startswith(JOURNAL_PREFIXES)
+
+
+def _collect_journals() -> list[dict[str, str]]:
+    """
+    Обходит .ai-out/<project>/<journal>/report.md и собирает метаданные.
+
+    Сортировка — по mtime (свежие сверху). Возвращает список словарей
+    с ключами: project, journal, mtime, mtime_iso, url, success,
+    cost, iterations, reason, title.
+    """
+    result: list[dict[str, str]] = []
+    if not AI_OUT_DIR.is_dir():
+        return result
+    root = AI_OUT_DIR.resolve()
+    for project_dir in sorted(AI_OUT_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        for journal_dir in sorted(project_dir.iterdir()):
+            if not journal_dir.is_dir():
+                continue
+            if not _is_journal_dir(journal_dir.name):
+                continue
+            report = journal_dir / "report.md"
+            if not report.is_file():
+                continue
+            try:
+                # Защита от symlink-выхода за пределы AI_OUT_DIR.
+                report.resolve().relative_to(root)
+            except ValueError:
+                continue
+            meta = _parse_report_meta(report)
+            mtime = report.stat().st_mtime
+            # Первая строка report.md — заголовок.
+            try:
+                first_line = report.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+            except (OSError, IndexError):
+                first_line = ""
+            title = first_line.lstrip("# ").strip()
+            result.append(
+                {
+                    "project": project_dir.name,
+                    "journal": journal_dir.name,
+                    "mtime": mtime,
+                    "mtime_iso": datetime.fromtimestamp(mtime, tz=timezone.utc)
+                    .astimezone()
+                    .strftime("%Y-%m-%d %H:%M"),
+                    "url": f"/reports/{project_dir.name}/{journal_dir.name}",
+                    "success": meta.get("Успех", "—"),
+                    "cost": meta.get("Стоимость", "—"),
+                    "iterations": meta.get("Итераций", "—"),
+                    "reason": meta.get("Причина остановки", "—"),
+                    "title": title,
+                }
+            )
+    result.sort(key=lambda x: x["mtime"], reverse=True)
+    return result
+
+
 def _safe_report_path(project: str, journal: str) -> Path | None:
     """
     Возвращает путь к report.md, если он внутри AI_OUT_DIR.
@@ -233,6 +327,17 @@ def _safe_report_path(project: str, journal: str) -> Path | None:
     if not report_path.is_file():
         return None
     return report_path
+
+
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_list(request: Request) -> HTMLResponse:
+    """Список всех журналов из .ai-out (свежие сверху)."""
+    journals = _collect_journals()
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        {"journals": journals},
+    )
 
 
 @app.get("/reports/{project}/{journal}", response_class=HTMLResponse)

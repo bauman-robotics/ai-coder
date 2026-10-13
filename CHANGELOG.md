@@ -4,6 +4,55 @@
 
 ---
 
+## [2026-10-13] iteration 10.40 — GUI A.7 (/reports — список журналов)
+
+### Что сделано
+
+**`ai_coder/gui/app.py`:**
+- `GET /reports` — список всех журналов из `.ai-out/*/*/report.md`,
+  отсортированных по mtime desc.
+- `_collect_journals()` — обход с защитой от symlink-выхода за `AI_OUT_DIR`.
+- `_parse_report_meta()` — грубый парсер `- **Ключ:** значение`
+  (Успех / Стоимость / Итераций / Причина остановки).
+- `_is_journal_dir()` + `JOURNAL_PREFIXES` — whitelist префиксов
+  (`tool-loop-`, `agent-`, `decompose-`, `chain-plan-`, `chain-`,
+  `autofix-`, `plan-`). Backup/cache отсекаются автоматически
+  отсутствием `report.md`.
+- Импорты: `re`, `datetime`.
+
+**`templates/reports.html`** (новый):
+- Таблица: Дата / Проект / Журнал / Успех / Итераций / Стоимость /
+  Причина / ссылка. 8 колонок.
+- CSS-классы `ok` / `fail` / `num` / `nowrap`.
+
+**`templates/index.html`:**
+- В `<header>` добавлен `<nav class="report-nav">` со ссылкой
+  «Все отчёты» → `/reports`.
+
+**`static/style.css`:**
+- Стили `.reports-table` (тёмная тема): `th`/`td`, hover,
+  `.num` (tabular-nums), `.ok` (#4caf50), `.fail` (#e57373).
+
+### Проверка (живой прогон)
+
+- `/reports` → **83 журнала** (67 tool-loop + 11 agent + 3 decompose
+  + 2 autofix), совпадает с `find .ai-out -maxdepth 2 -name report.md | wc -l`.
+- `/reports/ai-coder/tool-loop-2026-10-13T18-32-29` → HTTP 200.
+- `/` → header с «Все отчёты».
+- Логи uvicorn — 200 OK на всех запросах.
+
+### Как сделано
+
+**Вручную** (связанные правки Python+Jinja+CSS, `--tool-loop` не использовался).
+~40 мин.
+
+### Ссылки
+
+- `docs/state.md` → раздел GUI (A.0–A.7).
+- `docs/ui-ideas.md` → секция 1.5 (A.0–A.7).
+
+---
+
 ## [2026-10-13] iteration 10.39 — 3 TODO из GUI-сессии (промпт, partial, warnings)
 
 Закрытие трёх пунктов из TODO, обнаруженных при создании GUI.
