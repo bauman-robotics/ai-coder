@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Статистика — ai-coder</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Статистика расходов</h1>
+        <nav class="report-nav">
+            <a href="/">← к панели</a>
+            <a href="/reports">Все отчёты</a>
+        </nav>
+    </header>
+    <main>
+        <section class="stats-summary" id="summary">
+            <div class="stat-card">
+                <div class="stat-label">Всего, RUB</div>
+                <div class="stat-value" id="s-total-rub">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Запросов</div>
+                <div class="stat-value" id="s-requests">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Токенов</div>
+                <div class="stat-value" id="s-tokens">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Дней</div>
+                <div class="stat-value" id="s-days">—</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Расходы по дням</h2>
+            <div class="chart-wrap">
+                <canvas id="chart-day"></canvas>
+            </div>
+        </section>
+
+        <section class="panel-row">
+            <div class="panel">
+                <h2>По моделям</h2>
+                <div class="chart-wrap">
+                    <canvas id="chart-model"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <h2>По действиям</h2>
+                <div class="chart-wrap">
+                    <canvas id="chart-action"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <p class="reports-count" id="stats-source"></p>
+    </main>
+
+    <script>
+    (function () {
+        var COLORS = [
+            "#64b5f6", "#81c784", "#ffb74d", "#e57373",
+            "#ba68c8", "#4db6ac", "#f06292", "#9575cd",
+        ];
+
+        function fmtNum(n) {
+            return new Intl.NumberFormat("ru-RU").format(n);
+        }
+
+        fetch("/stats/data")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                // Summary
+                document.getElementById("s-total-rub").textContent =
+                    data.summary.total_rub.toFixed(2);
+                document.getElementById("s-requests").textContent =
+                    fmtNum(data.summary.total_requests);
+                document.getElementById("s-tokens").textContent =
+                    fmtNum(data.summary.total_tokens);
+                document.getElementById("s-days").textContent =
+                    data.summary.days;
+
+                document.getElementById("stats-source").textContent =
+                    "Источник: .ai-out/usage.jsonl (" +
+                    data.summary.total_requests + " записей)";
+
+                // Chart defaults (dark theme)
+                Chart.defaults.color = "#ccc";
+                Chart.defaults.borderColor = "rgba(255,255,255,0.08)";
+                Chart.defaults.font.family = "system-ui, -apple-system, sans-serif";
+
+                // 1. Line — по дням
+                if (data.by_day.length > 0) {
+                    new Chart(document.getElementById("chart-day"), {
+                        type: "line",
+                        data: {
+                            labels: data.by_day.map(function (d) { return d.date; }),
+                            datasets: [{
+                                label: "RUB / день",
+                                data: data.by_day.map(function (d) { return d.cost_rub; }),
+                                borderColor: COLORS[0],
+                                backgroundColor: "rgba(100,181,246,0.15)",
+                                fill: true,
+                                tension: 0.25,
+                                pointRadius: 3,
+                            }],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { callback: function (v) { return v + " ₽"; } } },
+                            },
+                        },
+                    });
+                }
+
+                // 2. Doughnut — по моделям
+                if (data.by_model.length > 0) {
+                    new Chart(document.getElementById("chart-model"), {
+                        type: "doughnut",
+                        data: {
+                            labels: data.by_model.map(function (m) {
+                                return m.model + " (" + m.cost_rub.toFixed(2) + " ₽)";
+                            }),
+                            datasets: [{
+                                data: data.by_model.map(function (m) { return m.cost_rub; }),
+                                backgroundColor: COLORS,
+                                borderWidth: 0,
+                            }],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { position: "bottom" } },
+                        },
+                    });
+                }
+
+                // 3. Bar — по действиям
+                if (data.by_action.length > 0) {
+                    new Chart(document.getElementById("chart-action"), {
+                        type: "bar",
+                        data: {
+                            labels: data.by_action.map(function (a) { return a.action; }),
+                            datasets: [{
+                                label: "RUB",
+                                data: data.by_action.map(function (a) { return a.cost_rub; }),
+                                backgroundColor: COLORS[1],
+                            }],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { callback: function (v) { return v + " ₽"; } } },
+                            },
+                        },
+                    });
+                }
+            })
+            .catch(function (err) {
+                console.error("stats fetch error:", err);
+                document.getElementById("stats-source").textContent =
+                    "Ошибка загрузки статистики: " + err;
+            });
+    })();
+    </script>
+</body>
+</html>

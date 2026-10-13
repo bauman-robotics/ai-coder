@@ -22,6 +22,7 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 # .ai-out — рабочие артефакты (журналы, отчёты). CWD при запуске uvicorn.
 AI_OUT_DIR = Path.cwd() / ".ai-out"
+USAGE_JSONL = AI_OUT_DIR / "usage.jsonl"
 
 app = FastAPI(title="ai-coder GUI")
 
@@ -405,6 +406,117 @@ def _safe_report_path(project: str, journal: str) -> Path | None:
     if not report_path.is_file():
         return None
     return report_path
+
+
+def _collect_stats() -> dict:
+    """
+    Агрегирует usage.jsonl для графиков.
+
+    Возвращает:
+      {
+        "summary": {total_rub, total_requests, total_tokens, days},
+        "by_day": [{date, cost_rub, requests}, ...],
+        "by_model": [{model, cost_rub, requests}, ...],
+        "by_action": [{action, cost_rub, requests}, ...],
+      }
+    Если usage.jsonl нет — пустые списки и нули.
+    """
+    import json
+
+    empty = {
+        "summary": {
+            "total_rub": 0.0,
+            "total_requests": 0,
+            "total_tokens": 0,
+            "days": 0,
+        },
+        "by_day": [],
+        "by_model": [],
+        "by_action": [],
+    }
+    if not USAGE_JSONL.is_file():
+        return empty
+
+    by_day: dict[str, dict[str, float]] = {}
+    by_model: dict[str, dict[str, float]] = {}
+    by_action: dict[str, dict[str, float]] = {}
+    total_rub = 0.0
+    total_tokens = 0
+    total_requests = 0
+
+    try:
+        with USAGE_JSONL.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                cost = float(rec.get("cost_rub") or 0.0)
+                tokens = int(rec.get("total_tokens") or 0)
+                total_rub += cost
+                total_tokens += tokens
+                total_requests += 1
+
+                ts = rec.get("ts_msk") or rec.get("ts_utc") or ""
+                day = ts[:10] if len(ts) >= 10 else "—"
+                model = rec.get("model") or "unknown"
+                action_raw = rec.get("action") or "unknown"
+                action = action_raw.split(":", 1)[0]
+
+                for bucket, key in (
+                    (by_day, day),
+                    (by_model, model),
+                    (by_action, action),
+                ):
+                    entry = bucket.setdefault(key, {"cost_rub": 0.0, "requests": 0})
+                    entry["cost_rub"] += cost
+                    entry["requests"] += 1
+    except OSError:
+        return empty
+
+    def _to_list(bucket: dict[str, dict[str, float]], key_name: str) -> list[dict]:
+        items = [
+            {
+                key_name: k,
+                "cost_rub": round(v["cost_rub"], 4),
+                "requests": v["requests"],
+            }
+            for k, v in bucket.items()
+        ]
+        # Сортировка: дни — хронологически, остальные — по убыванию стоимости.
+        if key_name == "date":
+            items.sort(key=lambda x: x["date"])
+        else:
+            items.sort(key=lambda x: x["cost_rub"], reverse=True)
+        return items
+
+    return {
+        "summary": {
+            "total_rub": round(total_rub, 2),
+            "total_requests": total_requests,
+            "total_tokens": total_tokens,
+            "days": len(by_day),
+        },
+        "by_day": _to_list(by_day, "date"),
+        "by_model": _to_list(by_model, "model"),
+        "by_action": _to_list(by_action, "action"),
+    }
+
+
+@app.get("/stats/data")
+async def stats_data() -> dict:
+    """JSON с агрегатами usage.jsonl (для Chart.js)."""
+    return _collect_stats()
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_view(request: Request) -> HTMLResponse:
+    """Страница со графиками расходов (Chart.js)."""
+    return templates.TemplateResponse(request, "stats.html", {})
 
 
 @app.get("/reports", response_class=HTMLResponse)
