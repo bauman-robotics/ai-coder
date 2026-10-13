@@ -401,3 +401,46 @@ button.primary:hover {
     height: 320px;
     width: 100%;
 }
+
+/* ── /help — примеры с кнопкой «в форму» ──────────────────────── */
+
+.example {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
+
+.example pre {
+    margin: 0;
+}
+
+.use-example {
+    align-self: flex-start;
+    cursor: pointer;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.85rem;
+    background: rgba(100, 181, 246, 0.15);
+    border: 1px solid rgba(100, 181, 246, 0.4);
+    border-radius: 4px;
+    color: #64b5f6;
+    font-family: inherit;
+}
+
+.use-example:hover {
+    background: rgba(100, 181, 246, 0.25);
+}
+
+.use-example:active {
+    transform: translateY(1px);
+}
+
+#pending-notice {
+    padding: 0.5rem 1rem;
+    margin: 0.5rem 0;
+    background: rgba(76, 175, 80, 0.15);
+    border-left: 3px solid #4caf50;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #c8e6c9;
+}

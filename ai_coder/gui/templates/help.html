@@ -215,29 +215,65 @@
             <h2>Примеры</h2>
             <p>Первый запуск (безопасно, ничего не меняет):</p>
             <pre><code># 1. Список действий (0 RUB, без API)
-ai-coder actions --verbose
+ai-coder actions --verbose</code></pre>
 
-# 2. Обзор проекта (~0.05 RUB, ничего не меняет)
-ai-coder run greet . --depth normal
+            <pre><code># 2. Обзор проекта (~0.05 RUB, ничего не меняет)
+ai-coder run greet . --depth normal</code></pre>
 
-# 3. Найти что-то в проекте (read-only, write блокируется)
+            <div class="example">
+                <pre><code># 3. Найти что-то в проекте (read-only, write блокируется)
 ai-coder agent "Найди все TODO в проекте" . --tool-loop --dry-read</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Найди все TODO в проекте&quot; . --tool-loop --dry-read">→ в форму</button>
+            </div>
 
             <p>План работ без изменений в коде:</p>
-            <pre><code>ai-coder agent "Добавить ретраи в llm.py" . --plan</code></pre>
+            <div class="example">
+                <pre><code>ai-coder agent "Добавить ретраи в llm.py" . --plan</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Добавить ретраи в llm.py&quot; . --plan">→ в форму</button>
+            </div>
 
             <p>Безопасный анализ с ограничением стоимости:</p>
-            <pre><code>ai-coder agent "Найти неиспользуемый код" ai_coder/ --dry-read --max-cost-rub 0.5</code></pre>
+            <div class="example">
+                <pre><code>ai-coder agent "Найти неиспользуемый код" ai_coder/ --dry-read --max-cost-rub 0.5</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Найти неиспользуемый код&quot; ai_coder/ --dry-read --max-cost-rub 0.5">→ в форму</button>
+            </div>
 
             <p>Правка с проверкой тестами:</p>
-            <pre><code>ai-coder agent "Поправить парсинг дат" ai_coder/ --tool-loop --apply --with-tests</code></pre>
+            <div class="example">
+                <pre><code>ai-coder agent "Поправить парсинг дат" ai_coder/ --tool-loop --apply --with-tests</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Поправить парсинг дат&quot; ai_coder/ --tool-loop --apply --with-tests">→ в форму</button>
+            </div>
 
             <p>Применить и закоммитить:</p>
-            <pre><code>ai-coder agent "Обновить README" . --tool-loop --apply --commit</code></pre>
+            <div class="example">
+                <pre><code>ai-coder agent "Обновить README" . --tool-loop --apply --commit</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Обновить README&quot; . --tool-loop --apply --commit">→ в форму</button>
+            </div>
 
             <p>Крупная задача через декомпозицию:</p>
-            <pre><code>ai-coder agent "Перевести проект на новый API" . --decompose --max-cost-rub 5</code></pre>
+            <div class="example">
+                <pre><code>ai-coder agent "Перевести проект на новый API" . --decompose --max-cost-rub 5</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent &quot;Перевести проект на новый API&quot; . --decompose --max-cost-rub 5">→ в форму</button>
+            </div>
         </section>
     </main>
+    <script>
+        (function () {
+            var buttons = document.querySelectorAll(".use-example");
+            buttons.forEach(function (btn) {
+                btn.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    sessionStorage.setItem("pending_command", btn.dataset.cmd);
+                    window.location.href = "/";
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

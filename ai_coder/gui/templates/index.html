@@ -199,6 +199,121 @@
                 setTimeout(function () { btn.textContent = prev; }, 1200);
             });
 
+            function parseCommand(cmd) {
+                var result = {
+                    action: "",
+                    goal: "",
+                    path: ".",
+                    mode: "",
+                    check_mode: "",
+                    max_cost_rub: "",
+                    apply: false,
+                    commit: false,
+                    advanced_flags: ""
+                };
+                if (!cmd) { return result; }
+
+                var tokens = [];
+                var re = /"([^"]*)"|(\S+)/g;
+                var m;
+                while ((m = re.exec(cmd)) !== null) {
+                    if (m[1] !== undefined) {
+                        tokens.push({ value: m[1], quoted: true });
+                    } else {
+                        tokens.push({ value: m[2], quoted: false });
+                    }
+                }
+
+                var i = 0;
+                if (tokens[i] && tokens[i].value === "ai-coder") { i++; }
+                result.action = tokens[i] ? tokens[i].value : "";
+                i++;
+
+                var advanced = [];
+                var goalSet = false;
+                var pathSet = false;
+
+                if (result.action === "agent") {
+                    for (; i < tokens.length; i++) {
+                        var t = tokens[i];
+                        var v = t.value;
+                        if (!goalSet && t.quoted) {
+                            result.goal = v;
+                            goalSet = true;
+                            continue;
+                        }
+                        if (v === "--tool-loop" || v === "--decompose" ||
+                            v === "--plan" || v === "--chain" ||
+                            v === "--split-goals") {
+                            result.mode = v.slice(2);
+                            continue;
+                        }
+                        if (v === "--dry-run" || v === "--dry-read") {
+                            result.check_mode = v.slice(2);
+                            continue;
+                        }
+                        if (v === "--max-cost-rub") {
+                            if (tokens[i + 1]) {
+                                result.max_cost_rub = tokens[i + 1].value;
+                                i++;
+                            }
+                            continue;
+                        }
+                        if (v === "--apply") { result.apply = true; continue; }
+                        if (v === "--commit") { result.commit = true; continue; }
+                        if (!pathSet && v.charAt(0) !== "-") {
+                            result.path = v;
+                            pathSet = true;
+                            continue;
+                        }
+                        advanced.push(v);
+                    }
+                } else {
+                    for (; i < tokens.length; i++) {
+                        advanced.push(tokens[i].value);
+                    }
+                }
+                result.advanced_flags = advanced.join(" ");
+                return result;
+            }
+
+            var pending = sessionStorage.getItem("pending_command");
+            if (pending) {
+                sessionStorage.removeItem("pending_command");
+                var parsed = parseCommand(pending);
+                var goalEl = document.getElementById("goal");
+                var pathEl = document.getElementById("path");
+                var modeEl = document.getElementById("mode");
+                var checkModeEl = document.getElementById("check-mode");
+                var maxCostEl = document.getElementById("max-cost-rub");
+                var advEl = document.getElementById("advanced-flags");
+                if (goalEl && parsed.goal) { goalEl.value = parsed.goal; }
+                if (pathEl && parsed.path) { pathEl.value = parsed.path; }
+                if (modeEl && parsed.mode) {
+                    for (var mi = 0; mi < modeEl.options.length; mi++) {
+                        if (modeEl.options[mi].value === parsed.mode) {
+                            modeEl.value = parsed.mode;
+                            break;
+                        }
+                    }
+                }
+                if (checkModeEl && parsed.check_mode) { checkModeEl.value = parsed.check_mode; }
+                if (maxCostEl && parsed.max_cost_rub) { maxCostEl.value = parsed.max_cost_rub; }
+                var applyEl = document.querySelector("input[name=apply]");
+                if (applyEl) { applyEl.checked = !!parsed.apply; }
+                var commitEl = document.querySelector("input[name=commit]");
+                if (commitEl) { commitEl.checked = !!parsed.commit; }
+                if (advEl && parsed.advanced_flags) { advEl.value = parsed.advanced_flags; }
+
+                var notice = document.createElement("div");
+                notice.id = "pending-notice";
+                notice.textContent = "Команда из справки подставлена в форму.";
+                var form = document.getElementById("build-form");
+                if (form && form.parentNode) {
+                    form.parentNode.insertBefore(notice, form);
+                }
+            }
+
             var runBtn = document.getElementById("run-btn");
             var stopBtn = document.getElementById("stop-btn");
             var runOutput = document.getElementById("run-output");
