@@ -48,8 +48,10 @@ def _build_command(
     """Собирает строку команды ai-coder agent из полей формы."""
     parts: list[str] = ["ai-coder", "agent", f'"{_escape_shell(goal)}"']
 
-    if path.strip():
-        parts.append(path.strip())
+    # path — всегда (второй позиционный аргумент agent_cmd).
+    # Пустой path → "." (как дефолт CLI), иначе --tool-loop окажется
+    # на месте path и Typer его не распознает.
+    parts.append(path.strip() if path.strip() else ".")
     if mode.strip() and mode.strip() != "plain":
         mode_val = mode.strip()
         parts.append(mode_val if mode_val.startswith("--") else f"--{mode_val}")

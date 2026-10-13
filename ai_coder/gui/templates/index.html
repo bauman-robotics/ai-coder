@@ -50,15 +50,23 @@
                         <label for="model">Модель (model)</label>
                         <select id="model" name="model">
                             <option value="default">default</option>
-                            <option value="flash">flash</option>
-                            <option value="v4-pro">v4-pro</option>
+                            <option value="deepseek-flash">flash</option>
+                            <option value="deepseek-v4-pro">v4-pro</option>
                         </select>
                     </div>
 
                     <div class="field">
                         <label for="max-cost-rub">Макс. стоимость, ₽</label>
-                        <input id="max-cost-rub" name="max_cost_rub" type="number"
-                               min="0" step="1" placeholder="0">
+                        <select id="max-cost-rub" name="max_cost_rub">
+                            <option value="">— без ограничения</option>
+                            <option value="0.1">0.1 RUB</option>
+                            <option value="0.2">0.2 RUB</option>
+                            <option value="0.5">0.5 RUB</option>
+                            <option value="1">1 RUB</option>
+                            <option value="2">2 RUB</option>
+                            <option value="5">5 RUB</option>
+                            <option value="10">10 RUB</option>
+                        </select>
                     </div>
                 </div>
 
@@ -88,6 +96,7 @@
                 <div class="actions">
                     <button type="submit" class="primary">Собрать команду</button>
                     <button type="button" id="copy-btn">Скопировать</button>
+                    <button type="button" id="copy-output-btn">Скопировать вывод</button>
                     <button type="button" id="run-btn">Запустить</button>
                     <button type="button" id="stop-btn" disabled>Остановить</button>
                 </div>
@@ -156,6 +165,26 @@
                     sel.addRange(range);
                 }
                 var btn = document.getElementById("copy-btn");
+                var prev = btn.textContent;
+                btn.textContent = "Скопировано";
+                setTimeout(function () { btn.textContent = prev; }, 1200);
+            });
+
+            document.getElementById("copy-output-btn").addEventListener("click", function () {
+                var pre = document.getElementById("run-output");
+                var text = pre ? (pre.textContent || "") : "";
+                if (!text) { return; }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text);
+                } else {
+                    var range = document.createRange();
+                    range.selectNodeContents(pre);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    document.execCommand("copy");
+                }
+                var btn = document.getElementById("copy-output-btn");
                 var prev = btn.textContent;
                 btn.textContent = "Скопировано";
                 setTimeout(function () { btn.textContent = prev; }, 1200);
