@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-10-13] iteration 10.37 — GUI A.3 + A.4 (форма: select-ы, fix)
+
+Доработка формы GUI. Три улучшения + два фикса.
+
+### A.3 — select-ы и кнопка
+
+**`index.html`:**
+- `max-cost-rub`: `input type=number` → `select` (8 значений:
+  без ограничения, 0.1, 0.2, 0.5, 1, 2, 5, 10 RUB).
+- `copy-output-btn`: копирует `pre#run-output` в clipboard
+  (`navigator.clipboard.writeText` + fallback `execCommand`).
+  Кнопка в `.actions` после `copy-btn`.
+
+### A.4 — check_mode select
+
+**`index.html`:**
+- `checkbox dry_run` → `select name=check_mode`:
+  `normal` / `dry-run` / `dry-read`.
+
+**`app.py`:**
+- `_build_command`/`_build_argv`/`build`/`run`:
+  `dry_run: bool` → `check_mode: str`.
+- Логика: `"dry-run"` → `--dry-run`; `"dry-read"` → `--dry-read`;
+  `"normal"` → ничего.
+- JS `buildParams()`: `dry_run=false` → `check_mode=normal`.
+
+### Фиксы (после агента)
+
+- **`model` select:** value `flash` → `deepseek-flash` (API требует полное
+  имя; было `BadRequestError 400`).
+- **`path` в `_build_command`:** всегда добавлять `.` (было: пропуск,
+  и `--tool-loop` оказывался на месте позиционного `path`).
+
+### Как сделано
+
+**A.3:** агент (`--tool-loop`, 4 итерации, 0.28 RUB) — ✅.
+**A.4:** агент (`--tool-loop`, 10 итераций, **0.81 RUB**, `max_cost`) —
+сделал **~40%** (`index.html` + `build()` Form). `_build_command`,
+`_build_argv`, `/run`, JS — **доделано вручную** (~20 мин).
+
+### E17
+
+См. `docs/experiments.md` → E17.
+
+### Побочно — `--dry-read` работает
+
+Живой тест «Найди все TODO в `ai_coder/tools.py`»:
+- `--dry-read`: `run_shell ✅` (grep **реально выполнен**, не найдено) → finish.
+- `--dry-run`: `run_shell ✅` (simulated) → **зацикливается**.
+
+---
+
 ## [2026-10-13] iteration 10.36 — --dry-read (read-выполняется, write-блокируется)
 
 Новый флаг `--dry-read` для `ai-coder agent --tool-loop`.

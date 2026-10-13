@@ -61,21 +61,27 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `.ai-out/<project>/cache/<hash>.json`
 - Флаги `--no-cache` / `--refresh`
 
-### GUI (A.0 + A.1)
+### GUI (A.0–A.4)
 
 Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
 
 - `GET /` — форма сборки команд:
   - **goal** (textarea), **path** (input + datalist последних из localStorage);
   - **mode** (select: `plain` / `tool-loop` / `decompose` / `plan` / `chain` / `split-goals`);
-  - **model** (select: `default` / `flash` / `v4-pro`);
-  - **флаги** — `--apply`, `--commit`, `--dry-run`;
-  - **`--max-cost-rub`** (number);
+  - **model** (select: `default` / `flash` / `v4-pro`; value = API-имя
+    `deepseek-flash` / `deepseek-v4-pro`);
+  - **флаги** — `--apply`, `--commit`;
+  - **check_mode** (select: `normal` / `dry-run` / `dry-read`);
+  - **`--max-cost-rub`** (select: без ограничения, 0.1, 0.2, 0.5, 1, 2, 5, 10);
   - **advanced-flags** — `details+textarea` для произвольных флагов.
 - `POST /build` — собирает строку `ai-coder agent "..." . --tool-loop --apply ...`
-  и возвращает `<pre>`. Кнопка «Скопировать» → `navigator.clipboard`.
+  и возвращает `<pre>`. Кнопки «Скопировать» (команда) и «Скопировать вывод» (`#run-output`).
 - `GET /health` → `{"status":"ok"}`.
 - `/static` — CSS.
+
+**Fix (после A.3):**
+- `model` value = `deepseek-flash`/`deepseek-v4-pro` (API требует полное имя).
+- `path` — всегда (`.`, если пусто — второй позиционный аргумент `agent_cmd`).
 
 **Запуск:**
 
@@ -87,6 +93,13 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `POST /run` — `subprocess.Popen([sys.executable, "-m", "ai_coder.cli", ...])`,
   `StreamingResponse(text/event-stream)`, формат `data: <строка>\n\n`.
 - `POST /stop/{run_id}` — SIGTERM процессу. `RUNNING: dict[str, Popen]`.
+
+**A.3:** улучшения формы.
+- `max-cost-rub`: input → select (8 значений).
+- `copy-output-btn`: копирует `pre#run-output` в clipboard
+  (navigator.clipboard + fallback execCommand).
+
+**A.4:** `dry-run` checkbox → `check_mode` select (`normal`/`dry-run`/`dry-read`).
 - Кнопки «Запустить»/«Остановить» в браузере (fetch + ReadableStream).
 - `DEEPSEEK_API_KEY` — `uvicorn` должен запускаться с `export`.
 
