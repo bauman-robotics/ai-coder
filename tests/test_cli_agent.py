@@ -646,6 +646,18 @@ def test_chain_zero_ops_not_success(tmp_path: Path, monkeypatch):
     assert result.exit_code == 1, result.stdout
     assert "провалено: 1" in result.stdout
 
+    # 10.30: в отчёте stopped_reason должен быть "no_ops", не "completed"
+    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    assert len(chain_dirs) == 1
+    report = chain_dirs[0] / "report.md"
+    assert report.exists()
+    content = report.read_text(encoding="utf-8")
+    assert "no_ops" in content, (
+        f"при applied_ops=0 в отчёте должен быть no_ops, а не completed.\n"
+        f"Содержимое report.md:\n{content}"
+    )
+    assert "completed" not in content, "completed не должен встречаться, когда applied_ops=0"
+
 
 def test_chain_stop_on_fail(tmp_path: Path, monkeypatch):
     """--chain --stop-on-fail: первая упала → вторая НЕ запущена."""
@@ -878,4 +890,175 @@ def test_agent_cmd_no_verify_disables_verify_commands(cli_env):
     assert captured["cfg"].agent.verify_commands == [], (
         "--no-verify должен был обнулить verify_commands, "
         f"а там {captured['cfg'].agent.verify_commands}"
+    )
+
+
+# ---------- 10.30: chain-report при полном провале ----------
+
+
+def _chain_issues(tmp_path: Path) -> Path:
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nFirst.\n", encoding="utf-8")
+    (issues / "2-b.md").write_text("# task\n\nSecond.\n", encoding="utf-8")
+    return issues
+
+
+def test_chain_saves_report_on_success(tmp_path: Path, monkeypatch):
+    """--chain: обе ✅ → report.md есть, содержит ✅."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+    issues = _chain_issues(tmp_path)
+
+    def fake_loop(**kwargs):
+        return ToolLoopResult(
+            success=True, summary="ok", iterations=1, total_cost_rub=0.05, applied_ops=1
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    result = CliRunner().invoke(app, ["agent", str(project), "--chain", str(issues), "--tool-loop"])
+    assert result.exit_code == 0, result.stdout
+
+    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    assert len(chain_dirs) == 1, f"ожидалась 1 chain-папка, найдено {len(chain_dirs)}"
+    report = chain_dirs[0] / "report.md"
+    assert report.exists(), "report.md должен быть создан"
+    content = report.read_text(encoding="utf-8")
+    assert "✅" in content, "отчёт должен содержать ✅"
+    assert "1-a.md" in content
+    assert "2-b.md" in content
+
+
+def test_chain_saves_report_on_all_fail(tmp_path: Path, monkeypatch):
+    """--chain: все ❌ → report.md есть, содержит ❌ и stopped_reason."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+    issues = _chain_issues(tmp_path)
+
+    def fake_loop(**kwargs):
+        return ToolLoopResult(
+            success=False,
+            summary="fail",
+            iterations=5,
+            total_cost_rub=0.03,
+            applied_ops=0,
+            stopped_reason="max_iterations",
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    # --continue-on-fail, иначе остановится после первой
+    result = CliRunner().invoke(
+        app,
+        [
+            "agent",
+            str(project),
+            "--chain",
+            str(issues),
+            "--tool-loop",
+            "--continue-on-fail",
+        ],
+    )
+    # exit_code=1 — ожидаемо (failed>0)
+    assert result.exit_code == 1, result.stdout
+
+    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    assert len(chain_dirs) == 1, f"ожидалась 1 chain-папка, найдено {len(chain_dirs)}"
+    report = chain_dirs[0] / "report.md"
+    assert report.exists(), "report.md должен быть создан ДАЖЕ при полном провале"
+    content = report.read_text(encoding="utf-8")
+    assert "❌" in content, "отчёт должен содержать ❌"
+    assert "max_iterations" in content, "отчёт должен содержать stopped_reason"
+    assert "провалено: 2" in content, "в шапке — сколько провалено"
+
+
+def test_chain_saves_report_on_partial_fail(tmp_path: Path, monkeypatch):
+    """--chain: 1 ✅, 1 ❌ → report.md есть, содержит обоих."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+    issues = _chain_issues(tmp_path)
+
+    calls: list[str] = []
+
+    def fake_loop(**kwargs):
+        calls.append(kwargs["goal"])
+        if "First" in kwargs["goal"]:
+            return ToolLoopResult(
+                success=True, summary="ok", iterations=1, total_cost_rub=0.05, applied_ops=1
+            )
+        return ToolLoopResult(
+            success=False,
+            summary="fail",
+            iterations=3,
+            total_cost_rub=0.02,
+            applied_ops=0,
+            stopped_reason="verify_failed",
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "agent",
+            str(project),
+            "--chain",
+            str(issues),
+            "--tool-loop",
+            "--continue-on-fail",
+        ],
+    )
+    assert result.exit_code == 1, result.stdout
+
+    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    assert len(chain_dirs) == 1
+    report = chain_dirs[0] / "report.md"
+    assert report.exists()
+    content = report.read_text(encoding="utf-8")
+    assert "✅" in content and "❌" in content
+    assert "провалено: 1" in content
+
+
+def test_chain_report_path_in_stdout(tmp_path: Path, monkeypatch):
+    """--chain: в консольном выводе есть строка «Отчёт:»."""
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+    issues = _chain_issues(tmp_path)
+
+    def fake_loop(**kwargs):
+        return ToolLoopResult(
+            success=True, summary="ok", iterations=1, total_cost_rub=0.05, applied_ops=1
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    result = CliRunner().invoke(app, ["agent", str(project), "--chain", str(issues), "--tool-loop"])
+    assert result.exit_code == 0, result.stdout
+    assert "Отчёт:" in result.stdout, (
+        f"в выводе должна быть строка «Отчёт:», а есть:\n{result.stdout[-1000:]}"
     )

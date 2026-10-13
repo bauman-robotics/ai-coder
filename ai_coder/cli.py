@@ -965,6 +965,7 @@ def _run_chain(
         chain_dir = project_root / cfg.output.dir / project_root.name / f"chain-{chain_ts}"
         chain_dir.mkdir(parents=True, exist_ok=True)
 
+    report_path: Path | None = None
     for i, (issue, g) in enumerate(loaded):
         console.print()
         console.print(
@@ -1019,7 +1020,12 @@ def _run_chain(
                 ok = lr.success and lr.applied_ops > 0
                 cost = lr.total_cost_rub
                 entry["iterations"] = lr.iterations
-                entry["stopped_reason"] = lr.stopped_reason
+                # Если LLM сказала finish(success), но правок нет — это
+                # не «completed», а «no_ops» (см. 10.27).
+                if lr.success and lr.applied_ops == 0:
+                    entry["stopped_reason"] = "no_ops"
+                else:
+                    entry["stopped_reason"] = lr.stopped_reason
                 entry["applied_ops"] = lr.applied_ops
             entry["success"] = ok
             entry["cost_rub"] = cost
@@ -1040,12 +1046,71 @@ def _run_chain(
                 console.print("[yellow]Остановка (--stop-on-fail).[/yellow]")
                 break
 
+    if chain_dir is not None:
+        chain_result_for_report = {
+            "results": results,
+            "failed": failed,
+            "total_cost_rub": total_cost,
+        }
+        try:
+            report_path = _save_chain_report(chain_dir, chain_result_for_report, loaded)
+        except Exception as e:
+            console.print(f"[yellow]Не удалось сохранить chain-отчёт: {e}[/yellow]")
+
     return {
         "results": results,
         "failed": failed,
         "total_cost_rub": total_cost,
         "journal_dir": chain_dir,
+        "report_path": report_path,
     }
+
+
+def _save_chain_report(
+    chain_dir: Path,
+    chain_result: dict,
+    loaded: list[tuple[Path, str]],
+) -> Path:
+    """Сохраняет report.md в chain_dir. Пишется всегда — даже при полном провале."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines: list[str] = []
+    lines.append("# Chain — отчёт")
+    lines.append("")
+    lines.append(f"- Дата: {ts}")
+    lines.append(f"- Задач: {len(loaded)}")
+    lines.append(
+        f"- Успешно: {len(chain_result['results']) - chain_result['failed']}, "
+        f"провалено: {chain_result['failed']}"
+    )
+    lines.append(f"- Стоимость всего: {chain_result['total_cost_rub']:.4f} RUB")
+    lines.append("")
+    lines.append("## Задачи")
+    lines.append("")
+    lines.append("| # | Issue | Статус | RUB | Детали |")
+    lines.append("|---|---|---|---:|---|")
+    for i, r in enumerate(chain_result["results"], 1):
+        st = "✅" if r["success"] else "❌"
+        details = ""
+        if "error" in r:
+            details = r["error"].replace("|", "\\|")[:80]
+        elif "stopped_reason" in r:
+            details = r.get("stopped_reason", "")
+        elif "subtasks" in r:
+            details = f"{r['subtasks']} подзадач"
+        lines.append(f"| {i} | {r['issue']} | {st} | {r['cost_rub']:.4f} | {details} |")
+    lines.append("")
+    lines.append("## Goal каждой задачи")
+    lines.append("")
+    for i, (issue, g) in enumerate(loaded, 1):
+        g_short = g[:500].replace("\n", " ")
+        lines.append(f"### {i}. {issue.name}")
+        lines.append("")
+        lines.append(f"> {g_short}")
+        lines.append("")
+    report = "\n".join(lines) + "\n"
+    path = chain_dir / "report.md"
+    path.write_text(report, encoding="utf-8")
+    return path
 
 
 def _print_chain_report(chain_result: dict, project_root: Path) -> None:
@@ -1084,6 +1149,12 @@ def _print_chain_report(chain_result: dict, project_root: Path) -> None:
             console.print(f"[dim]Журнал: {rel}[/dim]")
         except ValueError:
             console.print(f"[dim]Журнал: {chain_result['journal_dir']}[/dim]")
+    if chain_result.get("report_path"):
+        try:
+            rel = Path(chain_result["report_path"]).relative_to(project_root)
+            console.print(f"[dim]Отчёт: {rel}[/dim]")
+        except ValueError:
+            console.print(f"[dim]Отчёт: {chain_result['report_path']}[/dim]")
 
 
 @app.command("agent")
