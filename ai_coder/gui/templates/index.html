@@ -78,9 +78,12 @@
                     <label class="checkbox">
                         <input type="checkbox" name="commit" value="true"> commit
                     </label>
-                    <label class="checkbox">
-                        <input type="checkbox" name="dry_run" value="true"> dry-run
-                    </label>
+                    <label for="check-mode">режим проверки</label>
+                    <select id="check-mode" name="check_mode">
+                        <option value="normal">обычный</option>
+                        <option value="dry-run">dry-run (только логи)</option>
+                        <option value="dry-read">dry-read (read разрешён, write блокирован)</option>
+                    </select>
                 </div>
 
                 <details class="advanced">

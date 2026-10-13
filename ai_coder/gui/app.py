@@ -41,7 +41,7 @@ def _build_command(
     model: str,
     apply: bool,
     commit: bool,
-    dry_run: bool,
+    check_mode: str,
     max_cost_rub: str,
     advanced_flags: str,
 ) -> str:
@@ -61,8 +61,10 @@ def _build_command(
         parts.append("--apply")
     if commit:
         parts.append("--commit")
-    if dry_run:
+    if check_mode == "dry-run":
         parts.append("--dry-run")
+    elif check_mode == "dry-read":
+        parts.append("--dry-read")
     if max_cost_rub.strip():
         parts.extend(["--max-cost-rub", max_cost_rub.strip()])
     if advanced_flags.strip():
@@ -94,7 +96,7 @@ async def build(
     model: str = Form("default"),
     apply: bool = Form(False),
     commit: bool = Form(False),
-    dry_run: bool = Form(False),
+    check_mode: str = Form("normal"),
     max_cost_rub: str = Form(""),
     advanced_flags: str = Form(""),
 ) -> HTMLResponse:
@@ -106,7 +108,7 @@ async def build(
         model=model,
         apply=apply,
         commit=commit,
-        dry_run=dry_run,
+        check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
     )
@@ -122,7 +124,7 @@ def _build_argv(
     model: str,
     apply: bool,
     commit: bool,
-    dry_run: bool,
+    check_mode: str,
     max_cost_rub: str,
     advanced_flags: str,
 ) -> list[str]:
@@ -134,7 +136,7 @@ def _build_argv(
         model=model,
         apply=apply,
         commit=commit,
-        dry_run=dry_run,
+        check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
     )
@@ -164,7 +166,7 @@ async def run(
     model: str = Form("default"),
     apply: bool = Form(False),
     commit: bool = Form(False),
-    dry_run: bool = Form(False),
+    check_mode: str = Form("normal"),
     max_cost_rub: str = Form(""),
     advanced_flags: str = Form(""),
 ) -> StreamingResponse:
@@ -177,7 +179,7 @@ async def run(
         model=model,
         apply=apply,
         commit=commit,
-        dry_run=dry_run,
+        check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
     )
