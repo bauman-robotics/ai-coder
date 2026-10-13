@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ journal }} — ai-coder</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>{{ project }} / {{ journal }}</h1>
+        <nav class="report-nav">
+            <a href="/">← к панели</a>
+            <a href="/ai-out/{{ project }}/{{ journal }}/report.md" target="_blank">raw .md</a>
+        </nav>
+    </header>
+    <main class="markdown-body">
+        {{ content | safe }}
+    </main>
+</body>
+</html>

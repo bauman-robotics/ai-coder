@@ -203,3 +203,93 @@ button.primary:hover {
     content: "Вывод запуска появится здесь...";
     color: #6a6a6a;
 }
+
+/* ---------- Markdown (report.html) ---------- */
+
+.report-nav {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+}
+
+.report-nav a {
+    color: #6cb6ff;
+    text-decoration: none;
+}
+
+.report-nav a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body {
+    line-height: 1.6;
+    color: #e0e0e0;
+}
+
+.markdown-body h1 {
+    font-size: 1.6rem;
+    margin-top: 0;
+    border-bottom: 1px solid #2e2e2e;
+    padding-bottom: 0.4rem;
+}
+
+.markdown-body h2 {
+    font-size: 1.25rem;
+    margin-top: 1.5rem;
+    border-bottom: 1px solid #242424;
+    padding-bottom: 0.3rem;
+}
+
+.markdown-body h3 {
+    font-size: 1.1rem;
+    margin-top: 1.2rem;
+}
+
+.markdown-body code {
+    background: #141414;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.markdown-body pre {
+    background: #141414;
+    padding: 0.8rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.markdown-body pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.markdown-body table {
+    border-collapse: collapse;
+    margin: 1rem 0;
+    width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+    border: 1px solid #2e2e2e;
+    padding: 0.4rem 0.7rem;
+    text-align: left;
+}
+
+.markdown-body th {
+    background: #141414;
+    font-weight: 600;
+}
+
+.markdown-body blockquote {
+    border-left: 3px solid #444;
+    margin: 0.8rem 0;
+    padding: 0.2rem 1rem;
+    color: #b0b0b0;
+}
+
+.markdown-body a {
+    color: #6cb6ff;
+}

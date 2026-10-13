@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from html import escape as html_escape
 from pathlib import Path
 
+import markdown
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -216,3 +217,41 @@ async def stop(run_id: str) -> dict[str, bool]:
     if proc is not None and proc.poll() is None:
         proc.send_signal(signal.SIGTERM)
     return {"ok": True}
+
+
+def _safe_report_path(project: str, journal: str) -> Path | None:
+    """
+    Возвращает путь к report.md, если он внутри AI_OUT_DIR.
+    Иначе None (защита от path traversal).
+    """
+    base = (AI_OUT_DIR / project / journal).resolve()
+    try:
+        base.relative_to(AI_OUT_DIR.resolve())
+    except ValueError:
+        return None
+    report_path = base / "report.md"
+    if not report_path.is_file():
+        return None
+    return report_path
+
+
+@app.get("/reports/{project}/{journal}", response_class=HTMLResponse)
+async def report_view(request: Request, project: str, journal: str) -> HTMLResponse:
+    """Рендер report.md в HTML (markdown → HTML, тёмная тема)."""
+    report_path = _safe_report_path(project, journal)
+    if report_path is None:
+        return HTMLResponse("<h1>Отчёт не найден</h1>", status_code=404)
+    md_text = report_path.read_text(encoding="utf-8")
+    html = markdown.markdown(
+        md_text,
+        extensions=["fenced_code", "tables", "sane_lists"],
+    )
+    return templates.TemplateResponse(
+        request,
+        "report.html",
+        {
+            "content": html,
+            "project": project,
+            "journal": journal,
+        },
+    )

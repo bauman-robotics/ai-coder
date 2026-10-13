@@ -254,7 +254,8 @@
                                         if (jpath.startsWith(".ai-out/")) {
                                             jpath = jpath.slice(".ai-out/".length);
                                         }
-                                        var reportUrl = "/ai-out/" + jpath + "/report.md";
+                                        // jpath = "<project>/<journal>"
+                                        var reportUrl = "/reports/" + jpath;
                                         document.getElementById("report-link").innerHTML =
                                             '<a href="' + reportUrl + '" target="_blank">Открыть отчёт</a>';
                                     }
