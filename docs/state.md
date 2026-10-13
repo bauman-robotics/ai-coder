@@ -179,6 +179,8 @@ Python-проектов через DeepSeek API. Работает с git-про�
 **Не умеет (A.11+):** `run`-команды (`greet`, `inventory`,
 `suggest_improvements`, `explain`) в GUI — форма работает только
 с `agent`. См. `next-chat/in-progress.md` → A.11.
+Также: вставка готовой команды (A.12), загрузка промпта из файла
+(A.12), поле `--issue` (A.12).
 
 ### Agent
 
