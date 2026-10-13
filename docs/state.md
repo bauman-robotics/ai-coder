@@ -1,10 +1,10 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-13 (итерации 10.29–10.33: `--no-verify`, chain report, read-шаги в plan + run_agent)
+**Дата обновления:** 2026-10-13 (итерации 10.29–10.34: `--no-verify`, chain report, read-шаги, GUI A.0+A.1)
 **Ветка:** main
-**Последний коммит:** (после 10.33)
+**Последний коммит:** `e07c857` (GUI A.1) + docs 10.34
 **Тесты:** 409 passed | CI: pytest x3 + ruff + mypy — зелёный
-**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает
+**Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, есть веб-панель (A.0+A.1)
 
 ---
 
@@ -60,6 +60,31 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Хэш по (файлы + промпт + модель + depth)
 - `.ai-out/<project>/cache/<hash>.json`
 - Флаги `--no-cache` / `--refresh`
+
+### GUI (A.0 + A.1)
+
+Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
+
+- `GET /` — форма сборки команд:
+  - **goal** (textarea), **path** (input + datalist последних из localStorage);
+  - **mode** (select: `plain` / `tool-loop` / `decompose` / `plan` / `chain` / `split-goals`);
+  - **model** (select: `default` / `flash` / `v4-pro`);
+  - **флаги** — `--apply`, `--commit`, `--dry-run`;
+  - **`--max-cost-rub`** (number);
+  - **advanced-flags** — `details+textarea` для произвольных флагов.
+- `POST /build` — собирает строку `ai-coder agent "..." . --tool-loop --apply ...`
+  и возвращает `<pre>`. Кнопка «Скопировать» → `navigator.clipboard`.
+- `GET /health` → `{"status":"ok"}`.
+- `/static` — CSS.
+
+**Запуск:**
+
+    pip install -e ".[gui]"
+    uvicorn ai_coder.gui.app:app --reload --port 8000
+    # http://127.0.0.1:8000/
+
+**Не умеет (A.2+):** запуск команды в GUI, встроенный терминал,
+история/статистика (`usage.jsonl`), ссылки на отчёты. См. `docs/ui-ideas.md`.
 
 ### Agent
 
@@ -325,6 +350,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Typer (CLI), Rich (вывод), Pydantic v2 (конфиги)
 - openai SDK (клиент DeepSeek), httpx (курсы ЦБ)
 - pathspec (gitignore), pyyaml
+- fastapi, uvicorn, jinja2, python-multipart (gui extras)
 - pytest (тесты), ruff, mypy (dev)
 
 ---
@@ -342,6 +368,12 @@ Python-проектов через DeepSeek API. Работает с git-про�
     python -m ai_coder.cli actions --verbose
     python -m ai_coder.cli run greet . --depth shallow
 
+**GUI:**
+
+    pip install -e ".[gui]"
+    uvicorn ai_coder.gui.app:app --reload --port 8000
+    # http://127.0.0.1:8000/
+
 ---
 
 ## Где что искать
@@ -356,6 +388,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 | `docs/reviews/` | внешние обзоры проекта |
 | `config/config.yaml` | настройки (API, scanning, write, fix, agent) |
 | `config/prompts.yaml` | тексты промптов по действиям |
+| `ai_coder/gui/` | веб-панель (FastAPI + Jinja2 + HTMX, A.0+A.1) |
 | `.ai-out/` | результаты работы (отчёты, usage, кэш, бэкапы) |
 
 ---

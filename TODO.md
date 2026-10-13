@@ -4,6 +4,40 @@
 
 
 
+## Из GUI A.0/A.1 (сессия 2026-10-13)
+
+- [ ] **Агент пишет под устаревший API библиотек.**
+      FastAPI 0.143 в проекте, агент написал
+      `TemplateResponse("index.html", {"request": request})` (API <0.108).
+      Падало с HTTP 500 на `GET /`. `py_compile` и `pytest` не ловят.
+      **Фиксы:**
+      - В промпт `agent_tool_json`: «перед использованием API библиотеки —
+        посмотри версию в pyproject.toml/requirements.txt».
+      - Smoke-тест в verify для веб-задач:
+        `python -c "from ai_coder.gui.app import app; ..."`.
+      - Флаг `--verify-url http://localhost:8000/` — после finish дёрнуть URL.
+      **Приоритет:** 🟡 средний.
+
+- [ ] **`success=False` при частичном применении плана.**
+      A.0: агент создал 5 файлов из 6 (pyproject.toml в blacklist),
+      но `success=False, stopped_reason="completed"`. Вводит в заблуждение.
+      **Фикс:** статус `partial` (когда `applied_ops > 0` и есть отклонённые
+      операции), или `success=True, warnings=[...]`.
+      **Приоритет:** 🟡 средний.
+
+- [ ] **`python-multipart` — не в зависимостях, `Form(...)` падает при импорте.**
+      FastAPI >=0.113 требует `python-multipart` явно для `Form(...)`.
+      Агент использовал `Form`, но не добавил зависимость.
+      При импорте `app.py` — `RuntimeError` на `@app.post("/build")`,
+      uvicorn завис.
+      **Фиксы:**
+      - Промпт `agent_tool_json`: «если используешь Form/File в FastAPI —
+        добавь python-multipart».
+      - Smoke-тест в verify: `python -c "from ai_coder.gui.app import app"`.
+      **Приоритет:** 🟡 средний.
+
+---
+
 ## Из E11 (self-hosted провал) — 2026-10-11
 
 - [x] **`applied_count == 0` + `apply=True` → `skipped`.** ЗАКРЫТО

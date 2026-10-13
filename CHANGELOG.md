@@ -4,6 +4,69 @@
 
 ---
 
+## [2026-10-13] iteration 10.34 — GUI A.0 + A.1 (веб-панель)
+
+Начало направления UI. Веб-панель на FastAPI + Jinja2 + HTMX
+(тёмная тема). Первая версия — **сборка команды** (без запуска).
+
+### A.0 — скелет
+
+Агент (`--tool-loop`, 13 итераций, 0.93 RUB) создал:
+- `ai_coder/gui/app.py` — FastAPI app, `/`, `/health`, `/static`.
+- `ai_coder/gui/templates/index.html` — тёмная тема, HTMX 1.9.12 (CDN).
+- `ai_coder/gui/static/style.css` — CSS-переменные dark mode.
+- `pyproject.toml` — **правка вручную** (blacklist): добавлена секция
+  `[project.optional-dependencies] gui = [...]`.
+- `README.md` — секция «GUI».
+
+**Баг агента:** написал `TemplateResponse("index.html", {"request": request})`
+(API <0.108). Под FastAPI 0.143 — **HTTP 500** на `GET /`. Исправлено
+вручную: `TemplateResponse(request, "index.html", {})`.
+
+### A.1 — форма сборки команд
+
+Агент (`--tool-loop`, 6 итераций, 0.95 RUB) создал:
+- `POST /build` — собирает строку `ai-coder agent "..." . --tool-loop ...`,
+  возвращает `<pre>`.
+- **Форма**: goal (textarea), path (input+datalist localStorage),
+  mode (select), model (select), apply/commit/dry-run (чекбоксы),
+  max-cost-rub (number), advanced-flags (details+textarea).
+- Кнопки «Собрать команду» (HTMX POST /build) и «Скопировать»
+  (navigator.clipboard).
+- `style.css` — стили формы.
+
+**Фиксы после агента:**
+- **`mode` без `--`:** команда была `... . tool-loop --apply`,
+  стало `... . --tool-loop --apply`.
+- **`python-multipart`:** не был в `pyproject.toml`. `Form(...)` в FastAPI
+  требует его явно — `app.py` падал с `RuntimeError` при импорте,
+  `uvicorn` зависал. Добавлено в `gui` extras.
+
+### Запуск
+
+    pip install -e ".[gui]"
+    uvicorn ai_coder.gui.app:app --reload --port 8000
+    # http://127.0.0.1:8000/
+
+### TODO (из этой сессии)
+
+- Агент пишет под устаревший API библиотек — нужен smoke-тест в verify.
+- `success=False` при частичном применении (5 из 6 файлов) — статус `partial`.
+- `python-multipart` не в зависимостях — правило в промпте.
+
+### Связь с `docs/ui-ideas.md`
+
+`docs/ui-ideas.md` предлагал wizard на `typer.prompt` (4 ч). Выбран
+**другой путь** — веб-панель (FastAPI + HTMX). Причины:
+- Встроенный терминал (этап B) требует WebSocket — в FastAPI из коробки.
+- Pydantic v2 уже в проекте — валидация формы без новых зависимостей.
+- Открывается в браузере — не мешает терминалу.
+
+План: **A** (сборка команды, ✅) → **B** (запуск + терминал, PTY+WebSocket)
+→ **C** (история + статистика из `usage.jsonl`).
+
+---
+
 ## [2026-10-13] iteration 10.33 — read-шаги в простом агенте (run_agent)
 
 Завершение read-направления. В 10.31 введён `step_type="read"`, в 10.32
