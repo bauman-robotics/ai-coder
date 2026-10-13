@@ -1,10 +1,16 @@
 """FastAPI-приложение веб-панели ai-coder."""
 
+import shlex
+import signal
+import subprocess
+import sys
+import uuid
+from collections.abc import Iterator
 from html import escape as html_escape
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -13,6 +19,9 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(title="ai-coder GUI")
+
+# Реестр запущенных процессов: run_id -> Popen.
+RUNNING: dict[str, subprocess.Popen] = {}
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -102,3 +111,93 @@ async def build(
     return HTMLResponse(
         f'<pre id="command-output" class="command-output">{html_escape(command)}</pre>'
     )
+
+
+def _build_argv(
+    goal: str,
+    path: str,
+    mode: str,
+    model: str,
+    apply: bool,
+    commit: bool,
+    dry_run: bool,
+    max_cost_rub: str,
+    advanced_flags: str,
+) -> list[str]:
+    """Собирает argv для запуска агента через python -m ai_coder.cli."""
+    command = _build_command(
+        goal=goal,
+        path=path,
+        mode=mode,
+        model=model,
+        apply=apply,
+        commit=commit,
+        dry_run=dry_run,
+        max_cost_rub=max_cost_rub,
+        advanced_flags=advanced_flags,
+    )
+    parts = shlex.split(command)
+    # parts[0] == "ai-coder" -> заменяем на sys.executable -m ai_coder.cli
+    return [sys.executable, "-m", "ai_coder.cli", *parts[1:]]
+
+
+def _stream_process(run_id: str, proc: subprocess.Popen) -> Iterator[str]:
+    """Генератор SSE-строк с выводом процесса."""
+    yield f"data: run_id: {run_id}\n\n"
+    try:
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                yield f"data: {line.rstrip(chr(10))}\n\n"
+    finally:
+        proc.wait()
+        RUNNING.pop(run_id, None)
+        yield f"data: [exit {proc.returncode}]\n\n"
+
+
+@app.post("/run")
+async def run(
+    goal: str = Form(""),
+    path: str = Form(""),
+    mode: str = Form("plain"),
+    model: str = Form("default"),
+    apply: bool = Form(False),
+    commit: bool = Form(False),
+    dry_run: bool = Form(False),
+    max_cost_rub: str = Form(""),
+    advanced_flags: str = Form(""),
+) -> StreamingResponse:
+    """Запускает агента и стримит его вывод в формате SSE."""
+    run_id = uuid.uuid4().hex
+    argv = _build_argv(
+        goal=goal,
+        path=path,
+        mode=mode,
+        model=model,
+        apply=apply,
+        commit=commit,
+        dry_run=dry_run,
+        max_cost_rub=max_cost_rub,
+        advanced_flags=advanced_flags,
+    )
+    proc: subprocess.Popen = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    RUNNING[run_id] = proc
+    return StreamingResponse(
+        _stream_process(run_id, proc),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/stop/{run_id}")
+async def stop(run_id: str) -> dict[str, bool]:
+    """Останавливает запущенный процесс по SIGTERM."""
+    proc = RUNNING.get(run_id)
+    if proc is not None and proc.poll() is None:
+        proc.send_signal(signal.SIGTERM)
+    return {"ok": True}

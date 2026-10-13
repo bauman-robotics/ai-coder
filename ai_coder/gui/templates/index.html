@@ -88,10 +88,14 @@
                 <div class="actions">
                     <button type="submit" class="primary">Собрать команду</button>
                     <button type="button" id="copy-btn">Скопировать</button>
+                    <button type="button" id="run-btn">Запустить</button>
+                    <button type="button" id="stop-btn" disabled>Остановить</button>
                 </div>
             </form>
 
             <div id="command-result"></div>
+
+            <pre id="run-output" class="command-output"></pre>
         </section>
     </main>
 
@@ -156,6 +160,84 @@
                 btn.textContent = "Скопировано";
                 setTimeout(function () { btn.textContent = prev; }, 1200);
             });
+
+            var runBtn = document.getElementById("run-btn");
+            var stopBtn = document.getElementById("stop-btn");
+            var runOutput = document.getElementById("run-output");
+            var currentAbort = null;
+            var currentRunId = null;
+
+            function setRunning(running) {
+                runBtn.disabled = running;
+                stopBtn.disabled = !running;
+            }
+
+            runBtn.addEventListener("click", async function () {
+                if (currentAbort) { currentAbort.abort(); }
+                runOutput.textContent = "";
+                currentRunId = null;
+                setRunning(true);
+
+                var form = document.getElementById("build-form");
+                var fd = new FormData(form);
+
+                currentAbort = new AbortController();
+
+                try {
+                    var resp = await fetch("/run", {
+                        method: "POST",
+                        body: fd,
+                        signal: currentAbort.signal,
+                    });
+                    if (!resp.ok) {
+                        runOutput.textContent = "HTTP " + resp.status + ": " + (await resp.text());
+                        setRunning(false);
+                        return;
+                    }
+                    var reader = resp.body.getReader();
+                    var decoder = new TextDecoder();
+                    var buffer = "";
+
+                    while (true) {
+                        var chunk = await reader.read();
+                        if (chunk.done) { break; }
+                        buffer += decoder.decode(chunk.value, { stream: true });
+                        var events = buffer.split("\n\n");
+                        buffer = events.pop();
+                        for (var evt of events) {
+                            var lines = evt.split("\n");
+                            for (var line of lines) {
+                                if (line.startsWith("data: ")) {
+                                    var text = line.slice(6);
+                                    var match = text.match(/^run_id:\s*(.+)$/);
+                                    if (match) {
+                                        currentRunId = match[1].trim();
+                                        continue;
+                                    }
+                                    runOutput.textContent += text + "\n";
+                                    runOutput.scrollTop = runOutput.scrollHeight;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    if (e.name !== "AbortError") {
+                        runOutput.textContent += "\n[ошибка: " + e.message + "]\n";
+                    }
+                } finally {
+                    currentAbort = null;
+                    setRunning(false);
+                }
+            });
+
+            stopBtn.addEventListener("click", function () {
+                if (currentRunId) {
+                    fetch("/stop/" + currentRunId, { method: "POST" }).catch(function () {});
+                }
+                if (currentAbort) { currentAbort.abort(); }
+                setRunning(false);
+            });
+
         })();
     </script>
 </body>

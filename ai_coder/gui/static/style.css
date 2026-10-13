@@ -187,3 +187,19 @@ button.primary:hover {
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+#run-output {
+    margin-top: 1rem;
+    min-height: 4rem;
+    max-height: 24rem;
+    overflow-y: auto;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#run-output:empty::before {
+    content: "Вывод запуска появится здесь...";
+    color: #6a6a6a;
+}
