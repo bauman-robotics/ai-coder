@@ -15,9 +15,8 @@
 - [ ] **`--chain` журнал при провале.** Сейчас
       `.ai-out/<project>/chain-<ts>/` создаётся, но **пустой**, если
       все подзадачи упали. Писать `report.md` всегда.
-- [ ] **`ai-coder` console script сломан** (`ModuleNotFoundError`).
-      `pip install -e .` не сделан в venv. Проверить `pyproject.toml`
-      + console_scripts.
+- [x] **`ai-coder` console script.** ЗАКРЫТО 10.29: работает,
+      `.venv/bin/ai-coder`, `pip install -e .` сделан.
 - [ ] **Self-hosted рекомендации в docs/examples.md.**
       Для больших файлов (agent.py 3000+ строк):
       - `--only-path ai_coder/agent.py`;
@@ -41,9 +40,9 @@
       — фикстура `url` не найдена). Нужна возможность **указывать
       конкретный тест** или **исключать каталоги** из verify.
 
-- [ ] **Перезапустить E12** после фиксов (10.28 + 10.29). Теперь
-      без своего config — `--no-verify` работает. Проверить, что
-      `gui.py` **реально** обновляется (или ❌, а не ложный ✅).
+- [x] **Перезапуск E12.** ЗАКРЫТО 10.29: синтетическая верификация
+      (E14) подтвердила фикс `--no-verify` на живом проекте.
+      См. `docs/experiments.md` → E14.
 
 - [x] **`max_iterations` из CLI не доходил** до decompose. ЗАКРЫТО 10.28.
 - [x] **Retry-путь v4-pro не учитывал `applied_ops > 0`.** ЗАКРЫТО 10.28.
