@@ -113,6 +113,27 @@ fi
     echo '```'
     echo ""
 
+    echo "# docs/what-is-ai-coder.md — простое объяснение (что умеет, что в плане)"
+    echo ""
+    echo '```'
+    cat docs/what-is-ai-coder.md 2>/dev/null || echo "(файл не найден)"
+    echo '```'
+    echo ""
+
+    echo "# docs/autonomy.md — автономность (этапы 6-7, reverse-check)"
+    echo ""
+    echo '```'
+    cat docs/autonomy.md 2>/dev/null || echo "(файл не найден)"
+    echo '```'
+    echo ""
+
+    echo "# docs/ui-ideas.md — идеи по графическому интерфейсу"
+    echo ""
+    echo '```'
+    cat docs/ui-ideas.md 2>/dev/null || echo "(файл не найден)"
+    echo '```'
+    echo ""
+
     if [ -n "$INVENTORY_FILE" ] && [ -f "$INVENTORY_FILE" ]; then
         echo "# inventory.md — инвентарь проекта (классы, функции, точки входа)"
         echo ""
