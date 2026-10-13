@@ -163,9 +163,22 @@ Python-проектов через DeepSeek API. Работает с git-про�
   0 флейков) — **первый раз без правок вручную** на 3-файловой
   GUI-задаче. См. `docs/experiments.md` → E18.
 
-**Не умеет (A.10+):** встроенный терминал (PTY+WebSocket, этап B),
-пагинация/фильтр по проекту в `/reports`, экспорт статистики
-в CSV/PNG, якорные ссылки в `/help`. См. `docs/ui-ideas.md`.
+**A.10:** кнопка «→ в форму» в `/help`.
+- `help.html`: 5 примеров обёрнуты в `div.example` + кнопка
+  `.use-example` с `data-cmd`. Первый блок (3 команды) не тронут.
+  `<script>` в конце: клик → `sessionStorage.pending_command` → `/`.
+- `index.html`: `parseCommand(cmd)` — токенизация, `action`, `goal`
+  (в кавычках), `path`, `--tool-loop`/`--dry-read`/`--max-cost-rub`/
+  `--apply`/`--commit`, `advanced_flags`. При загрузке:
+  `pending_command` → заполнить форму → `#pending-notice`.
+- `style.css`: `.example` / `.use-example` (`:hover`/`:active`) /
+  `#pending-notice`.
+- Сделано агентом (E18.3): 2 из 3 файлов (help.html + index.html),
+  style.css доделан вручную. 1.05 RUB, max_cost.
+
+**Не умеет (A.11+):** `run`-команды (`greet`, `inventory`,
+`suggest_improvements`, `explain`) в GUI — форма работает только
+с `agent`. См. `next-chat/in-progress.md` → A.11.
 
 ### Agent
 
