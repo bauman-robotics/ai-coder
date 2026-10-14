@@ -297,21 +297,37 @@ requirements-dev.txt      # dev-зависимости
 
 ## GUI
 
-Веб-панель на FastAPI + Jinja2 + HTMX.
+Веб-панель на FastAPI + Jinja2 + HTMX (тёмная тема).
 
-Установка:
+**Возможности:**
 
-```bash
-pip install -e ".[gui]"
-```
+- **`/`** — форма сборки команды: `goal`, `path`, `mode`
+  (`plain`/`tool-loop`/`decompose`/`plan`/`chain`/`split-goals`),
+  `model`, флаги (`--apply`, `--commit`, `--reverse-check`),
+  `check_mode` (`normal`/`dry-run`/`dry-read`), `--max-cost-rub`.
+- **Тип задачи** — `agent` (LLM-агент) или `run` (разовое действие:
+  `greet`, `inventory`, `suggest_improvements`, `explain`,
+  `write_readme`, `add_docstrings`, `refactor`).
+- **`/run`** — запуск со стримингом (SSE), остановка по кнопке.
+- **`/reports`** — список всех журналов из `.ai-out/`
+  (успех, итерации, стоимость, причина остановки).
+- **`/stats`** — статистика расходов (графики Chart.js:
+  по дням, моделям, действиям).
+- **`/help`** — справка: режимы, опции, действия, примеры
+  с кнопкой «в форму».
 
-Запуск:
+**Установка:**
 
-```bash
-uvicorn ai_coder.gui.app:app --reload
-```
+    pip install -e ".[gui]"
 
-Панель доступна на http://127.0.0.1:8000/, health-check — `/health`.
+**Запуск:**
+
+    bash scripts/run_gui.sh 8000
+    # или: uvicorn ai_coder.gui.app:app --reload --port 8000
+
+Панель — http://127.0.0.1:8000/, health-check — `/health`.
+
+> Планируется: скриншоты в `docs/screenshots/` (форма, /reports, /stats).
 
 ## Лицензия
 
