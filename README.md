@@ -30,6 +30,7 @@ AI-ассистированный анализ git-проектов через D
 
 ## Документация
 
+- **[docs/cli/README.md](docs/cli/README.md)** — **справочник** по всем командам и флагам (actions, run, agent, fix, usage, backups, rollback) + алфавитный указатель флагов.
 - **[docs/progress.md](docs/progress.md)** — дневник сессий:
   что делали в каждой сессии (простое, для быстрого вспоминания).
 - **[docs/what-is-ai-coder.md](docs/what-is-ai-coder.md)** — что умеет
