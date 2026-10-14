@@ -21,7 +21,7 @@ from .apply import (
 )
 from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from .llm import LLMClient, LLMResponse
-from .pricing import calculate_cost, get_rate, is_peak_now
+from .pricing import Rate, calculate_cost, get_rate, is_peak_now
 from .prompts import render_prompt
 from .scanner import (
     ScanResult,
@@ -608,6 +608,7 @@ def run_planner_decompose(
     model: str | None = None,
     depth: str = "normal",
     extra_exclude: list[str] | None = None,
+    max_cost_rub: float | None = None,
 ) -> DecomposeResult:
     """
     Планировщик-декомпозитор: одна задача → список подзадач.
@@ -636,6 +637,30 @@ def run_planner_decompose(
     is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
     cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
     usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    # precheck бюджета — до запроса
+    if max_cost_rub is not None:
+        est = _estimate_next_cost_rub(
+            cfg,
+            model,
+            system,
+            user,
+            cny_to_rub,
+            expected_completion_tokens=1500,
+        )
+        if est >= max_cost_rub:
+            _console.print(
+                f"[red]Бюджет исчерпан до запроса:[/red] "
+                f"оценка {est:.4f} RUB >= лимита {max_cost_rub:.4f} RUB"
+            )
+            return DecomposeResult(
+                explanation="",
+                subtasks=[],
+                cost_rub=0.0,
+                cost_cny=0.0,
+                cost_usd=0.0,
+                parse_error=(f"budget: оценка {est:.4f} RUB >= лимита {max_cost_rub:.4f} RUB"),
+            )
 
     # запрос
     client = LLMClient(cfg.api)
@@ -2694,6 +2719,44 @@ def run_reverse_check(
         )
 
 
+def _estimate_next_cost_rub(
+    cfg: AppConfig,
+    model: str,
+    system: str,
+    user: str,
+    cny_to_rub: Rate,
+    *,
+    expected_completion_tokens: int = 500,
+) -> float:
+    """
+    Грубая консервативная оценка стоимости следующего запроса.
+
+    Считает prompt_tokens как len(text)//3 (см. scanner._estimate_tokens),
+    берёт ХУДШУЮ ставку (peak, cache miss) — чтобы не превысить лимит.
+
+    expected_completion_tokens — сколько примерно вернёт модель:
+      - finish JSON: ~100–500;
+      - decompose JSON (список подзадач): ~500–2000.
+    """
+    # Локальный импорт, чтобы не тянуть scanner на верхнем уровне.
+    from .scanner import _estimate_tokens
+
+    prompt_tokens = _estimate_tokens(system) + _estimate_tokens(user)
+    pricing = cfg.api.pricing_for(model)
+    price_miss = max(
+        pricing.cache_miss_per_1m_cny.off_peak,
+        pricing.cache_miss_per_1m_cny.peak,
+    )
+    price_out = max(
+        pricing.output_per_1m_cny.off_peak,
+        pricing.output_per_1m_cny.peak,
+    )
+    cost_cny = (
+        prompt_tokens / 1_000_000 * price_miss + expected_completion_tokens / 1_000_000 * price_out
+    )
+    return cost_cny * cny_to_rub.value
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -2831,6 +2894,30 @@ def run_tool_loop(
         is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
         cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
         usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+        # --- precheck бюджета (до запроса) ---
+        # Проверка ПОСЛЕ запроса не спасает: одна итерация может стоить
+        # больше лимита (E25 Task 1: 2.28 RUB при --max-cost-rub 1).
+        # Поэтому — оценка ДО, консервативно (peak, miss).
+        if max_cost_rub is not None:
+            remaining = max_cost_rub - total_cost_rub
+            est = _estimate_next_cost_rub(
+                cfg,
+                model,
+                system,
+                user,
+                cny_to_rub,
+                expected_completion_tokens=500,
+            )
+            if est >= remaining:
+                stopped_reason = "max_cost"
+                summary = (
+                    f"budget precheck: оценка {est:.4f} RUB >= остатка "
+                    f"{remaining:.4f} RUB (лимит {max_cost_rub:.4f}, "
+                    f"потрачено {total_cost_rub:.4f})"
+                )
+                _console.print(f"[yellow]Бюджет: {summary}[/yellow]")
+                break
 
         # --- запрос ---
         try:

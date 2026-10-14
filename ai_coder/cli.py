@@ -893,6 +893,8 @@ def _run_chain(
     pre_plans: list[DecomposeResult | None] = [None] * len(loaded)
     if do_plan:
         plans_serial: list[dict] = []
+        # Накопительный остаток бюджета: планирование тоже тратит деньги.
+        remaining: float | None = decompose_max_cost_rub or max_cost_rub
         for issue, g in loaded:
             console.print(f"[dim]Планирование: {issue.name}...[/dim]")
             dec = run_planner_decompose_fn(
@@ -903,10 +905,13 @@ def _run_chain(
                 model=cfg.agent.decompose_model or model,
                 depth=depth,
                 extra_exclude=extra_exclude,
+                max_cost_rub=remaining,
             )
             if dec.parse_error is not None:
                 console.print(f"[red]Планирование {issue.name} не удалось:[/red] {dec.parse_error}")
                 raise typer.Exit(1)
+            if remaining is not None:
+                remaining = max(0.0, remaining - dec.cost_rub)
             pre_plans[loaded.index((issue, g))] = dec
             plans_serial.append(
                 {
@@ -1678,6 +1683,7 @@ def agent_cmd(
                         model=cfg.agent.decompose_model or model,
                         depth=depth,
                         extra_exclude=list(exclude) or None,
+                        max_cost_rub=decompose_max_cost_rub or max_cost_rub,
                     )
                     _print_decompose_plan(pre_plan)
                     if pre_plan.parse_error is not None:

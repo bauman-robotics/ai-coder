@@ -539,7 +539,64 @@ def test_run_tool_loop_max_cost(sample_project, minimal_cfg, prompts_cfg):
         )
 
     assert result.stopped_reason == "max_cost"
+
+
+def test_run_tool_loop_budget_precheck_no_call(sample_project, minimal_cfg, prompts_cfg):
+    """Precheck: при крошечном бюджете client.chat НЕ вызывается вообще."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+
+        result = run_tool_loop(
+            goal="budget precheck",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=10,
+            max_cost_rub=0.0000001,
+            journal=False,
+        )
+
+    # LLM не дёргался — precheck отсек ДО запроса
+    assert MockClient.return_value.chat.call_count == 0
+    # Ничего не потрачено
+    assert result.total_cost_rub == 0.0
     assert result.success is False
+    assert result.stopped_reason == "max_cost"
+    assert "precheck" in result.summary.lower()
+
+
+def test_run_planner_decompose_budget_precheck(sample_project, minimal_cfg, prompts_cfg):
+    """run_planner_decompose: max_cost_rub — precheck до запроса."""
+    from ai_coder.agent import run_planner_decompose
+    from ai_coder.pricing import Rate
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+
+        result = run_planner_decompose(
+            goal="budget precheck planner",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_cost_rub=0.0000001,
+        )
+
+    assert MockClient.return_value.chat.call_count == 0
+    assert result.cost_rub == 0.0
+    assert result.parse_error is not None
+    assert "budget" in result.parse_error.lower()
+    assert result.subtasks == []
 
 
 def test_run_tool_loop_finish_with_failure(sample_project, minimal_cfg, prompts_cfg):

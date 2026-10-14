@@ -4,6 +4,56 @@
 
 ---
 
+## [2026-10-14] iteration 10.54 — fix: precheck бюджета в tool loop и planner
+
+### Что сделано
+
+**Баг (E25):** `--max-cost-rub N` не срабатывал в `--tool-loop` и
+`--chain --plan`.
+- Task 1 (E25): 8 итераций, **2.28 RUB** при `--max-cost-rub 1`.
+- E25 chain-plan: планирование **1.12 RUB** при лимите `1.0`.
+- Третий случай (`--decompose`, 10.44) — **исправлен ранее**.
+
+**Причина:**
+- **tool loop:** проверка бюджета была **после** `client.chat` →
+  одна итерация могла стоить **больше** остатка.
+- **planner:** `run_planner_decompose` **не принимал** `max_cost_rub`
+  вообще — планирование тратило сколько угодно.
+
+**Фикс A — `run_tool_loop`:** precheck **перед** `client.chat`.
+Новый хелпер `_estimate_next_cost_rub` (грубая оценка по длине
+промпта, ХУДШАЯ ставка: peak, cache miss). Если `est >= remaining` —
+`stopped_reason = "max_cost"`, `break` **без запроса**.
+
+**Фикс B — `run_planner_decompose`:** параметр `max_cost_rub`. Тот же
+precheck → `parse_error="budget: ..."` до запроса.
+
+**Фикс C — `_run_chain`:** накопительный `remaining` для planner
+(`--chain --plan`): после каждого плана вычитаем `dec.cost_rub`.
+
+**Фикс D — `cli.py` `--plan` без chain:** `max_cost_rub=decompose_max_cost_rub
+or max_cost_rub` передан в planner.
+
+**Унификация:** precheck использует `stopped_reason = "max_cost"`
+(как post-check) — семантика та же, различие в `summary` («precheck»).
+
+### Тесты
+
+- `test_run_tool_loop_budget_precheck_no_call` — бюджет крошечный,
+  `client.chat.call_count == 0`, `cost_rub == 0.0`, `stopped_reason == "max_cost"`.
+- `test_run_planner_decompose_budget_precheck` — то же для planner,
+  `parse_error` содержит «budget».
+
+### Тесты
+
+457 → **459** passed (+2).
+
+### Коммиты
+
+- <добавится> fix(budget): precheck в tool loop и planner (10.54)
+
+---
+
 ## [2026-10-14] iteration 10.53 — fix: откат при verify_failed в tool loop
 
 ### Что сделано
