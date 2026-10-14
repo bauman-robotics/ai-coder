@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-10-14] iteration 10.53 — fix: откат при verify_failed в tool loop
+
+### Что сделано
+
+**Баг (из E27):** подзадача 1 задачи 2 упала на `verify_failed`
+(`test_agent_bad_path`). `--apply` правку в `cli.py` применил (+12 строк).
+Бэкап **был** (`.ai-out/ai-coder/tool-loop-backup-20261014-180635/`),
+но `cli.py` **не откатился**. Пришлось `git checkout` вручную.
+
+**Причина:** `run_tool_loop` при `verify_failed` ставил
+`success=False`, `stopped_reason="verify_failed"` — и **возвращал
+результат**, не откатывая свой `backup_dir`. Откат делала **вызывающая
+сторона** (в `run_agent` через `do_rollback(backup0)`), но в путях
+`--tool-loop` / `--chain` / `--decompose` этого вызова не было.
+
+**Фикс №1 — `run_tool_loop`** (`ai_coder/agent.py`):
+при `verify_failed` — сразу откатывать свой `backup_dir` (через
+`apply.rollback`). Печатает «Откат после verify_failed: N файлов».
+Закрывает **все** пути: tool loop, `--chain`, `--decompose`, `--with-tests`.
+
+**Фикс №2 — `run_agent_decompose`** (`ai_coder/agent.py`):
+перед `rollback_on_fail` — **страховка**: откат **упавшей** подзадачи,
+если у неё есть `backup_dir`. Раньше откатывались только успешные
+(`prev.get("success")`), а «напакостившая» оставалась.
+
+**Тест:** `test_run_tool_loop_rollback_on_verify_failed` — edit_file,
+verify `["false"]`, проверка что файл **восстановлен** (содержимое —
+исходное `x = 1`).
+
+### Тесты
+
+456 → **457** passed (+1).
+
+### Коммиты
+
+- <добавится> fix(agent): откат при verify_failed в tool loop (10.53)
+
+---
+
 ## [2026-10-14] iteration 10.52 — GUI: кнопка «Скопировать git diff»
 
 ### Что сделано

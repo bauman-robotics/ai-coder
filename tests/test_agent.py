@@ -1439,6 +1439,47 @@ def test_run_tool_loop_verify_failed(sample_project, minimal_cfg, prompts_cfg):
     assert len(result.verify_errors) > 0
 
 
+def test_run_tool_loop_rollback_on_verify_failed(sample_project, minimal_cfg, prompts_cfg):
+    """verify_failed → run_tool_loop откатывает свои правки из backup_dir."""
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    # Файл — как в E27: правка применилась, verify упал, файл должен
+    # вернуться к исходному состоянию.
+    (sample_project / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+    minimal_cfg.agent.verify_commands = ["false"]
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.LLMClient") as MockClient,
+        patch("ai_coder.agent.get_rate") as mock_rate,
+        patch("ai_coder.agent.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="rollback on verify fail",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    # verify упал
+    assert result.success is False
+    assert result.stopped_reason == "verify_failed"
+    # бэкап был создан
+    assert result.backup_dir is not None
+    # файл откатился к исходному содержимому
+    assert (sample_project / "test.py").read_text() == "x = 1\n"
+
+
 def test_run_auto_fix_no_errors(sample_project, minimal_cfg, prompts_cfg):
     """Если verify сразу прошёл — success=True, 1 попытка."""
 

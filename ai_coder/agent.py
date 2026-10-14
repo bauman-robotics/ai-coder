@@ -924,6 +924,23 @@ def run_agent_decompose(
                         _save_decompose_report(decompose_dir, dec_result, goal)
                     return dec_result
 
+            # --- Страховка: откат упавшей подзадачи ---
+            # run_tool_loop уже откатил свой backup_dir при verify_failed.
+            # Но если fail случился по другой причине (и backup_dir есть) —
+            # откатываем здесь, чтобы не оставлять мусор.
+            if not dry_run and loop_result.backup_dir:
+                from .apply import rollback as do_rollback_fail
+
+                try:
+                    restored = do_rollback_fail(loop_result.backup_dir, project_root)
+                    if restored:
+                        _console.print(
+                            f"[yellow]Откат упавшей подзадачи {st.n}: "
+                            f"{len(restored)} файлов[/yellow]"
+                        )
+                except Exception as e:
+                    _console.print(f"[red]Ошибка отката подзадачи {st.n}: {e}[/red]")
+
             # --- NEW: откат при fail ---
             if rollback_on_fail and not dry_run:
                 _console.print("[yellow]Откат всех успешных подзадач...[/yellow]")
@@ -3049,6 +3066,21 @@ def run_tool_loop(
                 _console.print(f"  [red]✗[/red] {err}")
             if len(verify_errors) > 5:
                 _console.print(f"  [dim]... ещё {len(verify_errors) - 5}[/dim]")
+            # Откат при verify_failed: правки невалидны — убираем.
+            # Раньше откат делала вызывающая сторона (run_agent),
+            # но tool loop / --chain / --decompose оставляли мусор
+            # (см. E27, 2026-10-14: cli.py +12 строк после verify_failed).
+            if backup_dir is not None:
+                from .apply import rollback as _do_rollback
+
+                try:
+                    _restored = _do_rollback(backup_dir, project_root)
+                    if _restored:
+                        _console.print(
+                            f"[yellow]Откат после verify_failed: {len(_restored)} файлов[/yellow]"
+                        )
+                except Exception as _e:  # noqa: BLE001
+                    _console.print(f"[red]Ошибка отката: {_e}[/red]")
         else:
             _console.print("[green]✅ Проверка пройдена[/green]")
 
