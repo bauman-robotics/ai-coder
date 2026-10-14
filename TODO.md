@@ -625,6 +625,17 @@
 - [ ] **Фикс (код):** автовыбор модели по сложности (TODO `### Модели`).
 - **Приоритет:** 🔴 высокий.
 
+### 8.6. `_MAX_DIFF_CHARS` — хардкод в agent.py
+
+- [ ] **Проблема:** `_collect_diff` использует `_MAX_DIFF_CHARS = 15000`
+      (константа модуля), а `run_reverse_check` — `cfg.agent.reverse_check_max_diff_chars`
+      (конфиг). Если конфиг изменить — `_collect_diff` всё равно обрежет по 15000.
+- [ ] **Фикс:** передавать `max_chars` параметром в `_collect_diff`
+      (из `cfg.agent.reverse_check_max_diff_chars`). Сигнатуру менять,
+      значит вызовы в `run_tool_loop` тоже.
+- **Приоритет:** 🟡 низкий.
+- **См.** `docs/experiments.md` → E26 (задача a).
+
 ### 8.5. `--max-cost-rub` не срабатывает в `--tool-loop` и `--chain --plan`
 
 - [ ] **Проблема:** в E25 (Task 1) `--max-cost-rub 1` не остановил
