@@ -49,30 +49,30 @@
     uvicorn ai_coder.gui.app:app --reload --port 8000
     # http://127.0.0.1:8000/
 
-**Сделано (A.11, A.13):**
+**Сделано (A.11–A.13):**
 
 - **A.11** — `run`-команды в GUI: `greet`, `inventory`,
   `suggest_improvements`, `explain` (форма работает с `agent`
   и `run`). ✅
+- **A.12** — расширения формы:
+  - **«Вставить команду»** — `<details>` с textarea + кнопка
+    «Заполнить форму» → `parseCommand` → `applyParsed`. ✅
+  - **Загрузка goal из файла** — `<input type="file">` + FileReader
+    → `#goal`. ✅
+  - **Поле `--issue <path>`** — `#issue` + `parseCommand` +
+    `_build_command`/`_build_argv`/`build`/`run`. ✅
+  Сделано: Task 1+2 — агентом (`--tool-loop --issue`), Task 3 —
+  вручную. См. `docs/experiments.md` → E25.
 - **A.13** — валидация mode: чекбоксы `reverse-check`/`commit`
   блокируются, если несовместимы. ✅
 
-**Не умеет (A.12+):**
+**Не умеет (A.14+):**
 
-- **Вставка готовой команды** (A.12): textarea + кнопка «Разобрать».
-- **Загрузка промпта из файла** (A.12): `<input type="file">`.
-- **Поле `--issue <path>`** (A.12).
-- **Вставка готовой команды** (A.12): textarea + кнопка «Разобрать»
-  (тот же `parseCommand`) → заполняет поля формы.
-- **Загрузка промпта из файла** (A.12): `<input type="file">` +
-  `FileReader` → прочитать `.txt`/`.md` → заполнить `goal`.
-- **Поле `--issue <path>`** (A.12): путь к issue-файлу
-  (`issues/123.md`) из GUI.
 - Встроенный терминал (PTY + WebSocket, этап B).
 - Пагинация / фильтр по проекту в `/reports`.
 - Экспорт статистики в CSV / PNG / SVG.
 
-См. `next-chat/in-progress.md` → A.11, A.12.
+См. `next-chat/in-progress.md` → A.14.
 
 - Встроенный терминал (PTY + WebSocket, этап B) — **интерактив**
   (`--interactive`, `y/n/e`) **не работает**.

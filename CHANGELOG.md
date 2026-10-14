@@ -4,6 +4,52 @@
 
 ---
 
+## [2026-10-14] iteration 10.47 — GUI A.12 (paste / goal-file / --issue) + E25
+
+### Что сделано
+
+**A.12 — расширения формы GUI:**
+
+- **«Вставить команду»** — `<details>` с textarea + кнопка
+  «Заполнить форму» → `parseCommand` → новая функция
+  `applyParsed(parsed)` (вынесена из `pending_command`).
+- **Загрузка goal из файла** — `<input type="file" id="goal-file">`
+  + FileReader → `#goal.value`.
+- **Поле `--issue <path>`** — `#issue` в форме + распознавание
+  `--issue` в `parseCommand` + `applyParsed` устанавливает `#issue`.
+- **`app.py`:** `issue` в `_build_command`/`_build_argv`/`build`/`run`.
+- **Fix:** `_build_argv` не передавал `reverse_check` в
+  `_build_command` (reverse-check молча терялся при запуске из GUI).
+
+**Как сделано:**
+
+- Task 1 (`paste-command` + `applyParsed`) — **агентом**:
+  8 итераций, 2.2767 RUB, reverse-check ✅.
+- Task 2 (`goal-file`) — **агентом**: 2 итерации, 0.8067 RUB,
+  reverse-check ✅.
+- Task 3 (`issue` в `app.py` + HTML) — **вручную** (~15 мин, 0 RUB).
+- **См.** `docs/experiments.md` → E25.
+
+### Наблюдения (E25)
+
+- Warning E8 (goal > 10 строк) — **консервативный**: 11-15 строк
+  дали отличный результат при точной формулировке.
+- **Тип задачи важнее размера:** «вставка» = 2 ит/0.81 RUB,
+  «рефакторинг + вставка» = 8 ит/2.28 RUB (×2.8).
+- **Баг бюджета:** `--max-cost-rub 1` **не остановил** на 2.28 RUB.
+  Второй случай (первый: `--chain --plan` — 1.12 RUB при лимите 1.0;
+  третий: 10.44 — `--decompose`, исправлено). См. TODO.
+
+### Тесты
+
+431 passed. Smoke-тесты GUI: 5/5.
+
+### Коммит
+
+`91ecf82` feat(gui): A.12 — расширения формы (paste / goal-file / --issue)
+
+---
+
 ## [2026-10-14] iteration 10.46 — fix: pytest exit 5 (no tests) — не ошибка
 
 ### Что сделано

@@ -6,6 +6,100 @@
 
 ---
 
+## 2026-10-14 — E25: A.12 через --issue (3 задачи) — ✅ 2/2 через агента
+
+**Гипотеза:** агент справится с тремя подзадачами A.12 через `--issue`.
+
+**Задача:** три issue-файла в `issues-a12/`:
+1. `paste-command` — textarea + кнопка + `applyParsed` (рефакторинг).
+2. `goal-file` — `<input type=file>` + FileReader.
+3. `issue-field` — поле `#issue` + `parseCommand` + `app.py`.
+
+**Команды:**
+
+    ai-coder agent --issue issues-a12/1-paste-command.md . \
+        --tool-loop --apply --reverse-check \
+        --max-iterations 15 --max-cost-rub 1
+    ai-coder agent --issue issues-a12/2-load-goal-file.md . \
+        --tool-loop --apply --reverse-check \
+        --max-iterations 10 --max-cost-rub 1
+
+**Результат Task 1 (paste-command):**
+- ✅ Успех, **8 итераций**, **2.2767 RUB**, reverse-check ✅.
+- ✅ Качество **высокое**: рефакторинг `pending_command` → `applyParsed`,
+  защитные `if`, `type="button"`, `notice` оставлен снаружи функции.
+- ✅ Бонус: агент добавил `parsed.model` (которого не было).
+- ⚠️ **Бюджет не сработал:** 2.28 RUB при `--max-cost-rub 1`.
+
+**Разбор Task 1:**
+
+    1. read_file  — index.html (целиком)
+    2. run_shell  — ❌ rejected (метасимволы, правило 17)
+    3. run_shell  — ✅ grep по parseCommand (сам нашёл строки)
+    4. read_file  — 280-430 (прицельно)
+    5. —           — ❌ parse_error (retry 1/2)
+    6. read_file  — 400-539 (дочитал)
+    7. edit_file  — ✅ HTML-блок
+    8. edit_file  — ✅ JS-рефакторинг
+    → finish + reverse-check ✅
+
+**Результат Task 2 (goal-file):**
+- ✅ Успех, **2 итерации**, **0.8067 RUB**, reverse-check ✅.
+- ✅ Качество по ТЗ, защитные `if`, IIFE.
+- ⚠️ Inline `<script>` внутри формы (стиль проекта — JS в конце).
+
+**Разбор Task 2:**
+
+    1. read_file  — index.html
+    2. edit_file  — ✅ label + input + inline script
+    → finish + reverse-check ✅
+
+**Task 3 (issue-field):**
+- **Не запускали через агента** — сделано **вручную** (~15 мин, 0 RUB).
+- Причина: 3+ точечных правок в Python (`_build_command` /
+  `_build_argv` / `build` / `run`) — лучше `sed`/Python-скриптом
+  (см. `docs/tools.md` → «Когда НЕ использовать tool loop»).
+- Заодно исправлен **баг:** `_build_argv` не передавал
+  `reverse_check` в `_build_command`.
+
+**Итог:**
+
+| Task | Итерации | RUB | RC | Качество |
+|---|---|---|---|---|
+| 1 (paste + applyParsed) | 8 | 2.28 | ✅ | ✅ + бонус |
+| 2 (goal-file) | 2 | 0.81 | ✅ | ✅ |
+| 3 (issue-field, вручную) | — | 0 | — | ✅ |
+| **Итого** | **10** | **3.09** | 2×✅ | — |
+
+**Наблюдения:**
+
+1. **Warning E8 — консервативный.** Goal 11-15 строк → warning,
+   но результат отличный. Ключевой фактор — **точность формулировки**,
+   не длина.
+2. **Тип задачи важнее размера.** «Вставка» (Task 2) = 2 ит,
+   0.81 RUB. «Рефакторинг + вставка» (Task 1) = 8 ит, 2.28 RUB.
+   Разница ×2.8 при близком размере правок.
+3. **Reverse-check работает вживую** — оба раза `ok`.
+4. **Баг бюджета** — `--max-cost-rub 1` не остановил на 2.28 RUB
+   (Task 1). Второй случай (первый: `--chain --plan` — 1.12 RUB
+   при лимите 1.0, см. отдельно). Третий: 10.44 — `--decompose`,
+   исправлено.
+5. **`--issue` + `--chain --plan` — планирование дорогое.**
+   План на 3 задачи = 1.12 RUB (v4-pro). При том, что план был
+   **хорошим**: Task 3 корректно разбит на 2 подзадачи
+   (HTML + Python), Task 1 и 2 — по одной.
+
+**Связь:**
+- E21 (2 файла, простые) — 1.06 RUB, ✅ но дорого.
+- E23 (2 файла, связанные, точный issue) — 2.16 RUB, ✅.
+- **E25 Task 1** (1 файл, рефакторинг + вставка) — 2.28 RUB, ✅.
+- **E25 Task 2** (1 файл, чистая вставка) — 0.81 RUB, ✅.
+**Закономерность:** «вставка» — дёшево, «рефакторинг» — дорого.
+
+**Артефакт:** коммит `91ecf82` (A.12).
+
+---
+
 ## 2026-10-14 — E24: генерация секции progress.md (агент) — ✅ 4 итер., 0.38 RUB
 
 **Гипотеза:** агент сгенерирует секцию `progress.md` из `CHANGELOG.md`

@@ -176,6 +176,16 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Сделано агентом (E18.3): 2 из 3 файлов (help.html + index.html),
   style.css доделан вручную. 1.05 RUB, max_cost.
 
+**A.12:** расширения формы (2026-10-14).
+- «Вставить команду» — `<details>` + textarea + кнопка
+  «Заполнить форму» → `parseCommand` → `applyParsed` (новая функция).
+- «Загрузить goal из файла» — `<input type="file">` + FileReader.
+- Поле `--issue <path>` — `#issue` + `parseCommand` +
+  `_build_command`/`_build_argv`/`build`/`run` в `app.py`.
+- Fix: `_build_argv` не передавал `reverse_check` в `_build_command`.
+- **Как сделано:** Task 1+2 — агентом (2.28 + 0.81 RUB, RC ✅),
+  Task 3 — вручную. См. E25.
+
 **A.11:** run-команды в GUI (2026-10-14).
 - `app.py`: `_build_command` — `task_type="agent"`, `run_action=""`,
   ветка `if task_type == "run"`. Для run: `ai-coder run <action> <path>`
@@ -196,9 +206,9 @@ Python-проектов через DeepSeek API. Работает с git-про�
 Найдено в E19 (перерасход ×8.4). Исправлено в `cli.py` (2 места):
 `decompose_max_cost_rub or max_cost_rub`.
 
-**Не умеет (A.12+):** вставка готовой команды в форму (A.12),
-загрузка промпта из файла (A.12), поле `--issue` (A.12). См.
-`next-chat/in-progress.md` → A.12.
+**Не умеет (A.14+):** встроенный терминал (PTY + WebSocket),
+пагинация `/reports`, экспорт статистики. См.
+`next-chat/in-progress.md`.
 
 ### Agent
 
