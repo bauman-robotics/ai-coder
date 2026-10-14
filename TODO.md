@@ -879,3 +879,23 @@ Decompose **не решает** — связь между файлами сох�
 - [x] **A.8** — история usage в GUI (графики Chart.js: по дням/моделям/действиям). ЗАКРЫТО 10.42.
 - [ ] **A.9** — пагинация/фильтр в `/reports` (если журналов станет 500+).
 - [ ] **A.10** — встроенный терминал (PTY + WebSocket, этап B).
+
+- [ ] **GUI: `--chain` не поддержан.** Форма знает только
+      `task_type=agent` и `task_type=run`. `mode=chain` в select
+      **молча игнорируется** — строится обычный `agent_cmd`.
+      **Фикс:** добавить `chain_path` в `_build_command`/`_build_argv`
+      + поле `#chain-path` в форме (видно при `mode=chain`).
+      **Ограничение:** `--plan` (интерактив `y/n/e`) в GUI **не
+      заработает** — `subprocess` без PTY, `input()` → EOFError.
+      Для `--chain --plan` — только CLI.
+- **Приоритет:** 🟡 средний.
+
+- [ ] **🔴 Баг: откат не работает в `--chain --decompose`.**
+      В E27 (2026-10-14) подзадача 1 задачи 2 упала на `verify_failed`
+      (`test_agent_bad_path`). `--apply` правку применил (`cli.py` +12 строк).
+      Бэкап **был** (`.ai-out/<project>/tool-loop-backup-20261014-180635/`),
+      но `cli.py` **не откатился**. Пришлось `git checkout`.
+      **Где смотреть:** `run_agent_decompose` (`agent.py`, ~693) —
+      вызывается ли `rollback` при `verify_failed` в decompose-пути.
+      **Приоритет:** 🔴 высокий (целостность проекта).
+      **См.** `docs/experiments.md` → E27.

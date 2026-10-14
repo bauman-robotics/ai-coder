@@ -1478,6 +1478,25 @@ def agent_cmd(
         console.print(f"[red]Не директория:[/red] {project_root}")
         raise typer.Exit(1)
 
+    # --- История команд и целей (issue/command auto-save) ---
+    import sys as _sys
+
+    if goal and "pytest" not in _sys.modules:
+        try:
+            import shlex as _shlex
+
+            from .history import save_history_entry
+
+            _cmd_str = "ai-coder " + " ".join(_shlex.quote(a) for a in _sys.argv[1:])
+            save_history_entry(
+                project_root,
+                goal,
+                _cmd_str,
+                write_issue=not split_goals,
+            )
+        except Exception as _e:
+            console.print(f"[yellow]История не сохранена: {_e}[/yellow]")
+
     # --- NEW: --split-goals ---
     if split_goals:
         from .agent import _slug_for_issue, run_split_goals

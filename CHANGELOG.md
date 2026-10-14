@@ -4,6 +4,72 @@
 
 ---
 
+## [2026-10-14] iteration 10.50 — история команд и целей + E27
+
+### Что сделано
+
+**`ai_coder/history.py`** — новый модуль:
+
+- `next_history_number(directory, day) -> int` — следующий `NN` (`max+1` или `0`).
+  Паттерн: `NN_slug.txt` / `NN_slug.md`.
+- `make_slug(goal) -> str` — обёртка над `agent._slug_for_issue` (транслит).
+- `save_history_entry(project_root, goal, command, *, today=None, write_issue=True)`
+  — пишет `commands/YYYY-MM-DD/NN_slug.txt` и (опц.) `issues/YYYY-MM-DD/NN_slug.md`.
+
+**`ai_coder/cli.py`** — вставка в `agent_cmd`:
+
+- после валидации `project_root` (`if not project_root.is_dir()`), **до** `--split-goals`;
+- условия: `if goal and "pytest" not in sys.modules` — не пишем в тестах
+  (иначе мусор в `commands/`/`issues/` от `CliRunner`);
+- `write_issue=not split_goals` — при `--split-goals` пишем только команду
+  (issues создаёт сам split-goals, другая схема имён);
+- `_cmd_str` — из `sys.argv`, **без дубля** `agent` (в отличие от версии агента);
+- try/except — история не ломает агента.
+
+**`tests/test_history.py`** — 21 тест: `next_history_number` (7),
+`make_slug` (6), `save_history_entry` (8, включая `write_issue=False`).
+
+**Исправлено в процессе:**
+
+- NN-сдвиг: агент сделал `01_, 03_` (двойной `+1`), спецификация — `00_, 01_`.
+  Убрали `+1` в `save_history_entry`. Тесты поправили.
+- `write_issue: bool = True` — добавлен после E27 (мусор от `--split-goals`).
+- Защита `"pytest" not in sys.modules` — после E27 (мусор от тестов).
+
+### Как сделано — E27 (`--chain --plan`)
+
+Фича разбита на 2 issue (`issues/2026-10-14/history/`):
+
+1. `01-history-module.md` — `history.py` + тесты. **✅** через v4-pro (flash
+   провалился на `create_file`, `max_iterations`). **3.6074 RUB.**
+2. `02-cli-insert.md` — вставка в `cli.py`. **❌** — `verify_failed`
+   (`test_agent_bad_path`), v4-pro retry не помог. **1.4378 RUB.**
+   Причина: наш issue не учёл валидацию `path` — `save_history_entry`
+   создавал каталог **до** неё.
+
+**Итого:** 5.0453 RUB, 1/2 задачи. Вставку сделали **вручную** — с исправлениями.
+
+### Находки E27
+
+- 🔴 **Баг: откат не работает в `--chain --decompose`.** Правка `cli.py`
+  осталась после `verify_failed` — пришлось `git checkout`. Бэкап был.
+  См. `TODO.md`.
+- **`create_file` — граница flash** (новый датапоинт, после E26).
+- **Тесты агента зелёные ≠ спецификация** — агент подстраивает тесты
+  под свой код (`NN`-сдвиг).
+- **Мусор от pytest** — сломанная вставка писала в корень проекта.
+
+### Тесты
+
+435 → **456** passed (+21).
+
+### Коммиты
+
+- <добавится> feat(agent): история команд и целей (10.50)
+- <добавится> docs: E27 + TODO (баг отката)
+
+---
+
 ## [2026-10-14] iteration 10.49 — GUI: загрузка команды из файла + commands/
 
 ### Что сделано
