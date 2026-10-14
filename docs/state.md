@@ -1,6 +1,6 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-14 (итерации 10.52–10.56: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI, GUI `--chain`)
+**Дата обновления:** 2026-10-14 (итерации 10.52–10.57: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI, GUI `--chain` + fix дефолта)
 **Ветка:** main
 **Последний коммит:** `0ddef7c` (10.55 — GUI: /docs/cli + /help → /docs/cli/help)
 **Тесты:** 459 passed | CI: pytest x3 + ruff + mypy — зелёный
@@ -215,6 +215,8 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `index.html`: `#chain-path` (видно при `mode=chain`),
   `applyModeConstraints` — toggle, `parseCommand` — распознаёт
   `--chain <dir>`, `applyParsed` — устанавливает.
+- **10.57:** убран плохой дефолт `issues` (в проекте — `README.md`),
+  добавлены placeholder и `.field-hint` «Пусто → chain не соберётся».
 - `help.html`: 2 chain-примера.
 - Демо-README: `issues/demos/*` → `commands/demos/*` (chain
   глотал README как задачу).

@@ -4,6 +4,44 @@
 
 ---
 
+## [2026-10-14] iteration 10.57 — GUI: `--chain` без дефолта + подсказки
+
+### Что сделано
+
+**Баг (10.56):** при `mode=chain` с **пустым** `chain_path` подставлялся
+дефолт `issues`. В **этом** проекте `issues/` содержит `README.md`
+(индекс), который chain принимает за задачу → **одна** «задача» = README.
+**Плохо.**
+
+**Фикс `_build_command`** (`ai_coder/gui/app.py`):
+- **убран** дефолт `issues`;
+- при пустом `chain_path` команда собирается **без** `--chain`:
+  `ai-coder agent <path>` — пользователь видит, что chain **не собрался**.
+
+**`index.html`:**
+- `#chain-path`: placeholder `issues/demos/01-chain-sandbox` (пример),
+  title с явным «ОБЯЗАТЕЛЬНО для mode=chain», подсказка `<small>`:
+  «Каталог с *.md-задачами. Пусто → chain не соберётся.»;
+- `style.css`: `.field-hint` (мелкий, полупрозрачный).
+
+**`help.html`:** примеры chain исправлены — `issues/` → `issues/demos/01-chain-sandbox`
+(в `<pre>` **и** `data-cmd`), чтобы кнопка «→ в форму» не подставляла
+плохой путь.
+
+### Проверки
+
+- `curl /build`: пусто → без chain, с `chain_path` → с chain — ✅
+- `/` содержит `field-hint` — ✅
+- `/docs/cli/help` содержит 4 вхождения нового примера — ✅
+- `ruff` — ✅
+- pytest 459 passed — ✅
+
+### Коммиты
+
+- <добавится> fix(gui): --chain без дефолта + подсказки (10.57)
+
+---
+
 ## [2026-10-14] iteration 10.56 — GUI: поддержка `--chain`
 
 ### Что сделано

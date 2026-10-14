@@ -302,16 +302,16 @@ ai-coder agent "Найди все TODO в проекте" . --tool-loop --dry-re
 
             <p>Пакетное выполнение issues (chain):</p>
             <div class="example">
-                <pre><code>ai-coder agent . --chain issues/ --tool-loop --plan</code></pre>
+                <pre><code>ai-coder agent /tmp/proj --chain issues/demos/01-chain-sandbox --tool-loop --plan</code></pre>
                 <button type="button" class="use-example"
-                        data-cmd="ai-coder agent . --chain issues/ --tool-loop --plan">→ в форму</button>
+                        data-cmd="ai-coder agent /tmp/proj --chain issues/demos/01-chain-sandbox --tool-loop --plan">→ в форму</button>
             </div>
 
             <p>Chain без плана (сразу применить):</p>
             <div class="example">
-                <pre><code>ai-coder agent . --chain issues/ --tool-loop --apply</code></pre>
+                <pre><code>ai-coder agent /tmp/proj --chain issues/demos/01-chain-sandbox --tool-loop --apply</code></pre>
                 <button type="button" class="use-example"
-                        data-cmd="ai-coder agent . --chain issues/ --tool-loop --apply">→ в форму</button>
+                        data-cmd="ai-coder agent /tmp/proj --chain issues/demos/01-chain-sandbox --tool-loop --apply">→ в форму</button>
             </div>
         </section>
     </main>

@@ -102,16 +102,23 @@ def _build_command(
         # --chain <dir>: path передаётся на месте goal (hack в cli.py,
         # строка ~1477: если goal — директория, а есть --chain/--issue,
         # cli сам считает это path и обнуляет goal). goal НЕ используется.
-        # Формат: ai-coder agent <path> --chain <dir> --tool-loop
-        chain_val = chain_path.strip() or "issues"
-        parts: list[str] = [
-            "ai-coder",
-            "agent",
-            _escape_shell(path_val),
-            "--chain",
-            _escape_shell(chain_val),
-            "--tool-loop",
-        ]
+        # Формат: ai-coder agent <path> --chain <dir> --tool-loop.
+        chain_val = chain_path.strip()
+        if chain_val:
+            parts: list[str] = [
+                "ai-coder",
+                "agent",
+                _escape_shell(path_val),
+                "--chain",
+                _escape_shell(chain_val),
+                "--tool-loop",
+            ]
+        else:
+            # chain_path пуст — НЕ подставляем дефолт (issues/ в этом
+            # проекте содержит README.md, который chain примет за задачу).
+            # Собираем без --chain: пользователь видит, что chain не
+            # добавился, и понимает, что нужно ввести каталог.
+            parts = ["ai-coder", "agent", _escape_shell(path_val)]
     else:
         parts = ["ai-coder", "agent", f'"{_escape_shell(goal)}"']
         # path — всегда (второй позиционный аргумент agent_cmd).
