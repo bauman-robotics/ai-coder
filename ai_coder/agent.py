@@ -2511,8 +2511,18 @@ def _required_args_hint(tool: str) -> str:
     return ", ".join(_REQUIRED_ARGS.get(tool, []))
 
 
+# Лимит размера diff (совпадает с дефолтом
+# cfg.agent.reverse_check_max_diff_chars).
+_MAX_DIFF_CHARS = 15000
+
+
 def _collect_diff(project_root: Path) -> str:
-    """Собирает git diff рабочего дерева (uncommitted)."""
+    """
+    Собирает git diff рабочего дерева (uncommitted).
+
+    Включает новые (untracked) файлы: git diff их не показывает,
+    поэтому они добавляются вручную по данным git status --porcelain.
+    """
     import subprocess
 
     from .git import is_git_repo
@@ -2527,9 +2537,56 @@ def _collect_diff(project_root: Path) -> str:
             text=True,
             timeout=10,
         )
-        return result.stdout
     except (subprocess.TimeoutExpired, OSError):
         return ""
+
+    diff = result.stdout
+
+    # Untracked-файлы добавляются вручную.
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return diff
+
+    untracked = [line[3:].strip() for line in status.stdout.splitlines() if line.startswith("?? ")]
+    if not untracked:
+        return diff
+
+    extra = ""
+    for rel_path in untracked:
+        if not rel_path:
+            continue
+        # git экранирует пути с не-ASCII в кавычки: "?? \"path\"".
+        if len(rel_path) >= 2 and rel_path[0] == '"' and rel_path[-1] == '"':
+            rel_path = rel_path[1:-1]
+        try:
+            content = (project_root / rel_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        section = (
+            f"diff --git a/{rel_path} b/{rel_path}\n"
+            "new file mode 100644\n"
+            "--- /dev/null\n"
+            f"+++ b/{rel_path}\n"
+        )
+        if content:
+            section += "\n".join("+" + line for line in content.splitlines())
+            section += "\n"
+        extra += section
+
+    # Не превышаем лимит: добавляем untracked ровно столько, сколько влезает.
+    budget = _MAX_DIFF_CHARS - len(diff)
+    if budget <= 0:
+        return diff
+    if len(extra) > budget:
+        extra = extra[:budget]
+    return diff + extra
 
 
 def run_reverse_check(
