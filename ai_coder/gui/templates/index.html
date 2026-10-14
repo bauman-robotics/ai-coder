@@ -166,6 +166,11 @@
                         <textarea id="paste-command" rows="3"
                                   title="Вставьте готовую команду ai-coder — поля формы заполнятся автоматически"
                                   placeholder="ai-coder agent &quot;...&quot; --tool-loop . "></textarea>
+                        <label class="command-file-label" for="command-file"
+                               title="Загрузить команду из файла (.txt, .sh, .md)">Из файла</label>
+                        <input type="file" id="command-file"
+                               accept=".txt,.sh,.md,text/plain"
+                               title="Выберите файл с командой — содержимое подставится в поле выше">
                     </div>
                     <div class="actions">
                         <button type="button" id="parse-command-btn"
@@ -498,6 +503,22 @@
                     var pasteEl = document.getElementById("paste-command");
                     if (!pasteEl) { return; }
                     applyParsed(parseCommand(pasteEl.value));
+                });
+            }
+
+            var commandFile = document.getElementById("command-file");
+            if (commandFile) {
+                commandFile.addEventListener("change", function () {
+                    var file = commandFile.files && commandFile.files[0];
+                    if (!file) { return; }
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        var pasteEl = document.getElementById("paste-command");
+                        if (!pasteEl) { return; }
+                        pasteEl.value = e.target.result;
+                        applyParsed(parseCommand(pasteEl.value));
+                    };
+                    reader.readAsText(file);
                 });
             }
 
