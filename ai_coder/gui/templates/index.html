@@ -84,13 +84,6 @@
                     <datalist id="path-history"></datalist>
                 </div>
 
-                <div class="field agent-only">
-                    <label for="issue">Issue (--issue)</label>
-                    <input id="issue" name="issue"
-                           title="Путь к issue-файлу. Если указан — goal можно не заполнять."
-                           placeholder="issues/123.md">
-                </div>
-
                 <div class="field-row">
                     <div class="field agent-only">
                         <label for="mode">Режим (mode)</label>
@@ -336,7 +329,6 @@
                     goal: "",
                     run_action: "",
                     path: ".",
-                    issue: "",
                     mode: "",
                     check_mode: "",
                     max_cost_rub: "",
@@ -388,13 +380,6 @@
                         if (v === "--max-cost-rub") {
                             if (tokens[i + 1]) {
                                 result.max_cost_rub = tokens[i + 1].value;
-                                i++;
-                            }
-                            continue;
-                        }
-                        if (v === "--issue") {
-                            if (tokens[i + 1]) {
-                                result.issue = tokens[i + 1].value;
                                 i++;
                             }
                             continue;
@@ -478,8 +463,6 @@
                 }
                 if (checkModeEl && parsed.check_mode) { checkModeEl.value = parsed.check_mode; }
                 if (maxCostEl && parsed.max_cost_rub) { maxCostEl.value = parsed.max_cost_rub; }
-                var issueEl = document.getElementById("issue");
-                if (issueEl && parsed.issue) { issueEl.value = parsed.issue; }
                 var applyEl = document.querySelector("input[name=apply]");
                 if (applyEl) { applyEl.checked = !!parsed.apply; }
                 var commitEl = document.querySelector("input[name=commit]");
