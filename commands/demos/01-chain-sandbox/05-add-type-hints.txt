@@ -1,0 +1,1 @@
+ai-coder agent --issue issues/demos/01-chain-sandbox/05-add-type-hints.md /tmp/chain-test --tool-loop --apply

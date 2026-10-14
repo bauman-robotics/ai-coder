@@ -4,6 +4,41 @@
 
 ---
 
+## [2026-10-14] iteration 10.51 — демо-наборы (`issues/demos/`, `commands/demos/`)
+
+### Что сделано
+
+**Демо-наборы** — самодостаточные примеры для демонстрации и повторного запуска:
+
+- `issues/demos/01-chain-sandbox/` — 5 задач для `--chain` (цели).
+- `issues/demos/02-gui-readonly/` — 5 read-only задач для GUI (на `ai-coder`).
+- `issues/demos/03-gui-write/` — 5 write-задач для GUI (песочница `/tmp/gui-test`).
+- `commands/demos/01-chain-sandbox/` — `setup.sh`, `run.sh`, 5 команд (`.txt`).
+- `commands/demos/03-gui-write/` — `setup.sh`.
+
+**Структура:**
+- **цели** — в `issues/demos/`, **команды** — в `commands/demos/` (симметрия).
+- **`.gitignore`** — исключения: `issues/*` + `!issues/demos/**`,
+  `commands/*` + `!commands/demos/**` (демо — в git, автоистория — локально).
+
+**Демо 1** — `--chain --tool-loop --apply` в песочнице `/tmp/chain-test`:
+
+    bash commands/demos/01-chain-sandbox/run.sh
+
+Проверено в E28: **5/5 ✅**, 0.5665 RUB.
+
+**Демо 2** — read-only задачи на `ai-coder` для GUI (`mode=tool-loop`,
+`check_mode=dry-read`). Ничего не меняется.
+
+**Демо 3** — write-задачи в песочнице `/tmp/gui-test` для GUI (`--apply`).
+Перед запуском — `bash commands/demos/03-gui-write/setup.sh`.
+
+### Коммиты
+
+- <добавится> feat(demos): демо-наборы (10.51)
+
+---
+
 ## [2026-10-14] iteration 10.50 — история команд и целей + E27
 
 ### Что сделано

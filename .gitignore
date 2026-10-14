@@ -40,9 +40,13 @@ htmlcov/
 next-chat/
 
 # Local issues (tasks for ai-coder agent)
-issues/
+issues/*
+!issues/demos/
+!issues/demos/**
 issues-*/
 
 # Local commands (saved ai-coder commands)
-commands/
+commands/*
+!commands/demos/
+!commands/demos/**
 commands-*/

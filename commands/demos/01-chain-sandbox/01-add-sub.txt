@@ -1,0 +1,1 @@
+ai-coder agent --issue issues/demos/01-chain-sandbox/01-add-sub.md /tmp/chain-test --tool-loop --apply
