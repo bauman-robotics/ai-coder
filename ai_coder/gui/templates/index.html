@@ -11,9 +11,9 @@
     <header>
         <h1>ai-coder GUI</h1>
         <nav class="report-nav">
-            <a href="/reports">Все отчёты</a>
-            <a href="/stats">Статистика</a>
-            <a href="/help">Справка</a>
+            <a href="/reports" title="Список всех запусков (журналов)">Все отчёты</a>
+            <a href="/stats" title="Статистика расходов: графики по дням, моделям, действиям">Статистика</a>
+            <a href="/help" title="Справка: режимы, опции, действия, примеры">Справка</a>
         </nav>
     </header>
     <main>
@@ -27,7 +27,8 @@
                   hx-swap="innerHTML">
                 <div class="field">
                     <label for="task-type">Тип задачи</label>
-                    <select id="task-type" name="task_type">
+                    <select id="task-type" name="task_type"
+                            title="agent — LLM-агент (сам читает, правит, проверяет); run — разовое действие (greet, inventory, ...)">
                         <option value="agent">agent (LLM-агент)</option>
                         <option value="run">run (разовое действие)</option>
                     </select>
@@ -35,7 +36,8 @@
 
                 <div class="field field-hidden" id="run-action-field">
                     <label for="run-action">Действие (run)</label>
-                    <select id="run-action" name="run_action">
+                    <select id="run-action" name="run_action"
+                            title="Разовое действие: greet — обзор; inventory — инвентарь; explain — объяснить файл; suggest_improvements — ревью; write_readme, add_docstrings, refactor">
                         <option value="greet">greet — обзор проекта</option>
                         <option value="inventory">inventory — инвентарь</option>
                         <option value="suggest_improvements">suggest_improvements — ревью</option>
@@ -49,12 +51,14 @@
                 <div class="field agent-only">
                     <label for="goal">Цель (goal)</label>
                     <textarea id="goal" name="goal" rows="4"
+                              title="Задача для LLM простыми словами. Максимум 15 строк. Без обратных кавычек."
                               placeholder="Опишите задачу для агента"></textarea>
                 </div>
 
                 <div class="field">
                     <label for="path">Путь (path)</label>
                     <input id="path" name="path" list="path-history"
+                           title="Путь к проекту. . — текущая директория; можно указать конкретный файл."
                            placeholder="src/ или ai_coder/agent.py">
                     <datalist id="path-history"></datalist>
                 </div>
@@ -62,7 +66,8 @@
                 <div class="field-row">
                     <div class="field agent-only">
                         <label for="mode">Режим (mode)</label>
-                        <select id="mode" name="mode">
+                        <select id="mode" name="mode"
+                                title="plain — план без выполнения; tool-loop — LLM сам вызывает инструменты (read/edit/finish); decompose — разбить на подзадачи (5+ файлов); plan — показать план, спросить y/n; chain — выполнить issues/*.md; split-goals — разбить фразу на N issues">
                             <option value="plain">plain</option>
                             <option value="tool-loop">tool-loop</option>
                             <option value="decompose">decompose</option>
@@ -74,7 +79,8 @@
 
                     <div class="field">
                         <label for="model">Модель (model)</label>
-                        <select id="model" name="model">
+                        <select id="model" name="model"
+                                title="default — модель из config.yaml; flash — дешёвая (deepseek-flash); v4-pro — умная (deepseek-v4-pro)">
                             <option value="default">default</option>
                             <option value="deepseek-flash">flash</option>
                             <option value="deepseek-v4-pro">v4-pro</option>
@@ -83,7 +89,8 @@
 
                     <div class="field">
                         <label for="max-cost-rub">Макс. стоимость, ₽</label>
-                        <select id="max-cost-rub" name="max_cost_rub">
+                        <select id="max-cost-rub" name="max_cost_rub"
+                                title="Лимит стоимости в рублях. При превышении — остановка.">
                             <option value="">— без ограничения</option>
                             <option value="0.1">0.1 RUB</option>
                             <option value="0.2">0.2 RUB</option>
@@ -99,7 +106,7 @@
                 <div class="field flags agent-only">
                     <span class="flags-label">Флаги</span>
                     <div class="flags-row">
-                        <label class="checkbox" id="apply-label">
+                        <label class="checkbox" id="apply-label" title="Применить правки (для write-действий и tool-loop)">
                             <input type="checkbox" name="apply" value="true"> apply
                         </label>
                         <label class="checkbox" id="commit-label" title="требует apply">
@@ -111,7 +118,8 @@
                     </div>
                     <div class="flags-row">
                         <label for="check-mode">Режим проверки:</label>
-                        <select id="check-mode" name="check_mode">
+                        <select id="check-mode" name="check_mode"
+                                title="normal — обычная проверка; dry-run — симуляция (dangerous не выполняются); dry-read — read разрешён, write блокирован">
                             <option value="normal">обычный</option>
                             <option value="dry-run">dry-run (только логи)</option>
                             <option value="dry-read">dry-read (read разрешён, write блокирован)</option>
@@ -125,16 +133,22 @@
                         <label for="advanced-flags">advanced-flags</label>
                         <textarea id="advanced-flags" name="advanced_flags"
                                   rows="2"
+                                  title="Произвольные флаги CLI (например, --only-path, --exclude-web, --with-tests)"
                                   placeholder="--verbose --max-steps 20"></textarea>
                     </div>
                 </details>
 
                 <div class="actions">
-                    <button type="submit" class="primary">Собрать команду</button>
-                    <button type="button" id="copy-btn">Скопировать</button>
-                    <button type="button" id="copy-output-btn">Скопировать вывод</button>
-                    <button type="button" id="run-btn">Запустить</button>
-                    <button type="button" id="stop-btn" disabled>Остановить</button>
+                    <button type="submit" class="primary"
+                            title="Собрать команду из полей и показать внизу">Собрать команду</button>
+                    <button type="button" id="copy-btn"
+                            title="Скопировать собранную команду в буфер обмена">Скопировать</button>
+                    <button type="button" id="copy-output-btn"
+                            title="Скопировать вывод агента в буфер обмена">Скопировать вывод</button>
+                    <button type="button" id="run-btn"
+                            title="Запустить ai-coder со стримингом (SSE)">Запустить</button>
+                    <button type="button" id="stop-btn" disabled
+                            title="Остановить процесс (SIGTERM)">Остановить</button>
                 </div>
             </form>
 
