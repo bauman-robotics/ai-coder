@@ -1,8 +1,8 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-14 (итерации 10.42–10.44: GUI A.8–A.11, fix `--max-cost-rub` для `--decompose`, E19)
+**Дата обновления:** 2026-10-14 (итерации 10.42–10.45: GUI A.8–A.11, fix `--max-cost-rub` для `--decompose`, reverse-check)
 **Ветка:** main
-**Последний коммит:** (10.44 — fix бюджета + A.11) — см. git log
+**Последний коммит:** (10.45 — reverse-check) — см. git log
 **Тесты:** 419 passed | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
@@ -312,6 +312,27 @@ Python-проектов через DeepSeek API. Работает с git-про�
       сложности. Точное правило для `--issue`.
     - **Этап 2:** улучшение replan — история подзадачи, измельчение.
     - **Этап 3 (E9):** повторить задачу 1.5 с улучшенным replan.
+
+  - **Reverse-check (10.45):**
+    - `--reverse-check` — после `finish(success=True)` +
+      `stopped_reason="completed"` — вторая LLM-проверка
+      diff на соответствие goal. Требует `--tool-loop`.
+    - `ReverseCheckResult` (ok / problems / suggestion /
+      cost_* / parse_error).
+    - `_collect_diff` — `git diff HEAD`.
+    - `run_reverse_check` — v4-pro, парсинг JSON.
+      Fail-safe: при ошибке парсинга / LLM → `ok=True`.
+    - Стоимость суммируется в общий bill.
+    - Warnings при `ok=False` + секция `## Reverse-check`
+      в `report.md`.
+    - **E2E (E20):** простая задача — 2 итерации,
+      0.1252 RUB (reverse-check 0.0378 RUB), `ok=True`.
+    - **Ограничения MVP:** не работает при `--decompose`;
+      промпт — итеративный.
+    - **Закрывает:** 6 паттернов «куски ок, связка — нет»
+      (A.0/A.2/A.3/A.4/E16).
+    - **Не закрывает:** связанные правки (JS↔Python↔HTML) —
+      см. `docs/tools.md` → «Когда НЕ использовать tool loop».
 
 ---
 

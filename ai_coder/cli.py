@@ -1322,6 +1322,14 @@ def agent_cmd(
             "pytest-тесты для изменённых файлов. Требует --tool-loop."
         ),
     ),
+    reverse_check: bool = typer.Option(
+        False,
+        "--reverse-check",
+        help=(
+            "После finish(success) проверить diff на соответствие goal "
+            "(вторая LLM-проверка). Требует --tool-loop."
+        ),
+    ),
     issue: Path | None = typer.Option(
         None,
         "--issue",
@@ -1422,6 +1430,10 @@ def agent_cmd(
 
     if with_tests and not tool_loop:
         console.print("[red]--with-tests требует --tool-loop[/red]")
+        raise typer.Exit(1)
+
+    if reverse_check and not tool_loop:
+        console.print("[red]--reverse-check требует --tool-loop[/red]")
         raise typer.Exit(1)
 
     if interactive and not sys.stdin.isatty():
@@ -1764,6 +1776,7 @@ def agent_cmd(
                     auto_commit=commit,
                     resume_from=resume,  # NEW
                     allow_blacklist=allow_blacklist,
+                    reverse_check=reverse_check,  # NEW
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")

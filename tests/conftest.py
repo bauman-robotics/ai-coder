@@ -192,6 +192,10 @@ def prompts_cfg() -> PromptsConfig:
                 system="Split: {{goal}}",
                 user="Tree: {{tree}}, metadata: {{metadata}}",
             ),
+            "agent_reverse_check": PromptEntry(
+                system="Check: {{goal}}",
+                user="Diff: {{diff}}",
+            ),
         }
     )
 

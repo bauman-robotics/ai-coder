@@ -1530,6 +1530,21 @@ class ToolLoopResult:
     applied_ops: int = 0  # NEW: число успешных write_file/edit_file
     read_ops: int = 0  # NEW: число успешных read_file/read_symbol/list_files
     warnings: list[str] = field(default_factory=list)  # NEW: partial / blacklist
+    reverse_check_result: ReverseCheckResult | None = None  # NEW
+
+
+@dataclass
+class ReverseCheckResult:
+    """Результат reverse-check: проверка diff на соответствие goal."""
+
+    ok: bool
+    problems: list[str] = field(default_factory=list)
+    suggestion: str | None = None
+    cost_rub: float = 0.0
+    cost_cny: float = 0.0
+    cost_usd: float = 0.0
+    raw_response: str = ""
+    parse_error: str | None = None
 
 
 # ---------- декомпозиция задач ----------
@@ -2496,6 +2511,115 @@ def _required_args_hint(tool: str) -> str:
     return ", ".join(_REQUIRED_ARGS.get(tool, []))
 
 
+def _collect_diff(project_root: Path) -> str:
+    """Собирает git diff рабочего дерева (uncommitted)."""
+    import subprocess
+
+    from .git import is_git_repo
+
+    if not is_git_repo(project_root):
+        return ""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+
+def run_reverse_check(
+    *,
+    goal: str,
+    diff: str,
+    project_root: Path,
+    cfg: AppConfig,
+    prompts_cfg: PromptsConfig,
+    model: str | None = None,
+) -> ReverseCheckResult:
+    """
+    Проверяет diff на соответствие goal через вторую LLM-проверку.
+
+    Возвращает ReverseCheckResult. При ошибке парсинга — ok=True
+    (не блокируем, чтобы не ломать пайплайн).
+    """
+    max_chars = getattr(cfg.agent, "reverse_check_max_diff_chars", 15000)
+    if len(diff) > max_chars:
+        diff = diff[:max_chars] + f"\n\n[... обрезано, всего {len(diff)} символов]"
+
+    prompt_entry = prompts_cfg.get("agent_reverse_check")
+    # render_prompt требует depth+scan — для reverse-check не нужны.
+    # Подставляем переменные вручную (промпт простой: {{goal}}, {{diff}}).
+    system = prompt_entry.system.replace("{{goal}}", goal).replace("{{diff}}", diff)
+    user = prompt_entry.user.replace("{{goal}}", goal).replace("{{diff}}", diff)
+
+    rc_model = (
+        model
+        or getattr(cfg.agent, "reverse_check_model", None)
+        or getattr(cfg.agent, "decompose_model", None)
+        or cfg.api.model
+    )
+
+    client = LLMClient(cfg.api)
+    try:
+        llm_resp = client.chat(
+            model=rc_model,
+            system=system,
+            user=user,
+            temperature=0.0,
+        )
+    except Exception as e:
+        return ReverseCheckResult(ok=True, parse_error=f"LLM error: {e}")
+
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+    cost = calculate_cost(
+        pricing=cfg.api.pricing_for(rc_model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+
+    content = llm_resp.content.strip()
+    if content.startswith("```"):
+        parts = content.split("```")
+        if len(parts) >= 2:
+            content = parts[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+
+    try:
+        data = json.loads(content)
+        return ReverseCheckResult(
+            ok=bool(data.get("ok", True)),
+            problems=list(data.get("problems", []) or []),
+            suggestion=data.get("suggestion"),
+            cost_rub=cost.cost_rub,
+            cost_cny=cost.cost_cny,
+            cost_usd=cost.cost_usd,
+            raw_response=llm_resp.content,
+        )
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        return ReverseCheckResult(
+            ok=True,
+            parse_error=str(e),
+            cost_rub=cost.cost_rub,
+            cost_cny=cost.cost_cny,
+            cost_usd=cost.cost_usd,
+            raw_response=llm_resp.content,
+        )
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -2517,6 +2641,7 @@ def run_tool_loop(
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
     verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
     step_type: str | None = None,  # NEW: "edit" | "read" | None (без проверки)
+    reverse_check: bool = False,  # NEW: вторая LLM-проверка после success
 ) -> ToolLoopResult:
     """
     Tool loop: модель сама вызывает инструменты до завершения.
@@ -2890,6 +3015,36 @@ def run_tool_loop(
         else:
             _console.print("[dim]Автокоммит: нечего коммитить (дерево чистое)[/dim]")
 
+    # --- reverse-check (вторая LLM-проверка) ---
+    reverse_result: ReverseCheckResult | None = None
+    if reverse_check and success and not dry_run and stopped_reason == "completed":
+        diff = _collect_diff(project_root)
+        if diff:
+            _console.print("[dim]Reverse-check...[/dim]")
+            reverse_result = run_reverse_check(
+                goal=goal,
+                diff=diff,
+                project_root=project_root,
+                cfg=cfg,
+                prompts_cfg=prompts_cfg,
+            )
+            total_cost_rub += reverse_result.cost_rub
+            total_cost_cny += reverse_result.cost_cny
+            total_cost_usd += reverse_result.cost_usd
+
+            if not reverse_result.ok:
+                for p in reverse_result.problems:
+                    warnings.append(f"reverse-check: {p}")
+                _console.print("[yellow]Reverse-check нашёл проблемы:[/yellow]")
+                for p in reverse_result.problems:
+                    _console.print(f"[yellow]   - {p}[/yellow]")
+                if reverse_result.suggestion:
+                    _console.print(f"[yellow]   -> {reverse_result.suggestion}[/yellow]")
+            else:
+                _console.print("[green]Reverse-check: ок[/green]")
+        else:
+            _console.print("[dim]Reverse-check: diff пустой — пропуск[/dim]")
+
     # --- итоговый отчёт ---
     result = ToolLoopResult(
         success=success,
@@ -2908,6 +3063,7 @@ def run_tool_loop(
         applied_ops=applied_ops,  # NEW
         read_ops=read_ops,  # NEW
         warnings=warnings,  # NEW: partial / blacklist
+        reverse_check_result=reverse_result,  # NEW
     )
 
     if journal_dir is not None:
@@ -3249,6 +3405,21 @@ def _save_tool_loop_report(
         lines.append("## Предупреждения\n")
         for w in result.warnings:
             lines.append(f"- ⚠️ {w}")
+        lines.append("")
+    if result.reverse_check_result is not None:
+        rc = result.reverse_check_result
+        lines.append("## Reverse-check\n")
+        if rc.ok:
+            lines.append("- ✅ Проблем не найдено.")
+        else:
+            lines.append("- ⚠️ Найдены проблемы:")
+            for p in rc.problems:
+                lines.append(f"  - {p}")
+            if rc.suggestion:
+                lines.append(f"- **Рекомендация:** {rc.suggestion}")
+        if rc.parse_error:
+            lines.append(f"- parse_error: {rc.parse_error}")
+        lines.append(f"- **Стоимость:** {rc.cost_rub:.6f} RUB")
         lines.append("")
     lines.append("## История\n")
     for i, (action, tool_result) in enumerate(result.history, 1):

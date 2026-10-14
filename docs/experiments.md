@@ -6,6 +6,66 @@
 
 ---
 
+## 2026-10-14 — E20: reverse-check — ✅ работает
+
+**Гипотеза:** после `finish(success)` LLM перечитывает diff
+и находит семантические ошибки, которые verify не ловит.
+
+**Команда:**
+
+    ai-coder agent "Функция add должна возвращать сумму a+b. Почини." \
+        /tmp/rc-test --tool-loop --apply --reverse-check --max-cost-rub 1
+
+**Результат:**
+- ✅ tool loop: 2 итерации (read_file → edit_file).
+- ✅ verify (pytest): пройдено.
+- ✅ **reverse-check:** запустился, `ok=True`.
+- ✅ Стоимость: **0.1252 RUB** (tool loop ~0.087 + reverse-check 0.0378).
+
+**Report (`report.md`):**
+
+    ## Reverse-check
+    - ✅ Проблем не найдено.
+    - **Стоимость:** 0.037808 RUB
+
+**Тесты:** +8 (7 unit + 1 dataclass) → **427 passed**.
+
+**Что работает:**
+- Флаг `--reverse-check` (требует `--tool-loop`).
+- Запуск после `success=True` + `stopped_reason="completed"`.
+- Сбор diff через `git diff HEAD`.
+- LLM-запрос (v4-pro) → JSON `{ok, problems, suggestion}`.
+- Fail-safe: при ошибке парсинга / LLM — `ok=True`.
+- Стоимость суммируется в общий bill.
+- Секция `## Reverse-check` в `report.md`.
+- Warnings при `ok=False`.
+
+**Что не покрыто в E2E:**
+- «Плохой» сценарий (reverse-check находит проблему) —
+  покрыт **unit-тестом** `test_reverse_check_parses_problems`.
+
+**Побочное наблюдение (TODO):**
+- Verify на проекте **без тестов** падает с `exit code: 5`
+  («no tests ran»). Это **не ошибка**, но прогон считается
+  провалом → reverse-check не запускается.
+  **TODO:** в `run_verify_commands` — `exit 5` для pytest
+  считать успехом (с предупреждением).
+
+**Цифры:**
+- Стоимость reverse-check для маленького diff: **0.0378 RUB**.
+- Дешевле прогноза (0.1–0.3 RUB).
+
+**Открыто:**
+- reverse-check **не работает при `--decompose`** (MVP).
+- Промпт — итеративный, может давать ложные срабатывания.
+
+**Связь:** reverse-check закрывает 6 паттернов
+«куски ок, связка — нет» (A.0/A.2/A.3/A.4/E16).
+Не закрывает **связанные правки** (JS↔Python↔HTML) —
+см. `docs/tools.md` → «Когда НЕ использовать tool loop».
+
+---
+
 ## 2026-10-14 — E19: A.11 через --decompose + баг `--max-cost-rub`
 
 **Гипотеза:** 4-файловая GUI-задача (app.py, index.html, help.html,

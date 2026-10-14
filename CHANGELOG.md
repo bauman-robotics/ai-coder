@@ -4,6 +4,64 @@
 
 ---
 
+## [2026-10-14] iteration 10.45 — reverse-check (Уровень 2.5)
+
+### Что сделано
+
+**Флаг `--reverse-check`** (требует `--tool-loop`): после
+`finish(success=True)` + `stopped_reason="completed"` —
+вторая LLM-проверка diff на соответствие goal.
+
+**`ai_coder/agent.py`:**
+- `ReverseCheckResult` — dataclass (`ok`, `problems`,
+  `suggestion`, `cost_*`, `raw_response`, `parse_error`).
+- `_collect_diff(project_root)` — git diff HEAD.
+- `run_reverse_check(goal, diff, project_root, cfg, prompts_cfg)` —
+  LLM-запрос, парсинг JSON, fail-safe (ok=True при ошибке).
+- `run_tool_loop(..., reverse_check=False)` — параметр, вызов после
+  success, суммирование стоимости, warnings при `ok=False`.
+- `ToolLoopResult.reverse_check_result` — новое поле.
+- `_save_tool_loop_report` — секция `## Reverse-check`.
+
+**`ai_coder/config.py` (`AgentConfig`):**
+- `reverse_check_model: str | None = None`.
+- `reverse_check_max_diff_chars: int = 15000`.
+
+**`ai_coder/cli.py`:**
+- Флаг `--reverse-check`.
+- Валидация (`--tool-loop` обязателен).
+- Передача в `run_tool_loop`.
+
+**`config/prompts.yaml`:**
+- Промпт `agent_reverse_check`.
+
+**`tests/test_agent.py` + `tests/conftest.py`:**
+- +8 тестов (parse ok / parse problems / bad json / markdown
+  wrapper / truncate / llm error / collect_diff non-git /
+  dataclass).
+- Фикстура `prompts_cfg` дополнена `agent_reverse_check`.
+
+**Тесты:** 419 → **427**.
+
+### E2E
+
+См. `docs/experiments.md` → E20.
+
+- Простая задача (fix add): 2 итерации, 0.1252 RUB (RC 0.0378).
+- Reverse-check: `ok=True`.
+
+### Ограничения MVP
+
+- Не работает при `--decompose`.
+- Промпт — итеративный, калибровка на будущее.
+
+### Как сделано
+
+**Вручную** (связанные правки: agent.py + config.py + cli.py +
+prompts.yaml + tests + conftest). ~3 ч.
+
+---
+
 ## [2026-10-14] iteration 10.44 — fix бюджета --decompose + GUI A.11 (run-команды)
 
 ### Fix: `--max-cost-rub` игнорировался при `--decompose`

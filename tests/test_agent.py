@@ -8,6 +8,8 @@ from unittest.mock import patch
 from ai_coder.agent import (
     AgentPlan,
     AgentStep,
+    ReverseCheckResult,
+    _collect_diff,
     _extract_target_files,
     _parse_phase1_response,
     _render_plan_summary,
@@ -18,6 +20,7 @@ from ai_coder.agent import (
     run_auto_fix,
     run_planner,
     run_planner_replan,
+    run_reverse_check,
     run_tool_loop,
 )
 from ai_coder.llm import LLMResponse
@@ -2810,3 +2813,155 @@ def test_run_tool_loop_no_partial_when_all_applied(sample_project, minimal_cfg, 
     assert result.success is True
     assert result.applied_ops == 2
     assert result.warnings == []
+
+
+# ---------- reverse-check ----------
+
+
+def _make_llm_response(content: str) -> LLMResponse:
+    """Хелпер: собрать LLMResponse с заданным content."""
+    return LLMResponse(
+        content=content,
+        model="test-model",
+        prompt_tokens=100,
+        prompt_cache_hit_tokens=0,
+        prompt_cache_miss_tokens=100,
+        completion_tokens=50,
+        total_tokens=150,
+        duration_ms=1000,
+        finish_reason="stop",
+    )
+
+
+def test_reverse_check_parses_ok(sample_project, minimal_cfg, prompts_cfg):
+    """LLM вернул {"ok": true} → result.ok == True."""
+    body = json.dumps({"ok": True, "problems": [], "suggestion": None})
+
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        MockClient.return_value.chat.return_value = _make_llm_response(body)
+        result = run_reverse_check(
+            goal="test goal",
+            diff="diff --git ...",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is True
+    assert result.problems == []
+    assert result.parse_error is None
+
+
+def test_reverse_check_parses_problems(sample_project, minimal_cfg, prompts_cfg):
+    """LLM вернул {"ok": false, "problems": [...]} → result.ok == False."""
+    body = json.dumps(
+        {
+            "ok": False,
+            "problems": ["wrong API version", "missing positional arg"],
+            "suggestion": "fix it",
+        }
+    )
+
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        MockClient.return_value.chat.return_value = _make_llm_response(body)
+        result = run_reverse_check(
+            goal="test goal",
+            diff="diff --git ...",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is False
+    assert result.problems == ["wrong API version", "missing positional arg"]
+    assert result.suggestion == "fix it"
+
+
+def test_reverse_check_bad_json_returns_ok(sample_project, minimal_cfg, prompts_cfg):
+    """При невалидном JSON → fail-safe: ok=True, parse_error заполнен."""
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        MockClient.return_value.chat.return_value = _make_llm_response("not a json at all")
+        result = run_reverse_check(
+            goal="test",
+            diff="x",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is True  # fail-safe
+    assert result.parse_error is not None
+
+
+def test_reverse_check_strips_markdown_wrapper(sample_project, minimal_cfg, prompts_cfg):
+    """LLM вернул ```json {...} ``` → всё равно парсится."""
+    body = '```json\n{"ok": true, "problems": []}\n```'
+
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        MockClient.return_value.chat.return_value = _make_llm_response(body)
+        result = run_reverse_check(
+            goal="test",
+            diff="x",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is True
+    assert result.parse_error is None
+
+
+def test_reverse_check_truncates_long_diff(sample_project, minimal_cfg, prompts_cfg):
+    """Очень длинный diff обрезается до reverse_check_max_diff_chars."""
+    long_diff = "x" * 30000
+    body = json.dumps({"ok": True, "problems": []})
+
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _make_llm_response(body)
+        run_reverse_check(
+            goal="test",
+            diff=long_diff,
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    # Проверяем user-промпт: он должен содержать "обрезано" и НЕ содержать
+    # все 30000 символов.
+    call_kwargs = mock_chat.call_args.kwargs
+    user_prompt = call_kwargs.get("user", "")
+    assert "обрезано" in user_prompt
+    assert len(user_prompt) < 20000  # точно меньше, чем 30000 + шаблон
+
+
+def test_reverse_check_llm_error_returns_ok(sample_project, minimal_cfg, prompts_cfg):
+    """Ошибка LLM → fail-safe: ok=True, parse_error='LLM error: ...'."""
+    with patch("ai_coder.agent.LLMClient") as MockClient:
+        MockClient.return_value.chat.side_effect = RuntimeError("network down")
+        result = run_reverse_check(
+            goal="test",
+            diff="x",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is True
+    assert result.parse_error is not None
+    assert "LLM error" in result.parse_error
+
+
+def test_collect_diff_non_git_returns_empty(tmp_path):
+    """Не-git каталог → _collect_diff возвращает ''."""
+    assert _collect_diff(tmp_path) == ""
+
+
+def test_reverse_check_result_dataclass():
+    """ReverseCheckResult — dataclass с нужными полями."""
+    r = ReverseCheckResult(ok=True)
+    assert r.ok is True
+    assert r.problems == []
+    assert r.suggestion is None
+    assert r.cost_rub == 0.0
+    assert r.parse_error is None
