@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-10-14] iteration 10.55 — GUI: /docs/cli + объединение с /help
+
+### Что сделано
+
+**Справочник `docs/cli/`** (коммит `9be5a44`):
+- `docs/cli/README.md` — индекс + обзор 7 команд.
+- `docs/cli/actions-run-fix.md` — команды `actions`, `run`, `fix`.
+- `docs/cli/agent.md` — команда `agent` (49 флагов, 6 групп, 4 примера).
+- `docs/cli/usage-backups-rollback-index.md` — `usage`, `backups`,
+  `rollback` + алфавитный указатель (~60 флагов).
+
+Собрано агентами (v4-pro) **по частям** (5 успешных запусков,
+~11.6 RUB + 2 провала 11.6 RUB = **~23 RUB**). Затем — склейка
+и чистка вручную:
+- `agent.md = _03a + _03b` (убраны дублирующие заголовки);
+- убран битый список с якорями из `README.md`.
+
+**Страница `/docs/cli` в GUI** (коммит `eb1d5ef`):
+- `app.py`: `DOCS_CLI_DIR`, `_collect_docs_cli`, `_safe_docs_cli_path`
+  (защита от traversal), `_render_docs_cli_md` (правка локальных
+  ссылок `.md` → `/docs/cli/<page>`), `GET /docs/cli` и
+  `GET /docs/cli/{page}`.
+- `templates/docs_cli.html` — двухколоночный layout (nav + markdown).
+- `static/style.css` — `.docs-cli-layout`, `.docs-cli-nav`, адаптив.
+- `index.html` — ссылка «Справочник» в nav.
+
+Проверено: `/docs/cli` → 200 (2838 байт), `/docs/cli/agent` → 200,
+`/docs/cli/nonexistent` → 404, ссылки `.md` в контенте → `/docs/cli/<page>`.
+
+**Объединение `/help` с `/docs/cli`** (коммит `0ddef7c`):
+- `GET /docs/cli/help` → `help.html` (как есть).
+- `GET /help` → 301 редирект на `/docs/cli/help`.
+- `help.html`: nav — ссылка «Справочник команд» → `/docs/cli`.
+- `docs_cli.html`: nav — «Справка: режимы, примеры» → `/docs/cli/help`.
+- `index.html`: ссылка «Справка» убрана (остаётся «Справочник»).
+- `docs/cli/README.md`: в «Содержимое» добавлена ссылка на `/docs/cli/help`.
+
+Кнопки «→ в форму» (12 шт., `sessionStorage.pending_command`)
+работают как раньше — `help.html` не тронут по логике.
+
+### Тесты
+
+459 passed (без изменений — GUI не покрыт тестами).
+
+### Коммиты
+
+- `9be5a44` docs: справочник docs/cli/ (команды и флаги) + ссылка в README
+- `eb1d5ef` feat(gui): страница /docs/cli — справочник команд в вебе
+- `0ddef7c` feat(gui): /help → /docs/cli/help (единый вход в справочник)
+
+---
+
 ## [2026-10-14] iteration 10.54 — fix: precheck бюджета в tool loop и planner
 
 ### Что сделано

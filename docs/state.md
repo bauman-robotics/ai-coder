@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-14 (итерации 10.42–10.45: GUI A.8–A.11, fix `--max-cost-rub` для `--decompose`, reverse-check)
+**Дата обновления:** 2026-10-14 (итерации 10.52–10.55: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI)
 **Ветка:** main
-**Последний коммит:** (10.45 — reverse-check) — см. git log
-**Тесты:** 419 passed | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `0ddef7c` (10.55 — GUI: /docs/cli + /help → /docs/cli/help)
+**Тесты:** 459 passed | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
 ---

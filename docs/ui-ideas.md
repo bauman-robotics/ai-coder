@@ -76,7 +76,37 @@
 - **Ограничение:** `--commit` → diff пустой.
 - Сделано вручную (~20 мин, 0 RUB).
 
-**Не умеет (A.15+):**
+**A.14:** кнопка «Скопировать git diff» (2026-10-14, 10.52).
+- `app.py`: `POST /diff` — `git diff HEAD` в `path`, JSON `{diff, error?}`.
+- `index.html`: `#copy-diff-btn` рядом с «Скопировать вывод» + JS
+  (fetch + clipboard, fallback через textarea).
+- **Ограничение:** `--commit` → diff пустой (заглушка в JS).
+- Сделано вручную (~20 мин, 0 RUB).
+
+**A.15:** страница `/docs/cli` — справочник команд в вебе (2026-10-14, 10.55).
+- `app.py`: `DOCS_CLI_DIR`, `_collect_docs_cli`, `_safe_docs_cli_path`
+  (защита от traversal), `_render_docs_cli_md` (правка ссылок
+  `.md` → `/docs/cli/<page>`), `GET /docs/cli` и `/docs/cli/{page}`.
+- `templates/docs_cli.html`: двухколоночный layout (nav + markdown),
+  тёмная тема, активный раздел подсвечен.
+- `static/style.css`: `.docs-cli-layout`, `.docs-cli-nav`, адаптив.
+- `index.html`: ссылка «Справочник» в nav.
+- Проверено: `/docs/cli` → 200, `/docs/cli/agent` → 200,
+  `/docs/cli/nonexistent` → 404, ссылки `.md` в контенте преобразованы.
+- Сделано вручную (~40 мин, 0 RUB).
+
+**A.16:** объединение `/help` → `/docs/cli/help` (2026-10-14, 10.55).
+- `app.py`: `GET /docs/cli/help` → `help.html`; `GET /help` → 301
+  редирект на `/docs/cli/help`.
+- `help.html`: nav — ссылка «Справочник команд» → `/docs/cli`.
+- `docs_cli.html`: nav — «Справка: режимы, примеры» → `/docs/cli/help`.
+- `index.html`: ссылка «Справка» убрана (остаётся «Справочник»).
+- Кнопки «→ в форму» (12 шт.) работают — `help.html` не тронут.
+- Проверено: `/docs/cli/help` → 200, `/help` → 301,
+  `/help -L` → 200, 12 кнопок `use-example`.
+- Сделано вручную (~20 мин, 0 RUB).
+
+**Не умеет (A.17+):**
 
 - Встроенный терминал (PTY + WebSocket, этап B).
 - Пагинация / фильтр по проекту в `/reports`.
