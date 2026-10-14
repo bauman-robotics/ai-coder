@@ -73,6 +73,7 @@ def _build_command(
     task_type: str = "agent",
     run_action: str = "",
     reverse_check: bool = False,
+    issue: str = "",
 ) -> str:
     """Собирает строку команды ai-coder из полей формы."""
     path_val = path.strip() if path.strip() else "."
@@ -98,6 +99,8 @@ def _build_command(
     # Пустой path → "." (как дефолт CLI), иначе --tool-loop окажется
     # на месте path и Typer его не распознает.
     parts.append(path_val)
+    if issue.strip():
+        parts.extend(["--issue", _escape_shell(issue.strip())])
     if mode.strip() and mode.strip() != "plain":
         mode_val = mode.strip()
         parts.append(mode_val if mode_val.startswith("--") else f"--{mode_val}")
@@ -156,6 +159,7 @@ async def build(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    issue: str = Form(""),
 ) -> HTMLResponse:
     """Собирает команду из формы и возвращает её как <pre>-фрагмент."""
     command = _build_command(
@@ -171,6 +175,7 @@ async def build(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        issue=issue,
     )
     return HTMLResponse(
         f'<pre id="command-output" class="command-output">{html_escape(command)}</pre>'
@@ -189,6 +194,8 @@ def _build_argv(
     advanced_flags: str,
     task_type: str = "agent",
     run_action: str = "",
+    reverse_check: bool = False,
+    issue: str = "",
 ) -> list[str]:
     """Собирает argv для запуска агента через python -m ai_coder.cli."""
     command = _build_command(
@@ -203,6 +210,8 @@ def _build_argv(
         advanced_flags=advanced_flags,
         task_type=task_type,
         run_action=run_action,
+        reverse_check=reverse_check,
+        issue=issue,
     )
     parts = shlex.split(command)
     # parts[0] == "ai-coder" -> заменяем на sys.executable -m ai_coder.cli
@@ -236,6 +245,7 @@ async def run(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    issue: str = Form(""),
 ) -> StreamingResponse:
     """Запускает агента и стримит его вывод в формате SSE."""
     run_id = uuid.uuid4().hex
@@ -251,6 +261,8 @@ async def run(
         advanced_flags=advanced_flags,
         task_type=task_type,
         run_action=run_action,
+        reverse_check=reverse_check,
+        issue=issue,
     )
     proc: subprocess.Popen = subprocess.Popen(
         argv,

@@ -53,6 +53,27 @@
                     <textarea id="goal" name="goal" rows="4"
                               title="Задача для LLM простыми словами. Максимум 15 строк. Без обратных кавычек."
                               placeholder="Опишите задачу для агента"></textarea>
+                    <label class="goal-file-label" for="goal-file"
+                           title="Загрузить цель из файла (.txt, .md) — содержимое подставится в поле goal">Из файла</label>
+                    <input type="file" id="goal-file"
+                           accept=".txt,.md,text/plain,text/markdown"
+                           title="Выберите .txt или .md — текст попадёт в поле goal">
+                    <script>
+                        (function () {
+                            var goalFile = document.getElementById("goal-file");
+                            var goalArea = document.getElementById("goal");
+                            if (!goalFile || !goalArea) { return; }
+                            goalFile.addEventListener("change", function () {
+                                var file = goalFile.files && goalFile.files[0];
+                                if (!file) { return; }
+                                var reader = new FileReader();
+                                reader.onload = function (e) {
+                                    goalArea.value = e.target.result;
+                                };
+                                reader.readAsText(file);
+                            });
+                        })();
+                    </script>
                 </div>
 
                 <div class="field">
@@ -61,6 +82,13 @@
                            title="Путь к проекту. . — текущая директория; можно указать конкретный файл."
                            placeholder="src/ или ai_coder/agent.py">
                     <datalist id="path-history"></datalist>
+                </div>
+
+                <div class="field agent-only">
+                    <label for="issue">Issue (--issue)</label>
+                    <input id="issue" name="issue"
+                           title="Путь к issue-файлу. Если указан — goal можно не заполнять."
+                           placeholder="issues/123.md">
                 </div>
 
                 <div class="field-row">
@@ -135,6 +163,20 @@
                                   rows="2"
                                   title="Произвольные флаги CLI (например, --only-path, --exclude-web, --with-tests)"
                                   placeholder="--verbose --max-steps 20"></textarea>
+                    </div>
+                </details>
+
+                <details class="advanced" id="paste-command-block">
+                    <summary>Вставить команду</summary>
+                    <div class="field">
+                        <label for="paste-command">Команда ai-coder</label>
+                        <textarea id="paste-command" rows="3"
+                                  title="Вставьте готовую команду ai-coder — поля формы заполнятся автоматически"
+                                  placeholder="ai-coder agent &quot;...&quot; --tool-loop . "></textarea>
+                    </div>
+                    <div class="actions">
+                        <button type="button" id="parse-command-btn"
+                                title="Разобрать вставленную команду и заполнить поля формы">Заполнить форму</button>
                     </div>
                 </details>
 
@@ -294,6 +336,7 @@
                     goal: "",
                     run_action: "",
                     path: ".",
+                    issue: "",
                     mode: "",
                     check_mode: "",
                     max_cost_rub: "",
@@ -349,6 +392,13 @@
                             }
                             continue;
                         }
+                        if (v === "--issue") {
+                            if (tokens[i + 1]) {
+                                result.issue = tokens[i + 1].value;
+                                i++;
+                            }
+                            continue;
+                        }
                         if (v === "--apply") { result.apply = true; continue; }
                         if (v === "--commit") { result.commit = true; continue; }
                         if (!pathSet && v.charAt(0) !== "-") {
@@ -399,13 +449,12 @@
                 return result;
             }
 
-            var pending = sessionStorage.getItem("pending_command");
-            if (pending) {
-                sessionStorage.removeItem("pending_command");
-                var parsed = parseCommand(pending);
+            function applyParsed(parsed) {
+                if (!parsed) { return; }
                 var goalEl = document.getElementById("goal");
                 var pathEl = document.getElementById("path");
                 var modeEl = document.getElementById("mode");
+                var modelEl = document.getElementById("model");
                 var checkModeEl = document.getElementById("check-mode");
                 var maxCostEl = document.getElementById("max-cost-rub");
                 var advEl = document.getElementById("advanced-flags");
@@ -419,8 +468,18 @@
                         }
                     }
                 }
+                if (modelEl && parsed.model) {
+                    for (var mmi = 0; mmi < modelEl.options.length; mmi++) {
+                        if (modelEl.options[mmi].value === parsed.model) {
+                            modelEl.value = parsed.model;
+                            break;
+                        }
+                    }
+                }
                 if (checkModeEl && parsed.check_mode) { checkModeEl.value = parsed.check_mode; }
                 if (maxCostEl && parsed.max_cost_rub) { maxCostEl.value = parsed.max_cost_rub; }
+                var issueEl = document.getElementById("issue");
+                if (issueEl && parsed.issue) { issueEl.value = parsed.issue; }
                 var applyEl = document.querySelector("input[name=apply]");
                 if (applyEl) { applyEl.checked = !!parsed.apply; }
                 var commitEl = document.querySelector("input[name=commit]");
@@ -434,6 +493,12 @@
                     if (raPending && parsed.run_action) { raPending.value = parsed.run_action; }
                     if (typeof applyTaskType === "function") { applyTaskType(); }
                 }
+            }
+
+            var pending = sessionStorage.getItem("pending_command");
+            if (pending) {
+                sessionStorage.removeItem("pending_command");
+                applyParsed(parseCommand(pending));
 
                 var notice = document.createElement("div");
                 notice.id = "pending-notice";
@@ -442,6 +507,15 @@
                 if (form && form.parentNode) {
                     form.parentNode.insertBefore(notice, form);
                 }
+            }
+
+            var parseCommandBtn = document.getElementById("parse-command-btn");
+            if (parseCommandBtn) {
+                parseCommandBtn.addEventListener("click", function () {
+                    var pasteEl = document.getElementById("paste-command");
+                    if (!pasteEl) { return; }
+                    applyParsed(parseCommand(pasteEl.value));
+                });
             }
 
             var runBtn = document.getElementById("run-btn");
