@@ -72,6 +72,7 @@ def _build_command(
     advanced_flags: str,
     task_type: str = "agent",
     run_action: str = "",
+    reverse_check: bool = False,
 ) -> str:
     """Собирает строку команды ai-coder из полей формы."""
     path_val = path.strip() if path.strip() else "."
@@ -112,6 +113,8 @@ def _build_command(
         parts.append("--dry-read")
     if max_cost_rub.strip():
         parts.extend(["--max-cost-rub", max_cost_rub.strip()])
+    if reverse_check:
+        parts.append("--reverse-check")
     if advanced_flags.strip():
         parts.append(advanced_flags.strip())
 
@@ -152,6 +155,7 @@ async def build(
     advanced_flags: str = Form(""),
     task_type: str = Form("agent"),
     run_action: str = Form(""),
+    reverse_check: bool = Form(False),
 ) -> HTMLResponse:
     """Собирает команду из формы и возвращает её как <pre>-фрагмент."""
     command = _build_command(
@@ -166,6 +170,7 @@ async def build(
         advanced_flags=advanced_flags,
         task_type=task_type,
         run_action=run_action,
+        reverse_check=reverse_check,
     )
     return HTMLResponse(
         f'<pre id="command-output" class="command-output">{html_escape(command)}</pre>'
@@ -230,6 +235,7 @@ async def run(
     advanced_flags: str = Form(""),
     task_type: str = Form("agent"),
     run_action: str = Form(""),
+    reverse_check: bool = Form(False),
 ) -> StreamingResponse:
     """Запускает агента и стримит его вывод в формате SSE."""
     run_id = uuid.uuid4().hex
