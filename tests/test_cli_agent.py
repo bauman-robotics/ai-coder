@@ -550,6 +550,46 @@ def test_chain_and_goal_conflict(tmp_path: Path):
     assert result.exit_code != 0
 
 
+def test_chain_without_goal_ok(tmp_path: Path, monkeypatch):
+    """--chain без goal (пустой первый позиционный) — не ошибка (10.59).
+
+    Раньше: валидация «Нужен goal» срабатывала ДО проверки --chain.
+    Теперь: --chain не требует goal, проект берётся вторым позиционным.
+    """
+    from typer.testing import CliRunner
+
+    from ai_coder.agent import ToolLoopResult
+    from ai_coder.cli import app
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "x.py").write_text("a = 1\n", encoding="utf-8")
+
+    issues = tmp_path / "issues"
+    issues.mkdir()
+    (issues / "1-a.md").write_text("# task\n\nFirst.\n", encoding="utf-8")
+
+    def fake_loop(**kwargs):
+        return ToolLoopResult(
+            success=True,
+            summary="ok",
+            iterations=1,
+            total_cost_rub=0.05,
+            applied_ops=1,
+        )
+
+    monkeypatch.setattr("ai_coder.agent.run_tool_loop", fake_loop)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["agent", "", str(project), "--chain", str(issues), "--tool-loop"],
+    )
+    # Не должно быть ошибки «Нужен goal» — фикс 10.59.
+    assert "Нужен goal" not in result.stdout
+    assert result.exit_code == 0, result.stdout
+
+
 def test_chain_empty_dir(tmp_path: Path):
     """--chain на пустую директорию → ошибка."""
     from typer.testing import CliRunner

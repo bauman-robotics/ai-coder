@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-10-14] iteration 10.59 — CLI: `--chain` без goal
+
+### Что сделано
+
+**Баг:** `--chain` **требовал** непустой `goal` (строка ~1389:
+`if not goal: «Нужен goal»`), **но** затем **запрещал** его
+(строка ~1583: `if goal: «--chain и goal несовместимы»`). Парадокс:
+goal **требуется**, но **недопустим**. Обход — hack: `path` на месте
+`goal` (`Path(goal).is_dir()` → сброс).
+
+**Фикс `cli.py`:** `if not goal and chain is None:` — при `--chain`
+проверка «Нужен goal» **пропускается**. `path` берётся **вторым**
+позиционным аргументом или hack'ом (обратная совместимость).
+
+**Тест:** `test_chain_without_goal_ok` — `agent "" <project> --chain
+<dir> --tool-loop` **проходит**, ошибки «Нужен goal» нет.
+
+### Проверки
+
+- CLI-смоук: `"" /tmp/chain-test --chain ... --dry-read` —
+  chain **распознаёт** 5 задач — ✅
+- Обратная совместимость (hack с goal-директорией) — ✅
+- pytest **460 passed** (459 → 460) — ✅
+- ruff — ✅
+
+### Коммиты
+
+- <добавится> fix(cli): --chain без goal (10.59)
+
+---
+
 ## [2026-10-14] iteration 10.58 — GUI: datalist для `chain_path`
 
 ### Что сделано

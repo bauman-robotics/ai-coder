@@ -1385,7 +1385,10 @@ def agent_cmd(
             f"({len(goal)} символов, {len(goal.splitlines())} строк)[/dim]"
         )
 
-    if not goal:
+    # 10.59: --chain не требует goal (goal запрещён при --chain,
+    # см. проверку ниже). При --chain проект задаётся позиционным
+    # path или через hack «goal — директория» (см. ниже).
+    if not goal and chain is None:
         console.print("[red]Нужен goal (аргумент) или --issue <file>[/red]")
         raise typer.Exit(1)
 
