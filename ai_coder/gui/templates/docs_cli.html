@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ current_title }} — ai-coder</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>{{ current_title }}</h1>
+        <nav class="report-nav">
+            <a href="/">← к панели</a>
+            <a href="/docs/cli">Справочник</a>
+            <a href="/help">Справка (режимы)</a>
+        </nav>
+    </header>
+    <div class="docs-cli-layout">
+        <aside class="docs-cli-nav">
+            <h2>Разделы</h2>
+            <ul>
+                {% for it in items %}
+                <li{% if it.page == current %} class="active"{% endif %}>
+                    <a href="/docs/cli/{{ it.page }}">{{ it.title }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+        <main class="markdown-body docs-cli-content">
+            {{ content | safe }}
+        </main>
+    </div>
+</body>
+</html>

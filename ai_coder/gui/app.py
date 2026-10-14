@@ -24,6 +24,9 @@ STATIC_DIR = BASE_DIR / "static"
 AI_OUT_DIR = Path.cwd() / ".ai-out"
 USAGE_JSONL = AI_OUT_DIR / "usage.jsonl"
 
+# Справочник команд (docs/cli/). CWD при запуске uvicorn.
+DOCS_CLI_DIR = Path.cwd() / "docs" / "cli"
+
 app = FastAPI(title="ai-coder GUI")
 
 # Реестр запущенных процессов: run_id -> Popen.
@@ -222,6 +225,103 @@ def _stream_process(run_id: str, proc: subprocess.Popen) -> Iterator[str]:
         proc.wait()
         RUNNING.pop(run_id, None)
         yield f"data: [exit {proc.returncode}]\n\n"
+
+
+def _collect_docs_cli() -> list[dict]:
+    """Список .md файлов в docs/cli/ (README первым)."""
+    if not DOCS_CLI_DIR.is_dir():
+        return []
+    items: list[dict] = []
+    for f in sorted(DOCS_CLI_DIR.glob("*.md")):
+        page = f.stem
+        title = f.name
+        try:
+            first = f.read_text(encoding="utf-8").splitlines()[0].strip()
+            if first.startswith("# "):
+                title = first[2:].strip()
+        except (OSError, IndexError):
+            pass
+        items.append({"page": page, "title": title, "filename": f.name})
+    items.sort(key=lambda x: (x["page"] != "README", x["page"].lower()))
+    return items
+
+
+def _safe_docs_cli_path(page: str) -> Path | None:
+    """docs/cli/<page>.md, если внутри DOCS_CLI_DIR (без слэшей)."""
+    if not page or "/" in page or "\\" in page or page.startswith("."):
+        return None
+    if not re.match(r"^[A-Za-z0-9_.-]+$", page):
+        return None
+    f = (DOCS_CLI_DIR / f"{page}.md").resolve()
+    try:
+        f.relative_to(DOCS_CLI_DIR.resolve())
+    except ValueError:
+        return None
+    if not f.is_file():
+        return None
+    return f
+
+
+def _render_docs_cli_md(md_text: str) -> str:
+    """Рендер markdown + правка локальных ссылок .md → /docs/cli/<page>."""
+    html = markdown.markdown(
+        md_text,
+        extensions=["fenced_code", "tables", "sane_lists"],
+    )
+
+    def _fix(match: re.Match) -> str:
+        href = match.group(1)
+        if href.startswith(("http://", "https://", "#", "/", "../", "mailto:")):
+            return match.group(0)
+        page = href[:-3] if href.endswith(".md") else href
+        if "/" in page:
+            return match.group(0)
+        return f'href="/docs/cli/{page}"'
+
+    return re.sub(r'href="([^"]+)"', _fix, html)
+
+
+@app.get("/docs/cli", response_class=HTMLResponse)
+async def docs_cli_index(request: Request) -> HTMLResponse:
+    """Справочник: рендер README.md + список файлов."""
+    items = _collect_docs_cli()
+    if not items:
+        return HTMLResponse("<h1>docs/cli/ не найден</h1>", status_code=404)
+    readme = _safe_docs_cli_path("README") or _safe_docs_cli_path(items[0]["page"])
+    content = ""
+    if readme is not None:
+        content = _render_docs_cli_md(readme.read_text(encoding="utf-8"))
+    return templates.TemplateResponse(
+        request,
+        "docs_cli.html",
+        {
+            "items": items,
+            "current": "README",
+            "current_title": "Справочник команд ai-coder",
+            "content": content,
+        },
+    )
+
+
+@app.get("/docs/cli/{page}", response_class=HTMLResponse)
+async def docs_cli_page(request: Request, page: str) -> HTMLResponse:
+    """Рендер docs/cli/<page>.md."""
+    items = _collect_docs_cli()
+    f = _safe_docs_cli_path(page)
+    if f is None:
+        return HTMLResponse("<h1>Страница не найдена</h1>", status_code=404)
+    content = _render_docs_cli_md(f.read_text(encoding="utf-8"))
+    title = next((x["title"] for x in items if x["page"] == page), page)
+    return templates.TemplateResponse(
+        request,
+        "docs_cli.html",
+        {
+            "items": items,
+            "current": page,
+            "current_title": title,
+            "content": content,
+        },
+    )
 
 
 @app.post("/diff")
