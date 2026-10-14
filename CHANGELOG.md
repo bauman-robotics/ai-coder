@@ -4,6 +4,39 @@
 
 ---
 
+## [2026-10-14] iteration 10.46 — fix: pytest exit 5 (no tests) — не ошибка
+
+### Что сделано
+
+**`ai_coder/apply.py` — `run_verify_commands`:**
+- Если команда = `pytest` (или `python -m pytest`,
+  или `/venv/bin/pytest`) и `returncode == 5` — **пропускаем**
+  (не ошибка).
+- Покрывает: `pytest`, `python -m pytest`, `python3 -m pytest`,
+  `/usr/bin/pytest`, `/venv/bin/pytest`.
+
+**Почему:** `pytest` в проекте без тестов возвращает `exit 5`
+(«no tests collected»). **Это не ошибка** — просто нечего
+проверять. Но verify считал провалом → agent tool loop
+зря получал `verify_failed` → `success=False`.
+
+**Найдено в E20/E22:** в E22-Тест-2 (5 docstrings) verify упал
+с `exit code: 5`, хотя правки были корректны.
+
+**`tests/test_apply.py`:** +4 теста:
+- `test_run_verify_commands_pytest_exit5_ok`;
+- `test_run_verify_commands_python_m_pytest_exit5_ok`;
+- `test_run_verify_commands_pytest_exit1_fail`;
+- `test_run_verify_commands_other_exit5_fail`.
+
+**Тесты:** 427 → **431**.
+
+### Как сделано
+
+**Вручную** (5-10 минут).
+
+---
+
 ## [2026-10-14] iteration 10.45 — reverse-check (Уровень 2.5)
 
 ### Что сделано

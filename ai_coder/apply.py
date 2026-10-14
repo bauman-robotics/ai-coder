@@ -612,6 +612,18 @@ def run_verify_commands(
         if proc.returncode == 0:
             continue
 
+        # pytest exit 5 = "no tests collected" — не ошибка.
+        # Проект без тестов — verify нечего проверять.
+        # Покрывает: pytest, python -m pytest, /venv/bin/pytest.
+        is_pytest = tokens[0].endswith("pytest") or (
+            len(tokens) >= 3
+            and tokens[0].endswith("python")
+            and tokens[1] == "-m"
+            and tokens[2].startswith("pytest")
+        )
+        if is_pytest and proc.returncode == 5:
+            continue
+
         output = (proc.stdout or "") + (proc.stderr or "")
         if len(output) > max_output_chars:
             output = output[:max_output_chars] + f"\n... [обрезано, всего {len(output)} символов]"

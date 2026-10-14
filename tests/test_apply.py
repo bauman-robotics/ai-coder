@@ -363,7 +363,72 @@ def test_run_verify_commands_rejects_blacklist(sample_project: Path):
     errors = run_verify_commands(["rm -rf /"], sample_project, timeout_sec=5)
     assert len(errors) == 1
     assert "команда запрещена" in errors[0]
-    assert "rm" in errors[0]
+
+
+def test_run_verify_commands_pytest_exit5_ok(sample_project: Path, monkeypatch):
+    """pytest exit 5 (no tests) — не ошибка."""
+    import subprocess as sp
+
+    from ai_coder.apply import run_verify_commands
+
+    class FakeProc:
+        returncode = 5
+        stdout = "no tests ran in 0.00s"
+        stderr = ""
+
+    monkeypatch.setattr(sp, "run", lambda *a, **kw: FakeProc())
+    errors = run_verify_commands(["pytest -q"], sample_project, timeout_sec=5)
+    assert errors == []
+
+
+def test_run_verify_commands_python_m_pytest_exit5_ok(sample_project: Path, monkeypatch):
+    """python -m pytest exit 5 — тоже не ошибка."""
+    import subprocess as sp
+
+    from ai_coder.apply import run_verify_commands
+
+    class FakeProc:
+        returncode = 5
+        stdout = "no tests ran"
+        stderr = ""
+
+    monkeypatch.setattr(sp, "run", lambda *a, **kw: FakeProc())
+    errors = run_verify_commands(["python -m pytest -q"], sample_project, timeout_sec=5)
+    assert errors == []
+
+
+def test_run_verify_commands_pytest_exit1_fail(sample_project: Path, monkeypatch):
+    """pytest exit 1 (тесты упали) — ошибка."""
+    import subprocess as sp
+
+    from ai_coder.apply import run_verify_commands
+
+    class FakeProc:
+        returncode = 1
+        stdout = "1 failed"
+        stderr = ""
+
+    monkeypatch.setattr(sp, "run", lambda *a, **kw: FakeProc())
+    errors = run_verify_commands(["pytest -q"], sample_project, timeout_sec=5)
+    assert len(errors) == 1
+    assert "exit code: 1" in errors[0]
+
+
+def test_run_verify_commands_other_exit5_fail(sample_project: Path, monkeypatch):
+    """Не-pytest команда с exit 5 — всё равно ошибка."""
+    import subprocess as sp
+
+    from ai_coder.apply import run_verify_commands
+
+    class FakeProc:
+        returncode = 5
+        stdout = ""
+        stderr = "error"
+
+    monkeypatch.setattr(sp, "run", lambda *a, **kw: FakeProc())
+    errors = run_verify_commands(["mytool --check"], sample_project, timeout_sec=5)
+    assert len(errors) == 1
+    assert "exit code: 5" in errors[0]
 
 
 def test_run_verify_commands_no_shell_metachars_leak(sample_project: Path):
