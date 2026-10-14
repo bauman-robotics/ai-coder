@@ -126,8 +126,10 @@
                 <div class="field agent-only field-hidden" id="chain-path-field">
                     <label for="chain-path">Chain: каталог с issues (chain_path)</label>
                     <input id="chain-path" name="chain_path"
+                           list="chain-path-history"
                            title="Каталог с *.md-задачами. ОБЯЗАТЕЛЬНО для mode=chain. Пример: issues/demos/01-chain-sandbox"
                            placeholder="issues/demos/01-chain-sandbox">
+                    <datalist id="chain-path-history"></datalist>
                     <small class="field-hint">Каталог с *.md-задачами. Пусто → chain не соберётся.</small>
                 </div>
 
@@ -246,6 +248,45 @@
 
             renderPaths(loadPaths());
 
+            // ---- chain_path history (аналог path-history) ----
+            var CHAIN_STORAGE_KEY = "ai-coder:chain-paths";
+            var chainInput = document.getElementById("chain-path");
+            var chainDataList = document.getElementById("chain-path-history");
+
+            function loadChainPaths() {
+                try {
+                    return JSON.parse(localStorage.getItem(CHAIN_STORAGE_KEY) || "[]");
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function renderChainPaths(paths) {
+                if (!chainDataList) { return; }
+                chainDataList.innerHTML = "";
+                paths.forEach(function (p) {
+                    var opt = document.createElement("option");
+                    opt.value = p;
+                    chainDataList.appendChild(opt);
+                });
+            }
+
+            function rememberChainPath(value) {
+                value = (value || "").trim();
+                if (!value) { return; }
+                var paths = loadChainPaths().filter(function (p) { return p !== value; });
+                paths.unshift(value);
+                paths = paths.slice(0, 10);
+                try {
+                    localStorage.setItem(CHAIN_STORAGE_KEY, JSON.stringify(paths));
+                } catch (e) { /* ignore */ }
+                renderChainPaths(paths);
+            }
+
+            if (chainInput && chainDataList) {
+                renderChainPaths(loadChainPaths());
+            }
+
             // A.11: переключатель agent/run.
             function applyTaskType() {
                 var tt = document.getElementById("task-type");
@@ -302,6 +343,9 @@
             document.addEventListener("htmx:afterRequest", function (evt) {
                 if (evt.detail && evt.detail.elt && evt.detail.elt.id === "build-form" && evt.detail.successful) {
                     rememberPath(pathInput.value);
+                    if (chainInput && chainInput.value) {
+                        rememberChainPath(chainInput.value);
+                    }
                 }
             });
 
@@ -528,7 +572,12 @@
                 if (checkModeEl && parsed.check_mode) { checkModeEl.value = parsed.check_mode; }
                 if (maxCostEl && parsed.max_cost_rub) { maxCostEl.value = parsed.max_cost_rub; }
                 var chainPathEl = document.getElementById("chain-path");
-                if (chainPathEl && parsed.chain_path) { chainPathEl.value = parsed.chain_path; }
+                if (chainPathEl && parsed.chain_path) {
+                    chainPathEl.value = parsed.chain_path;
+                    if (typeof rememberChainPath === "function") {
+                        rememberChainPath(parsed.chain_path);
+                    }
+                }
                 if (typeof applyModeConstraints === "function") { applyModeConstraints(); }
                 var applyEl = document.querySelector("input[name=apply]");
                 if (applyEl) { applyEl.checked = !!parsed.apply; }

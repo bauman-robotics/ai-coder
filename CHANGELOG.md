@@ -4,6 +4,40 @@
 
 ---
 
+## [2026-10-14] iteration 10.58 — GUI: datalist для `chain_path`
+
+### Что сделано
+
+**UX-улучшение:** поле `#chain-path` (mode=chain) теперь хранит
+**историю** введённых каталогов в `localStorage` (ключ
+`ai-coder:chain-paths`, лимит 10) и показывает их как **подсказки**
+через `<datalist id="chain-path-history">` — по аналогии с `#path`.
+
+**`index.html`:**
+- `<input id="chain-path" list="chain-path-history">` +
+  `<datalist id="chain-path-history">`;
+- JS: `loadChainPaths`, `renderChainPaths`, `rememberChainPath` —
+  копия паттерна `path-history` (уникально, лимит 10, в начало);
+- `htmx:afterRequest` на `#build-form` — сохраняет `chain_path`;
+- `applyParsed` — сохраняет **распарсенный** `chain_path` (из вставки
+  команды).
+
+**Зачем:** пользователь **не печатает** каждый раз
+`issues/demos/01-chain-sandbox` — браузер **подскажет** из истории.
+
+### Проверки
+
+- `curl /` — 7 упоминаний `chain-path-history`/`rememberChainPath` — ✅
+- Браузер: подсказка появляется из localStorage — ✅
+- pytest 459 passed — ✅
+- ruff — ✅
+
+### Коммиты
+
+- <добавится> feat(gui): datalist для chain_path (10.58)
+
+---
+
 ## [2026-10-14] iteration 10.57 — GUI: `--chain` без дефолта + подсказки
 
 ### Что сделано
