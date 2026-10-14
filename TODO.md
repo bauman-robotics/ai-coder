@@ -453,6 +453,17 @@
 - [ ] `docs/troubleshooting.md` — частые проблемы:
       `finish_reason: length`, cache miss, invalid JSON, blacklist и т.п.
 - [ ] Примеры в `examples/` — sample-проекты и команды.
+- [ ] **`docs/cli.md` — справочник по всем командам и флагам.**
+      Сейчас флаги разбросаны по `--help` (динамически из Typer),
+      `README.md` (основное), `docs/examples.md` (примеры),
+      `docs/state.md` (что работает). **Полного справочника — нет.**
+      Нужен единый файл: команды (`actions`, `run`, `agent`, `fix`,
+      `usage`, `backups`, `rollback`) + флаги + примеры +
+      «когда появился».
+      **Опционально:** скрипт автогенерации из `--help`
+      (`scripts/gen_cli_docs.py` → `docs/cli.md`).
+      **Оценка:** ~1-2 ч.
+      **Приоритет:** 🟡 средний.
 
 ---
 
