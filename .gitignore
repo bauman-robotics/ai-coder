@@ -42,3 +42,7 @@ next-chat/
 # Local issues (tasks for ai-coder agent)
 issues/
 issues-*/
+
+# Local commands (saved ai-coder commands)
+commands/
+commands-*/
