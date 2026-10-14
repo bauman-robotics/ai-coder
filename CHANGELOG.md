@@ -4,6 +4,60 @@
 
 ---
 
+## [2026-10-14] iteration 10.56 — GUI: поддержка `--chain`
+
+### Что сделано
+
+**Баг:** `mode=chain` в select на `/` **молча игнорировался**.
+`_build_command` знал только `task_type=agent` и `task_type=run`, а
+`--chain` требует **значение** (`<dir>`) — это не «просто флаг режима».
+
+**Фикс `_build_command`** (`ai_coder/gui/app.py`):
+- новый параметр `chain_path: str = ""` (прокинут в `build`,
+  `_build_argv`, `run`);
+- **особая ветка** `mode_val == "chain"`: команда собирается
+  **как в `run.sh`** — `ai-coder agent <path> --chain <dir> --tool-loop`.
+  `path` идёт **на место goal** (hack в `cli.py` — если goal
+  директория, а есть `--chain`, CLI сам считает это path);
+- дефолт `chain_path` — `issues`, если пусто;
+- `--tool-loop` **добавляется автоматически** (chain без tool loop
+  бессмыслен, см. `docs/cli/agent.md`).
+
+**Форма `index.html`:**
+- новое поле `#chain-path` (`.field agent-only field-hidden`) —
+  видно **только** при `mode=chain`;
+- `applyModeConstraints()` — toggle видимости;
+- `parseCommand()` — распознаёт `--chain <dir>` (забирает
+  следующий токен как `chain_path`);
+- `applyParsed()` — устанавливает `#chain-path` из парсинга.
+
+**`help.html`:** 2 chain-примера с кнопками «→ в форму».
+
+**Демо-наборы:** `README.md` перенесены из `issues/demos/*` в
+`commands/demos/*` — иначе `--chain` **глотал** README как задачу
+(6-я «задача» вместо 5).
+
+### Проверки
+
+- `curl /build` (4 кейса): chain + path, chain + дефолт,
+  tool-loop (регресс), run (регресс) — ✅
+- CLI-смоук: **наша команда запускается**, chain видит 5 задач,
+  precheck бюджета сработал (0 RUB), отчёт **пишется** — ✅
+- GUI в браузере: поле `#chain-path` появляется при `mode=chain` — ✅
+- `ruff check` / `ruff format --check` — ✅
+- pytest 459 passed (GUI тестами не покрыт) — ✅
+
+### Ограничение
+
+`--plan` (интерактив `y/n/e`) в GUI **не заработает** —
+`subprocess` без PTY, `input()` → `EOFError`. Документировать.
+
+### Коммиты
+
+- <добавится> feat(gui): поддержка `--chain` (10.56)
+
+---
+
 ## [2026-10-14] iteration 10.55 — GUI: /docs/cli + объединение с /help
 
 ### Что сделано

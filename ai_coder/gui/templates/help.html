@@ -299,6 +299,20 @@ ai-coder agent "Найди все TODO в проекте" . --tool-loop --dry-re
                 <button type="button" class="use-example"
                         data-cmd="ai-coder agent &quot;Перевести проект на новый API&quot; . --decompose --max-cost-rub 5">→ в форму</button>
             </div>
+
+            <p>Пакетное выполнение issues (chain):</p>
+            <div class="example">
+                <pre><code>ai-coder agent . --chain issues/ --tool-loop --plan</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent . --chain issues/ --tool-loop --plan">→ в форму</button>
+            </div>
+
+            <p>Chain без плана (сразу применить):</p>
+            <div class="example">
+                <pre><code>ai-coder agent . --chain issues/ --tool-loop --apply</code></pre>
+                <button type="button" class="use-example"
+                        data-cmd="ai-coder agent . --chain issues/ --tool-loop --apply">→ в форму</button>
+            </div>
         </section>
     </main>
     <script>

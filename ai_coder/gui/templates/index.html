@@ -123,6 +123,13 @@
                         </select>
                     </div>
                 </div>
+                <div class="field agent-only field-hidden" id="chain-path-field">
+                    <label for="chain-path">Chain: каталог с issues (chain_path)</label>
+                    <input id="chain-path" name="chain_path"
+                           title="Каталог с issues/*.md. По умолчанию issues/. Только для mode=chain."
+                           placeholder="issues/">
+                </div>
+
 
                 <div class="field flags agent-only">
                     <span class="flags-label">Флаги</span>
@@ -277,6 +284,12 @@
                     commitEl.disabled = !isApply;
                     if (!isApply) { commitEl.checked = false; }
                 }
+                // chain: поле chain_path видно только при mode=chain.
+                var chainField = document.getElementById("chain-path-field");
+                if (chainField) {
+                    var isChain = modeEl ? (modeEl.value === "chain") : false;
+                    chainField.classList.toggle("field-hidden", !isChain);
+                }
             }
             var modeCtl = document.getElementById("mode");
             if (modeCtl) { modeCtl.addEventListener("change", applyModeConstraints); }
@@ -370,6 +383,7 @@
                     run_action: "",
                     path: ".",
                     mode: "",
+                    chain_path: "",
                     check_mode: "",
                     max_cost_rub: "",
                     apply: false,
@@ -408,9 +422,18 @@
                             continue;
                         }
                         if (v === "--tool-loop" || v === "--decompose" ||
-                            v === "--plan" || v === "--chain" ||
-                            v === "--split-goals") {
+                            v === "--plan" || v === "--split-goals") {
                             result.mode = v.slice(2);
+                            continue;
+                        }
+                        if (v === "--chain") {
+                            result.mode = "chain";
+                            // --chain <dir>: забрать следующий токен как путь,
+                            // если он не начинается с "-".
+                            if (tokens[i + 1] && tokens[i + 1].value.charAt(0) !== "-") {
+                                result.chain_path = tokens[i + 1].value;
+                                i++;
+                            }
                             continue;
                         }
                         if (v === "--dry-run" || v === "--dry-read") {
@@ -503,6 +526,9 @@
                 }
                 if (checkModeEl && parsed.check_mode) { checkModeEl.value = parsed.check_mode; }
                 if (maxCostEl && parsed.max_cost_rub) { maxCostEl.value = parsed.max_cost_rub; }
+                var chainPathEl = document.getElementById("chain-path");
+                if (chainPathEl && parsed.chain_path) { chainPathEl.value = parsed.chain_path; }
+                if (typeof applyModeConstraints === "function") { applyModeConstraints(); }
                 var applyEl = document.querySelector("input[name=apply]");
                 if (applyEl) { applyEl.checked = !!parsed.apply; }
                 var commitEl = document.querySelector("input[name=commit]");

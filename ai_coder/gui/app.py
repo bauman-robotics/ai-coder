@@ -76,6 +76,7 @@ def _build_command(
     task_type: str = "agent",
     run_action: str = "",
     reverse_check: bool = False,
+    chain_path: str = "",
 ) -> str:
     """Собирает строку команды ai-coder из полей формы."""
     path_val = path.strip() if path.strip() else "."
@@ -95,15 +96,30 @@ def _build_command(
             parts.append(advanced_flags.strip())
         return " ".join(parts)
 
-    parts: list[str] = ["ai-coder", "agent", f'"{_escape_shell(goal)}"']
+    mode_val = mode.strip()
 
-    # path — всегда (второй позиционный аргумент agent_cmd).
-    # Пустой path → "." (как дефолт CLI), иначе --tool-loop окажется
-    # на месте path и Typer его не распознает.
-    parts.append(path_val)
-    if mode.strip() and mode.strip() != "plain":
-        mode_val = mode.strip()
-        parts.append(mode_val if mode_val.startswith("--") else f"--{mode_val}")
+    if mode_val == "chain":
+        # --chain <dir>: path передаётся на месте goal (hack в cli.py,
+        # строка ~1477: если goal — директория, а есть --chain/--issue,
+        # cli сам считает это path и обнуляет goal). goal НЕ используется.
+        # Формат: ai-coder agent <path> --chain <dir> --tool-loop
+        chain_val = chain_path.strip() or "issues"
+        parts: list[str] = [
+            "ai-coder",
+            "agent",
+            _escape_shell(path_val),
+            "--chain",
+            _escape_shell(chain_val),
+            "--tool-loop",
+        ]
+    else:
+        parts = ["ai-coder", "agent", f'"{_escape_shell(goal)}"']
+        # path — всегда (второй позиционный аргумент agent_cmd).
+        # Пустой path → "." (как дефолт CLI), иначе --tool-loop окажется
+        # на месте path и Typer его не распознает.
+        parts.append(path_val)
+        if mode_val and mode_val != "plain":
+            parts.append(mode_val if mode_val.startswith("--") else f"--{mode_val}")
     if model.strip() and model.strip() != "default":
         parts.extend(["--model", model.strip()])
     if apply:
@@ -167,6 +183,7 @@ async def build(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    chain_path: str = Form(""),
 ) -> HTMLResponse:
     """Собирает команду из формы и возвращает её как <pre>-фрагмент."""
     command = _build_command(
@@ -182,6 +199,7 @@ async def build(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        chain_path=chain_path,
     )
     return HTMLResponse(
         f'<pre id="command-output" class="command-output">{html_escape(command)}</pre>'
@@ -201,6 +219,7 @@ def _build_argv(
     task_type: str = "agent",
     run_action: str = "",
     reverse_check: bool = False,
+    chain_path: str = "",
 ) -> list[str]:
     """Собирает argv для запуска агента через python -m ai_coder.cli."""
     command = _build_command(
@@ -216,6 +235,7 @@ def _build_argv(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        chain_path=chain_path,
     )
     parts = shlex.split(command)
     # parts[0] == "ai-coder" -> заменяем на sys.executable -m ai_coder.cli
@@ -368,6 +388,7 @@ async def run(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    chain_path: str = Form(""),
 ) -> StreamingResponse:
     """Запускает агента и стримит его вывод в формате SSE."""
     run_id = uuid.uuid4().hex
@@ -384,6 +405,7 @@ async def run(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        chain_path=chain_path,
     )
     proc: subprocess.Popen = subprocess.Popen(
         argv,

@@ -1,6 +1,6 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-14 (итерации 10.52–10.55: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI)
+**Дата обновления:** 2026-10-14 (итерации 10.52–10.56: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI, GUI `--chain`)
 **Ветка:** main
 **Последний коммит:** `0ddef7c` (10.55 — GUI: /docs/cli + /help → /docs/cli/help)
 **Тесты:** 459 passed | CI: pytest x3 + ruff + mypy — зелёный
@@ -207,6 +207,19 @@ Python-проектов через DeepSeek API. Работает с git-про�
 **Fix (10.44):** `--max-cost-rub` игнорировался при `--decompose`.
 Найдено в E19 (перерасход ×8.4). Исправлено в `cli.py` (2 места):
 `decompose_max_cost_rub or max_cost_rub`.
+
+**A.17:** GUI — поддержка `--chain` (2026-10-14, 10.56).
+- `app.py`: `chain_path` в `_build_command`/`_build_argv`/`build`/`run`.
+  Особая ветка `mode=chain`: `agent <path> --chain <dir> --tool-loop`
+  (path — на месте goal, hack CLI). Дефолт `chain_path` — `issues`.
+- `index.html`: `#chain-path` (видно при `mode=chain`),
+  `applyModeConstraints` — toggle, `parseCommand` — распознаёт
+  `--chain <dir>`, `applyParsed` — устанавливает.
+- `help.html`: 2 chain-примера.
+- Демо-README: `issues/demos/*` → `commands/demos/*` (chain
+  глотал README как задачу).
+- **Ограничение:** `--plan` в chain через GUI не заработает
+  (subprocess без PTY).
 
 **Не умеет (A.14+):** встроенный терминал (PTY + WebSocket),
 пагинация `/reports`, экспорт статистики. См.
