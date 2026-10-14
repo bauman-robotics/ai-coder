@@ -327,7 +327,30 @@ requirements-dev.txt      # dev-зависимости
 
 Панель — http://127.0.0.1:8000/, health-check — `/health`.
 
-> Планируется: скриншоты в `docs/screenshots/` (форма, /reports, /stats).
+**Скриншоты:**
+
+![Форма сборки команды](docs/screenshots/form.png)
+
+
+![Статистика расходов](docs/screenshots/stats.png)
+
+![Справка](docs/screenshots/help.png)
+
+---
+
+## CLI — скриншоты
+
+Реальный запуск агента (Rich-панели, история, итог):
+
+![ai-coder agent --tool-loop](docs/screenshots/cli-agent.png)
+
+Список действий с оценками стоимости:
+
+![ai-coder actions --verbose](docs/screenshots/cli-actions.png)
+
+Статистика расходов:
+
+![ai-coder usage](docs/screenshots/cli-usage.png)
 
 ## Лицензия
 
