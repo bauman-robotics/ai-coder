@@ -98,21 +98,25 @@
 
                 <div class="field flags agent-only">
                     <span class="flags-label">Флаги</span>
-                    <label class="checkbox" id="apply-label">
-                        <input type="checkbox" name="apply" value="true"> apply
-                    </label>
-                    <label class="checkbox" id="commit-label" title="требует apply">
-                        <input type="checkbox" name="commit" value="true"> commit
-                    </label>
-                    <label class="checkbox" id="reverse-check-label" title="требует --tool-loop">
-                        <input type="checkbox" name="reverse_check" value="true"> reverse-check
-                    </label>
-                    <label for="check-mode">режим проверки</label>
-                    <select id="check-mode" name="check_mode">
-                        <option value="normal">обычный</option>
-                        <option value="dry-run">dry-run (только логи)</option>
-                        <option value="dry-read">dry-read (read разрешён, write блокирован)</option>
-                    </select>
+                    <div class="flags-row">
+                        <label class="checkbox" id="apply-label">
+                            <input type="checkbox" name="apply" value="true"> apply
+                        </label>
+                        <label class="checkbox" id="commit-label" title="требует apply">
+                            <input type="checkbox" name="commit" value="true"> commit
+                        </label>
+                        <label class="checkbox" id="reverse-check-label" title="требует --tool-loop">
+                            <input type="checkbox" name="reverse_check" value="true"> reverse-check
+                        </label>
+                    </div>
+                    <div class="flags-row">
+                        <label for="check-mode">Режим проверки:</label>
+                        <select id="check-mode" name="check_mode">
+                            <option value="normal">обычный</option>
+                            <option value="dry-run">dry-run (только логи)</option>
+                            <option value="dry-read">dry-read (read разрешён, write блокирован)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <details class="advanced">
