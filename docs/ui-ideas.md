@@ -57,11 +57,14 @@
 - **A.12** — расширения формы:
   - **«Вставить команду»** — `<details>` с textarea + кнопка
     «Заполнить форму» → `parseCommand` → `applyParsed`. ✅
+  - **Загрузка команды из файла** — `<input type="file" id="command-file">`
+    + FileReader → `#paste-command` → `applyParsed`. ✅ 10.49.
   - **Загрузка goal из файла** — `<input type="file">` + FileReader
     → `#goal`. ✅
   - ~~**Поле `--issue <path>`**~~ — **откачено** (дубль с «Из файла»).
   Сделано: Task 1+2 — агентом (`--tool-loop --issue`), Task 3 —
-  вручную (откачен). См. `docs/experiments.md` → E25, CHANGELOG 10.48.
+  вручную (откачен), command-file — вручную (10.49).
+  См. `docs/experiments.md` → E25, CHANGELOG 10.48-10.49.
 - **A.13** — валидация mode: чекбоксы `reverse-check`/`commit`
   блокируются, если несовместимы. ✅
 

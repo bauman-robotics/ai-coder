@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-10-14] iteration 10.49 — GUI: загрузка команды из файла + commands/
+
+### Что сделано
+
+**`#command-file` — загрузка команды из файла:**
+
+Рядом с textarea `#paste-command` (блок «Вставить команду») добавлен
+`<input type="file" id="command-file" accept=".txt,.sh,.md">`.
+При выборе файла — `FileReader.readAsText` → `#paste-command.value`
+→ `applyParsed(parseCommand(...))`.
+
+**Симметрия:**
+- `#goal-file` — загрузка goal из файла;
+- `#command-file` — загрузка команды из файла.
+
+**Сделано вручную** (~15 мин, 0 RUB). См. `docs/ui-ideas.md` → A.12.
+
+### Каталог `commands/` — сохранённые команды
+
+Симметрично `issues/`:
+
+    commands/
+    ├── README.md
+    └── YYYY-MM-DD/
+        └── N-<slug>.txt
+
+Файлы — чистые команды (одна строка). Загрузка через `#command-file`.
+
+В `.gitignore` (как `issues/`) — локальные, не в публичном репо.
+
+### Коммиты
+
+- `5de2b69` chore: .gitignore — commands/
+- <добавится> feat(gui): загрузка команды из файла (#command-file)
+
+### Тесты
+
+435 passed.
+
+---
+
 ## [2026-10-14] iteration 10.48 — revert: убрать поле --issue из GUI
 
 ### Что сделано

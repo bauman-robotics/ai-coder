@@ -179,6 +179,8 @@ Python-проектов через DeepSeek API. Работает с git-про�
 **A.12:** расширения формы (2026-10-14).
 - «Вставить команду» — `<details>` + textarea + кнопка
   «Заполнить форму» → `parseCommand` → `applyParsed` (новая функция).
+- «Загрузить команду из файла» — `<input type="file" id="command-file">`
+  + FileReader → `#paste-command.value` → `applyParsed`. ✅ 10.49.
 - «Загрузить goal из файла» — `<input type="file">` + FileReader.
 - ~~Поле `--issue <path>`~~ — **откачено** (commit `ebd1a6e`):
   дублировало «Из файла». См. CHANGELOG 10.48.
