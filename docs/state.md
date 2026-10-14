@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-14 (итерации 10.52–10.57: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI, GUI `--chain` + fix дефолта)
+**Дата обновления:** 2026-10-14 (итерации 10.52–10.61: GUI-кнопка diff, откат при verify_failed, precheck бюджета, справочник `docs/cli/` + `/docs/cli` в GUI, GUI `--chain` + datalist, CLI `--chain` без goal, mypy-фиксы, coverage omit gui)
 **Ветка:** main
-**Последний коммит:** `0ddef7c` (10.55 — GUI: /docs/cli + /help → /docs/cli/help)
-**Тесты:** 459 passed | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `7eb2c70` (10.61 — coverage: omit gui/)
+**Тесты:** 460 passed | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
 ---
@@ -217,6 +217,15 @@ Python-проектов через DeepSeek API. Работает с git-про�
   `--chain <dir>`, `applyParsed` — устанавливает.
 - **10.57:** убран плохой дефолт `issues` (в проекте — `README.md`),
   добавлены placeholder и `.field-hint` «Пусто → chain не соберётся».
+- **10.58:** `datalist` для `#chain-path` (история в `localStorage`,
+  ключ `ai-coder:chain-paths`, лимит 10) — по аналогии с `#path`.
+- **10.59:** CLI-баг `--chain требует goal` закрыт (`if not goal and
+  chain is None`). Тест `test_chain_without_goal_ok`.
+- **10.60:** mypy — 9 ошибок в `gui/app.py` + `history.py` закрыты.
+  `[tool.mypy] ignore_missing_imports = true`, `cast(float, ...)`
+  в sort, `parts` без redefinition.
+- **10.61:** coverage — `omit gui/` в `[tool.coverage.run]` (CI падал
+  с 69% < 70% после добавления ~80 строк в `gui/app.py`).
 - `help.html`: 2 chain-примера.
 - Демо-README: `issues/demos/*` → `commands/demos/*` (chain
   глотал README как задачу).
