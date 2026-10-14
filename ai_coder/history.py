@@ -58,9 +58,10 @@ def save_history_entry(
     cmd_path.write_text(command + "\n", encoding="utf-8")
 
     if write_issue:
-        issue_path: Path | None = project_root / "issues" / day_str / f"{nn_str}_{slug}.md"
+        issue_path_obj = project_root / "issues" / day_str / f"{nn_str}_{slug}.md"
         issue_content = f"# task: {slug}\n{goal}\n"
-        issue_path.write_text(issue_content, encoding="utf-8")
+        issue_path_obj.write_text(issue_content, encoding="utf-8")
+        issue_path: Path | None = issue_path_obj
     else:
         issue_path = None
 

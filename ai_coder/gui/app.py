@@ -10,10 +10,11 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from html import escape as html_escape
 from pathlib import Path
+from typing import cast
 
 import markdown
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -80,11 +81,12 @@ def _build_command(
 ) -> str:
     """Собирает строку команды ai-coder из полей формы."""
     path_val = path.strip() if path.strip() else "."
+    parts: list[str] = []
 
     # Ветка run: `ai-coder run <action> <path>`. У команды run нет флагов
     # --max-cost-rub и --commit, поэтому их не добавляем.
     if task_type == "run":
-        parts: list[str] = ["ai-coder", "run", _escape_shell(run_action)]
+        parts = ["ai-coder", "run", _escape_shell(run_action)]
         parts.append(path_val)
         if model.strip() and model.strip() != "default":
             parts.extend(["--model", model.strip()])
@@ -105,7 +107,7 @@ def _build_command(
         # Формат: ai-coder agent <path> --chain <dir> --tool-loop.
         chain_val = chain_path.strip()
         if chain_val:
-            parts: list[str] = [
+            parts = [
                 "ai-coder",
                 "agent",
                 _escape_shell(path_val),
@@ -163,7 +165,7 @@ async def docs_cli_help_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/help", response_class=HTMLResponse)
-async def help_redirect() -> HTMLResponse:
+async def help_redirect() -> Response:
     """Старый URL /help — редирект на /docs/cli/help."""
     from fastapi.responses import RedirectResponse
 
@@ -538,7 +540,7 @@ def _is_journal_dir(name: str) -> bool:
     return name.startswith(JOURNAL_PREFIXES)
 
 
-def _collect_journals() -> list[dict[str, str]]:
+def _collect_journals() -> list[dict[str, object]]:
     """
     Обходит .ai-out/<project>/<journal>/report.md и собирает метаданные.
 
@@ -546,7 +548,7 @@ def _collect_journals() -> list[dict[str, str]]:
     с ключами: project, journal, mtime, mtime_iso, url, success,
     cost, iterations, reason, title.
     """
-    result: list[dict[str, str]] = []
+    result: list[dict[str, object]] = []
     if not AI_OUT_DIR.is_dir():
         return result
     root = AI_OUT_DIR.resolve()
@@ -593,7 +595,7 @@ def _collect_journals() -> list[dict[str, str]]:
                     "title": title,
                 }
             )
-    result.sort(key=lambda x: x["mtime"], reverse=True)
+    result.sort(key=lambda x: cast(float, x["mtime"]), reverse=True)
     return result
 
 
@@ -683,8 +685,8 @@ def _collect_stats() -> dict:
     except OSError:
         return empty
 
-    def _to_list(bucket: dict[str, dict[str, float]], key_name: str) -> list[dict]:
-        items = [
+    def _to_list(bucket: dict[str, dict[str, float]], key_name: str) -> list[dict[str, object]]:
+        items: list[dict[str, object]] = [
             {
                 key_name: k,
                 "cost_rub": round(v["cost_rub"], 4),
@@ -694,9 +696,9 @@ def _collect_stats() -> dict:
         ]
         # Сортировка: дни — хронологически, остальные — по убыванию стоимости.
         if key_name == "date":
-            items.sort(key=lambda x: x["date"])
+            items.sort(key=lambda x: str(x["date"]))
         else:
-            items.sort(key=lambda x: x["cost_rub"], reverse=True)
+            items.sort(key=lambda x: cast(float, x["cost_rub"]), reverse=True)
         return items
 
     return {

@@ -27,6 +27,12 @@ ai-coder = "ai_coder.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["ai_coder"]
 
+[tool.mypy]
+# Нестрогий режим — минимум, чтобы CI был зелёным.
+# Ужесточать — отдельной задачей (TODO).
+ignore_missing_imports = true
+warn_unused_ignores = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

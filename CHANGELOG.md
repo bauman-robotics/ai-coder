@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-10-14] iteration 10.60 — mypy: 9 ошибок в gui/history
+
+### Что сделано
+
+**Найдено при сборке bundle (после 10.59):** `mypy ai_coder` падал
+с **9 ошибками** в `ai_coder/gui/app.py` + `ai_coder/history.py`.
+Ошибки **копились** с 10.50 (history) и 10.55 (GUI).
+
+**`pyproject.toml`:** добавлена секция `[tool.mypy]` с
+`ignore_missing_imports = true` (нужно для `markdown` — нет stubs).
+
+**`ai_coder/gui/app.py` (7 правок):**
+- `parts: list[str] = []` — объявлено **один раз** до `if/else`
+  (было: две аннотации в `run` и `chain` — redefinition);
+- `help_redirect() -> Response` (было `HTMLResponse` — редирект
+  возвращает `RedirectResponse`);
+- импорт `Response` из `fastapi.responses`;
+- `result: list[dict[str, object]]` (было `dict[str, str]` — `mtime`
+  это `float`);
+- `_collect_journals -> list[dict[str, object]]` (сигнатура согласована);
+- `_to_list -> list[dict[str, object]]` + `items: list[dict[str, object]]`;
+- `cast(float, ...)` в трёх `sort`-`key` (mypy не знает про `object`).
+
+**`ai_coder/history.py` (1 правка):**
+- `issue_path: Path | None` — `write_text` вызывается **до**
+  присваивания `None`, но mypy видит union. Разделены: локальная
+  `issue_path_obj: Path`, потом `issue_path = issue_path_obj`.
+
+### Проверки
+
+- `mypy ai_coder` — `Success: no issues found` — ✅
+- `ruff check` / `ruff format --check` — ✅
+- pytest **460 passed** — ✅
+- CI теперь **должен** быть зелёным (проверим на следующем push).
+
+### Коммиты
+
+- <добавится> fix(mypy): 9 ошибок в gui/history (10.60)
+
+---
+
 ## [2026-10-14] iteration 10.59 — CLI: `--chain` без goal
 
 ### Что сделано
