@@ -410,15 +410,11 @@
       Проверить, поправлено ли. Если нет — поправить.
 - [ ] Дубликат коммита `5bac4f3` / `5fb5b8c` — «iteration 5» дважды.
       Не критично, но при случае — squash.
-- [ ] **Verify: pytest `exit 5` (no tests) — не ошибка.**
-      E20: в чужом проекте без тестов verify падает с
-      `exit code: 5` («no tests ran»), но это **не ошибка** —
-      нечего проверять. Прогон зря считается провалом →
-      reverse-check не запускается.
-      **Фикс:** в `run_verify_commands` — если команда = `pytest`
-      и `exit_code == 5` → считать успехом (с предупреждением).
-      Файл: `ai_coder/apply.py`, `run_verify_commands`.
-      **Приоритет:** 🟡 средний.
+- [x] **Verify: pytest `exit 5` (no tests) — не ошибка.**
+      ✅ ЗАКРЫТО 10.46: в `run_verify_commands` — если команда
+      `pytest` (или `python -m pytest`) и `returncode == 5` —
+      **пропускаем** (не ошибка). Покрыто тестами.
+      См. `docs/experiments.md` → E20/E22.
 - [ ] **`--commit` ломает reverse-check.**
       Diff берётся из `git diff HEAD`; после автокоммита агента
       (`--commit`) — пусто, reverse-check пропускается
