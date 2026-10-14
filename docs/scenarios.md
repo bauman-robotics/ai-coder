@@ -19,6 +19,7 @@
 | 10 | Replan при fail | `... --decompose-replan` | 🟢 | +0.5 RUB/replan |
 | 11 | Авто-починка | `fix --max-attempts N` | 🟢 | ~0.3–1.5 RUB |
 | 12 | Объяснение кода | `run explain` | ⚪ | ~0.05 RUB |
+| 13 | Reverse-check | `... --reverse-check` | 🟢 | +0.04 RUB |
 
 **Легенда автономности:**
 - ⚪ — один запрос, отчёт.
@@ -297,6 +298,27 @@
 - **`--verify-only`** — только проверка без правок.
 - **Git + PR** — ветки, commit, push, PR (Уровень D).
 - **Multi-turn** — уточнения от агента.
+
+---
+
+## 13. Reverse-check
+
+**Что:** после `finish(success)` LLM **перечитывает свой diff**
+и проверяет соответствие goal.
+
+**Команда:**
+
+    ai-coder agent "Функция add должна возвращать сумму a+b. Почини." \
+        . --tool-loop --apply --reverse-check --max-cost-rub 1
+
+**Стоимость:** tool loop + ~0.04 RUB (reverse-check).
+
+**Когда:** сложные задачи (>3 итераций), первый запуск на незнакомом
+проекте, задачи с API/библиотеками.
+
+**Не работает:** `--decompose`, `--commit`, `--dry-run` (MVP).
+
+**См.** `docs/examples.md` → раздел 14, `docs/experiments.md` → E20.
 
 ---
 
