@@ -59,10 +59,9 @@
     «Заполнить форму» → `parseCommand` → `applyParsed`. ✅
   - **Загрузка goal из файла** — `<input type="file">` + FileReader
     → `#goal`. ✅
-  - **Поле `--issue <path>`** — `#issue` + `parseCommand` +
-    `_build_command`/`_build_argv`/`build`/`run`. ✅
+  - ~~**Поле `--issue <path>`**~~ — **откачено** (дубль с «Из файла»).
   Сделано: Task 1+2 — агентом (`--tool-loop --issue`), Task 3 —
-  вручную. См. `docs/experiments.md` → E25.
+  вручную (откачен). См. `docs/experiments.md` → E25, CHANGELOG 10.48.
 - **A.13** — валидация mode: чекбоксы `reverse-check`/`commit`
   блокируются, если несовместимы. ✅
 

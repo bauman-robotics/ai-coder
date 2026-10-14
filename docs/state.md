@@ -180,11 +180,11 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - «Вставить команду» — `<details>` + textarea + кнопка
   «Заполнить форму» → `parseCommand` → `applyParsed` (новая функция).
 - «Загрузить goal из файла» — `<input type="file">` + FileReader.
-- Поле `--issue <path>` — `#issue` + `parseCommand` +
-  `_build_command`/`_build_argv`/`build`/`run` в `app.py`.
+- ~~Поле `--issue <path>`~~ — **откачено** (commit `ebd1a6e`):
+  дублировало «Из файла». См. CHANGELOG 10.48.
 - Fix: `_build_argv` не передавал `reverse_check` в `_build_command`.
 - **Как сделано:** Task 1+2 — агентом (2.28 + 0.81 RUB, RC ✅),
-  Task 3 — вручную. См. E25.
+  Task 3 — вручную (откачен). См. E25.
 
 **A.11:** run-команды в GUI (2026-10-14).
 - `app.py`: `_build_command` — `task_type="agent"`, `run_action=""`,

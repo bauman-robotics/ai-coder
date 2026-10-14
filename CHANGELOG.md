@@ -4,6 +4,48 @@
 
 ---
 
+## [2026-10-14] iteration 10.48 — revert: убрать поле --issue из GUI
+
+### Что сделано
+
+**Причина:** поле `#issue` **дублировало** кнопку «Из файла»
+(`#goal-file`). Оба:
+- выбирают файл с задачей;
+- дают **одинаковый результат**.
+
+**Разница** — только в форме команды:
+- `#goal-file` → текст в goal → **длинная команда** (`"<25 строк>"`);
+- `#issue` → путь в `--issue` → **короткая команда**.
+
+**Решение:** оставить **один** способ — `#goal-file`.
+
+### Изменения
+
+**`ai_coder/gui/templates/index.html`:**
+- удалён `<div class="field agent-only">` с `<input id="issue">`;
+- из `parseCommand` убраны `result.issue` и обработка `--issue`;
+- из `applyParsed` убран `issueEl`.
+
+**`ai_coder/gui/app.py`:**
+- `issue` удалён из `_build_command` / `_build_argv` / `build` / `run`;
+- **`reverse_check` в `_build_argv` оставлен** (баг-фикс из 10.47).
+
+### Что осталось
+
+- `#goal-file` — «Из файла» (загрузка goal).
+- `#paste-command` — «Вставить команду» (вставка в textarea).
+- `reverse_check` — флаг.
+
+### Тесты
+
+435 passed. Smoke-тесты GUI: `/build` без `--issue`, с `--reverse-check`.
+
+### Коммит
+
+`ebd1a6e` revert(gui): убрать поле --issue из формы (дубль с 'Из файла')
+
+---
+
 ## [2026-10-14] iteration 10.47 — GUI A.12 (paste / goal-file / --issue) + E25
 
 ### Что сделано
