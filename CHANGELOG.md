@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-10-14] iteration 10.52 — GUI: кнопка «Скопировать git diff»
+
+### Что сделано
+
+**`POST /diff`** в `ai_coder/gui/app.py`:
+- принимает `path` (Form), резолвит в `Path(path).resolve()`;
+- `subprocess.run(["git", "diff", "HEAD"], cwd=root, timeout=30)`;
+- возвращает `{"diff": "..."}` или `{"diff": "", "error": "..."}`;
+- ошибки: не-каталог, `OSError`/`SubprocessError`, `returncode != 0`.
+
+**Кнопка `#copy-diff-btn`** в `templates/index.html`:
+- между «Скопировать вывод» и «Запустить» (в блоке `.actions`);
+- всегда видна, всегда активна;
+- JS: `fetch("/diff", {method: "POST", body: fd})` c `path` из `#path`
+  → `navigator.clipboard.writeText` (fallback — `textarea + execCommand`);
+- при пустом diff — текст-заглушка
+  «[пусто — нет изменений или --commit уже закоммитил]»;
+- feedback: кнопка «Скопировано» на 1.2 с.
+
+**Проверено:** `curl -X POST -d "path=." /diff` → непустой diff
+(содержит текущие правки `app.py`/`index.html`), `error: None`.
+
+**Сделано вручную** (~20 мин, 0 RUB). Скрипт правки — `/tmp/add_diff_btn.py`.
+
+### Ограничение
+
+`--commit` → diff пустой (агент закоммитил, `git diff HEAD` — пусто).
+Это ожидаемо; в JS предусмотрена заглушка.
+
+### Тесты
+
+456 passed (без изменений — GUI не покрыт тестами).
+
+### Коммиты
+
+- <добавится> feat(gui): кнопка «Скопировать git diff» (10.52)
+
+---
+
 ## [2026-10-14] iteration 10.51 — демо-наборы (`issues/demos/`, `commands/demos/`)
 
 ### Что сделано

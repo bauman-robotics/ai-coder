@@ -224,6 +224,28 @@ def _stream_process(run_id: str, proc: subprocess.Popen) -> Iterator[str]:
         yield f"data: [exit {proc.returncode}]\n\n"
 
 
+@app.post("/diff")
+async def diff(path: str = Form("")) -> dict[str, str]:
+    """Возвращает `git diff HEAD` в указанном каталоге (project_root)."""
+    root = Path(path.strip() or ".").resolve()
+    if not root.is_dir():
+        return {"diff": "", "error": f"каталог не найден: {root}"}
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"diff": "", "error": f"git diff не выполнился: {exc}"}
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip() or f"exit {proc.returncode}"
+        return {"diff": "", "error": err}
+    return {"diff": proc.stdout or ""}
+
+
 @app.post("/run")
 async def run(
     goal: str = Form(""),
