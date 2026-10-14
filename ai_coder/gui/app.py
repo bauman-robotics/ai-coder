@@ -133,10 +133,18 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {})
 
 
-@app.get("/help", response_class=HTMLResponse)
-async def help_page(request: Request) -> HTMLResponse:
-    """Страница справки по ai-coder."""
+@app.get("/docs/cli/help", response_class=HTMLResponse)
+async def docs_cli_help_page(request: Request) -> HTMLResponse:
+    """Справка (режимы, примеры) — под общим nav справочника."""
     return templates.TemplateResponse(request, "help.html", {})
+
+
+@app.get("/help", response_class=HTMLResponse)
+async def help_redirect() -> HTMLResponse:
+    """Старый URL /help — редирект на /docs/cli/help."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/docs/cli/help", status_code=301)
 
 
 @app.get("/health")

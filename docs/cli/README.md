@@ -10,6 +10,7 @@
 - [actions, run, fix](actions-run-fix.md)
 - [agent](agent.md)
 - [usage, backups, rollback, указатель](usage-backups-rollback-index.md)
+- [Справка: режимы, примеры с кнопками «→ в форму»](/docs/cli/help)
 
 ## Обзор
 
