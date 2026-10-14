@@ -98,13 +98,13 @@
 
                 <div class="field flags agent-only">
                     <span class="flags-label">Флаги</span>
-                    <label class="checkbox">
+                    <label class="checkbox" id="apply-label">
                         <input type="checkbox" name="apply" value="true"> apply
                     </label>
-                    <label class="checkbox">
+                    <label class="checkbox" id="commit-label" title="требует apply">
                         <input type="checkbox" name="commit" value="true"> commit
                     </label>
-                    <label class="checkbox">
+                    <label class="checkbox" id="reverse-check-label" title="требует --tool-loop">
                         <input type="checkbox" name="reverse_check" value="true"> reverse-check
                     </label>
                     <label for="check-mode">режим проверки</label>
@@ -193,6 +193,37 @@
             var ttEl = document.getElementById("task-type");
             if (ttEl) { ttEl.addEventListener("change", applyTaskType); }
             applyTaskType();
+
+            // A.13: ограничения по mode/apply/commit/reverse-check.
+            function applyModeConstraints() {
+                var modeEl = document.getElementById("mode");
+                var applyEl = document.querySelector("input[name=apply]");
+                var commitEl = document.querySelector("input[name=commit]");
+                var reverseEl = document.querySelector("input[name=reverse_check]");
+                var ttRun = document.getElementById("task-type");
+                var isToolLoop = modeEl ? (modeEl.value === "tool-loop") : false;
+                var isApply = applyEl ? applyEl.checked : false;
+                var isRun = ttRun ? (ttRun.value === "run") : false;
+
+                if (reverseEl) {
+                    // RC доступен только для agent + tool-loop.
+                    var rcEnabled = isToolLoop && !isRun;
+                    reverseEl.disabled = !rcEnabled;
+                    if (!rcEnabled) { reverseEl.checked = false; }
+                    var rvLabel = document.getElementById("reverse-check-label");
+                    if (rvLabel) { rvLabel.classList.toggle("field-hidden", isRun); }
+                }
+                if (commitEl) {
+                    commitEl.disabled = !isApply;
+                    if (!isApply) { commitEl.checked = false; }
+                }
+            }
+            var modeCtl = document.getElementById("mode");
+            if (modeCtl) { modeCtl.addEventListener("change", applyModeConstraints); }
+            var applyCtl = document.querySelector("input[name=apply]");
+            if (applyCtl) { applyCtl.addEventListener("change", applyModeConstraints); }
+            if (ttEl) { ttEl.addEventListener("change", applyModeConstraints); }
+            applyModeConstraints();
 
             document.addEventListener("htmx:afterRequest", function (evt) {
                 if (evt.detail && evt.detail.elt && evt.detail.elt.id === "build-form" && evt.detail.successful) {

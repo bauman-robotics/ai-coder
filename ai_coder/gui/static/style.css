@@ -449,3 +449,14 @@ button.primary:hover {
 .field-hidden {
     display: none !important;
 }
+
+/* ---- A.13: disabled-флаги (обратная связь) ---- */
+.checkbox input:disabled + *,
+.checkbox:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.checkbox input:disabled {
+    cursor: not-allowed;
+}
