@@ -2957,6 +2957,54 @@ def test_collect_diff_non_git_returns_empty(tmp_path):
     assert _collect_diff(tmp_path) == ""
 
 
+def test_collect_diff_includes_new_untracked_file(git_repo):
+    """Новый untracked-файл попадает в diff с содержимым."""
+    (git_repo / "new_file.txt").write_text("hello untracked\n", encoding="utf-8")
+
+    diff = _collect_diff(git_repo)
+
+    assert "new_file.txt" in diff
+    assert "+hello untracked" in diff
+    assert "new file mode 100644" in diff
+
+
+def test_collect_diff_tracked_change_and_untracked(git_repo):
+    """Изменённый tracked-файл и новый untracked — оба в diff."""
+    (git_repo / "README.md").write_text("# test\nmodified line\n", encoding="utf-8")
+    (git_repo / "added.py").write_text("print('added')\n", encoding="utf-8")
+
+    diff = _collect_diff(git_repo)
+
+    # tracked-изменение
+    assert "README.md" in diff
+    assert "+modified line" in diff
+    # untracked-файл
+    assert "added.py" in diff
+    assert "+print('added')" in diff
+
+
+def test_collect_diff_truncates_when_too_large(git_repo):
+    """diff превышает лимит → результат обрезан."""
+    from ai_coder.agent import _MAX_DIFF_CHARS
+
+    big = "x" * (_MAX_DIFF_CHARS * 2)
+    (git_repo / "huge.txt").write_text(big, encoding="utf-8")
+
+    diff = _collect_diff(git_repo)
+
+    assert len(diff) <= _MAX_DIFF_CHARS
+
+
+def test_collect_diff_empty_untracked_file(git_repo):
+    """Пустой untracked-файл — diff не падает."""
+    (git_repo / "empty.txt").write_text("", encoding="utf-8")
+
+    diff = _collect_diff(git_repo)
+
+    assert isinstance(diff, str)
+    assert "empty.txt" in diff
+
+
 def test_reverse_check_result_dataclass():
     """ReverseCheckResult — dataclass с нужными полями."""
     r = ReverseCheckResult(ok=True)
