@@ -1,8 +1,8 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-13 (итерации 10.29–10.42: `--no-verify`, read-шаги, GUI A.0–A.8, partial warnings)
+**Дата обновления:** 2026-10-14 (итерации 10.42–10.44: GUI A.8–A.11, fix `--max-cost-rub` для `--decompose`, E19)
 **Ветка:** main
-**Последний коммит:** (E18 docs + /help) — см. git log
+**Последний коммит:** (10.44 — fix бюджета + A.11) — см. git log
 **Тесты:** 419 passed | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
@@ -176,11 +176,29 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - Сделано агентом (E18.3): 2 из 3 файлов (help.html + index.html),
   style.css доделан вручную. 1.05 RUB, max_cost.
 
-**Не умеет (A.11+):** `run`-команды (`greet`, `inventory`,
-`suggest_improvements`, `explain`) в GUI — форма работает только
-с `agent`. См. `next-chat/in-progress.md` → A.11.
-Также: вставка готовой команды (A.12), загрузка промпта из файла
-(A.12), поле `--issue` (A.12).
+**A.11:** run-команды в GUI (2026-10-14).
+- `app.py`: `_build_command` — `task_type="agent"`, `run_action=""`,
+  ветка `if task_type == "run"`. Для run: `ai-coder run <action> <path>`
+  + `--model`/`--apply`/`--dry-run`/`advanced_flags`.
+  **Без** `--max-cost-rub`/`--commit` (их нет у CLI `run`).
+- `index.html`: select «Тип задачи» (`task_type`), select «Действие»
+  (`run_action`, 7 действий), обёртки `.agent-only` (goal/mode/flags),
+  JS `applyTaskType()`, ветка `run` в `parseCommand`, установка
+  `task_type`/`run_action` из `pending_command`.
+- `help.html`: секция `#run-examples` — 5 примеров run-команд
+  с кнопками «→ в форму».
+- `style.css`: `.field-hidden { display: none !important; }`.
+- **Как сделано:** `app.py` — **агентом** (подзадача 1, ✅ 33 строки
+  без ошибок). `index.html`/`help.html`/`style.css` — вручную
+  (~1.5 ч, 0 RUB). **См.** E19.
+
+**Fix (10.44):** `--max-cost-rub` игнорировался при `--decompose`.
+Найдено в E19 (перерасход ×8.4). Исправлено в `cli.py` (2 места):
+`decompose_max_cost_rub or max_cost_rub`.
+
+**Не умеет (A.12+):** вставка готовой команды в форму (A.12),
+загрузка промпта из файла (A.12), поле `--issue` (A.12). См.
+`next-chat/in-progress.md` → A.12.
 
 ### Agent
 

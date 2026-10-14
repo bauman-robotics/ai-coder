@@ -6,6 +6,75 @@
 
 ---
 
+## 2026-10-14 — E19: A.11 через --decompose + баг `--max-cost-rub`
+
+**Гипотеза:** 4-файловая GUI-задача (app.py, index.html, help.html,
+style.css) через `--issue` + `--decompose`.
+
+**Команда:**
+
+    ai-coder agent . --issue issues/1-gui-run-commands.md \
+        --tool-loop --decompose --apply \
+        --max-iterations 15 --max-cost-rub 2.0
+
+**Результат:**
+- ✅ 1/4 подзадач (app.py, 33 строки, без ошибок).
+- ❌ index.html — провал (flash 15 ит. → v4-pro retry 15 ит.).
+- ⏸️ help.html, style.css — не запускались (стоп после fail).
+
+**Стоимость: 16.87 RUB** при заявленном лимите 2.0.
+**Превышение ×8.4.**
+
+### Найденный баг (🔴 высокий)
+
+**`--max-cost-rub` молча игнорировался при `--decompose`.**
+
+`cli.py`, стр. 992 и 1674: `max_cost_rub=decompose_max_cost_rub`.
+
+`decompose_max_cost_rub` — отдельный флаг (`--decompose-max-cost-rub`),
+по умолчанию `None`. Если не задан — `run_agent_decompose` получал
+`max_cost_rub=None` → все проверки бюджета пропускались
+(стр. 774 `if max_cost_rub is not None`, стр. 872 — то же).
+`--max-cost-rub` действовал только на простой tool-loop.
+
+### Разбор usage (хронология)
+
+    09:55:57  v4-pro   agent:decompose   0.85 RUB  (планировщик)
+    09:55:59  flash    agent:tool1..11  ~2.10 RUB  (подзадача 1, ✅)
+    09:57:02  flash    agent:tool1..15  ~2.20 RUB  (подзадача 2, fail)
+    09:57:49  v4-pro   agent:tool1..15 ~11.50 RUB  (retry, fail)
+    ---
+    итого:                              16.87 RUB
+
+### Фикс (10.44, этот же день)
+
+**`cli.py`, стр. 992 и 1674:**
+
+    max_cost_rub=decompose_max_cost_rub or max_cost_rub,
+
+**+ help:** «Если не задан — наследует --max-cost-rub.»
+
+### Выводы
+
+1. **Финансовый баг:** `--max-cost-rub` молча игнорировался при
+   `--decompose`. Хуже отсутствия флага — пользователь думал,
+   что защищён.
+2. **decompose не спасает против JS↔Python** (подтверждение E17):
+   подзадача index.html (форма + JS + parseCommand) проваливается
+   даже отдельным файлом.
+3. **app.py (чистый Python) — агент делает правильно** (33 строки
+   без ошибок с первого раза).
+4. **Правило:** GUI-задачи вручную; связанные правки вручную;
+   decompose — не универсальная защита.
+
+### Связь
+
+- E18 (3 файла, простые, tool-loop) = 0.67 RUB ✅.
+- E18.3 (3 файла, сложные, tool-loop) = 1.05 RUB, 2/3.
+- **E19** (4 файла, связанные, decompose) = 16.87 RUB, 1/4 + баг.
+
+---
+
 ## 2026-10-14 — E18.3: /help кнопка «в форму» — ❌ 2/3 файла
 
 **Гипотеза:** агент справится с 3-файловой задачей:

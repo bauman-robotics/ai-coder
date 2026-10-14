@@ -70,14 +70,33 @@ def _build_command(
     check_mode: str,
     max_cost_rub: str,
     advanced_flags: str,
+    task_type: str = "agent",
+    run_action: str = "",
 ) -> str:
-    """Собирает строку команды ai-coder agent из полей формы."""
+    """Собирает строку команды ai-coder из полей формы."""
+    path_val = path.strip() if path.strip() else "."
+
+    # Ветка run: `ai-coder run <action> <path>`. У команды run нет флагов
+    # --max-cost-rub и --commit, поэтому их не добавляем.
+    if task_type == "run":
+        parts: list[str] = ["ai-coder", "run", _escape_shell(run_action)]
+        parts.append(path_val)
+        if model.strip() and model.strip() != "default":
+            parts.extend(["--model", model.strip()])
+        if apply:
+            parts.append("--apply")
+        if check_mode == "dry-run":
+            parts.append("--dry-run")
+        if advanced_flags.strip():
+            parts.append(advanced_flags.strip())
+        return " ".join(parts)
+
     parts: list[str] = ["ai-coder", "agent", f'"{_escape_shell(goal)}"']
 
     # path — всегда (второй позиционный аргумент agent_cmd).
     # Пустой path → "." (как дефолт CLI), иначе --tool-loop окажется
     # на месте path и Typer его не распознает.
-    parts.append(path.strip() if path.strip() else ".")
+    parts.append(path_val)
     if mode.strip() and mode.strip() != "plain":
         mode_val = mode.strip()
         parts.append(mode_val if mode_val.startswith("--") else f"--{mode_val}")
@@ -131,6 +150,8 @@ async def build(
     check_mode: str = Form("normal"),
     max_cost_rub: str = Form(""),
     advanced_flags: str = Form(""),
+    task_type: str = Form("agent"),
+    run_action: str = Form(""),
 ) -> HTMLResponse:
     """Собирает команду из формы и возвращает её как <pre>-фрагмент."""
     command = _build_command(
@@ -143,6 +164,8 @@ async def build(
         check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
+        task_type=task_type,
+        run_action=run_action,
     )
     return HTMLResponse(
         f'<pre id="command-output" class="command-output">{html_escape(command)}</pre>'
@@ -159,6 +182,8 @@ def _build_argv(
     check_mode: str,
     max_cost_rub: str,
     advanced_flags: str,
+    task_type: str = "agent",
+    run_action: str = "",
 ) -> list[str]:
     """Собирает argv для запуска агента через python -m ai_coder.cli."""
     command = _build_command(
@@ -171,6 +196,8 @@ def _build_argv(
         check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
+        task_type=task_type,
+        run_action=run_action,
     )
     parts = shlex.split(command)
     # parts[0] == "ai-coder" -> заменяем на sys.executable -m ai_coder.cli
@@ -201,6 +228,8 @@ async def run(
     check_mode: str = Form("normal"),
     max_cost_rub: str = Form(""),
     advanced_flags: str = Form(""),
+    task_type: str = Form("agent"),
+    run_action: str = Form(""),
 ) -> StreamingResponse:
     """Запускает агента и стримит его вывод в формате SSE."""
     run_id = uuid.uuid4().hex
@@ -214,6 +243,8 @@ async def run(
         check_mode=check_mode,
         max_cost_rub=max_cost_rub,
         advanced_flags=advanced_flags,
+        task_type=task_type,
+        run_action=run_action,
     )
     proc: subprocess.Popen = subprocess.Popen(
         argv,

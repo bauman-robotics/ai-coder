@@ -26,6 +26,27 @@
                   hx-target="#command-result"
                   hx-swap="innerHTML">
                 <div class="field">
+                    <label for="task-type">Тип задачи</label>
+                    <select id="task-type" name="task_type">
+                        <option value="agent">agent (LLM-агент)</option>
+                        <option value="run">run (разовое действие)</option>
+                    </select>
+                </div>
+
+                <div class="field field-hidden" id="run-action-field">
+                    <label for="run-action">Действие (run)</label>
+                    <select id="run-action" name="run_action">
+                        <option value="greet">greet — обзор проекта</option>
+                        <option value="inventory">inventory — инвентарь</option>
+                        <option value="suggest_improvements">suggest_improvements — ревью</option>
+                        <option value="explain">explain — объяснить файл</option>
+                        <option value="write_readme">write_readme — README</option>
+                        <option value="add_docstrings">add_docstrings — докстринги</option>
+                        <option value="refactor">refactor — рефакторинг</option>
+                    </select>
+                </div>
+
+                <div class="field agent-only">
                     <label for="goal">Цель (goal)</label>
                     <textarea id="goal" name="goal" rows="4"
                               placeholder="Опишите задачу для агента"></textarea>
@@ -39,7 +60,7 @@
                 </div>
 
                 <div class="field-row">
-                    <div class="field">
+                    <div class="field agent-only">
                         <label for="mode">Режим (mode)</label>
                         <select id="mode" name="mode">
                             <option value="plain">plain</option>
@@ -75,7 +96,7 @@
                     </div>
                 </div>
 
-                <div class="field flags">
+                <div class="field flags agent-only">
                     <span class="flags-label">Флаги</span>
                     <label class="checkbox">
                         <input type="checkbox" name="apply" value="true"> apply
@@ -154,6 +175,22 @@
 
             renderPaths(loadPaths());
 
+            // A.11: переключатель agent/run.
+            function applyTaskType() {
+                var tt = document.getElementById("task-type");
+                if (!tt) { return; }
+                var isRun = tt.value === "run";
+                var nodes = document.querySelectorAll(".agent-only");
+                for (var k = 0; k < nodes.length; k++) {
+                    nodes[k].classList.toggle("field-hidden", isRun);
+                }
+                var runField = document.getElementById("run-action-field");
+                if (runField) { runField.classList.toggle("field-hidden", !isRun); }
+            }
+            var ttEl = document.getElementById("task-type");
+            if (ttEl) { ttEl.addEventListener("change", applyTaskType); }
+            applyTaskType();
+
             document.addEventListener("htmx:afterRequest", function (evt) {
                 if (evt.detail && evt.detail.elt && evt.detail.elt.id === "build-form" && evt.detail.successful) {
                     rememberPath(pathInput.value);
@@ -203,6 +240,7 @@
                 var result = {
                     action: "",
                     goal: "",
+                    run_action: "",
                     path: ".",
                     mode: "",
                     check_mode: "",
@@ -268,6 +306,38 @@
                         }
                         advanced.push(v);
                     }
+                } else if (result.action === "run") {
+                    var runActionSet = false;
+                    for (; i < tokens.length; i++) {
+                        var t = tokens[i];
+                        var v = t.value;
+                        if (v === "--model") {
+                            advanced.push(v);
+                            if (tokens[i + 1]) { advanced.push(tokens[i + 1].value); i++; }
+                            continue;
+                        }
+                        if (v === "--apply") {
+                            result.apply = true;
+                            advanced.push(v);
+                            continue;
+                        }
+                        if (v === "--dry-run") {
+                            result.check_mode = "dry-run";
+                            advanced.push(v);
+                            continue;
+                        }
+                        if (!runActionSet && v.charAt(0) !== "-") {
+                            result.run_action = v;
+                            runActionSet = true;
+                            continue;
+                        }
+                        if (!pathSet && v.charAt(0) !== "-") {
+                            result.path = v;
+                            pathSet = true;
+                            continue;
+                        }
+                        advanced.push(v);
+                    }
                 } else {
                     for (; i < tokens.length; i++) {
                         advanced.push(tokens[i].value);
@@ -304,6 +374,14 @@
                 var commitEl = document.querySelector("input[name=commit]");
                 if (commitEl) { commitEl.checked = !!parsed.commit; }
                 if (advEl && parsed.advanced_flags) { advEl.value = parsed.advanced_flags; }
+
+                if (parsed.action === "run") {
+                    var ttPending = document.getElementById("task-type");
+                    if (ttPending) { ttPending.value = "run"; }
+                    var raPending = document.getElementById("run-action");
+                    if (raPending && parsed.run_action) { raPending.value = parsed.run_action; }
+                    if (typeof applyTaskType === "function") { applyTaskType(); }
+                }
 
                 var notice = document.createElement("div");
                 notice.id = "pending-notice";

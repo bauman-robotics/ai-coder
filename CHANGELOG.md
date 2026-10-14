@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-10-14] iteration 10.44 — fix бюджета --decompose + GUI A.11 (run-команды)
+
+### Fix: `--max-cost-rub` игнорировался при `--decompose`
+
+**Найдено в E19** (прогон A.11 через --decompose, перерасход ×8.4:
+16.87 RUB при лимите 2.0).
+
+**`ai_coder/cli.py`:**
+- Стр. ~992 (`_run_chain`): `max_cost_rub=decompose_max_cost_rub or max_cost_rub`.
+- Стр. ~1674 (`agent_cmd`): то же.
+- Help для `--decompose-max-cost-rub`: «Если не задан — наследует --max-cost-rub.»
+
+**Причина:** `--decompose` использовал только `--decompose-max-cost-rub`
+(отдельный флаг, по умолчанию None). Если не задан —
+`run_agent_decompose` получал `max_cost_rub=None` и не проверял бюджет
+(стр. 774, 872: `if max_cost_rub is not None`). `--max-cost-rub`
+действовал только на простой tool-loop.
+
+### A.11: run-команды в GUI
+
+**`ai_coder/gui/app.py`:**
+- `_build_command`: параметры `task_type="agent"`, `run_action=""`,
+  ветка `if task_type == "run"`. Для run: `ai-coder run <action> <path>`
+  + `--model`/`--apply`/`--dry-run`/`advanced_flags`.
+  **Без** `--max-cost-rub`/`--commit` (их нет у CLI `run`).
+- `build`, `run`, `_build_argv`: параметры `task_type`, `run_action`.
+
+**`ai_coder/gui/templates/index.html`:**
+- Select «Тип задачи» (`task_type`: agent/run).
+- Select «Действие» (`run_action`: 7 действий), скрыт по умолчанию.
+- Обёртки `.agent-only` (goal, mode, flags) скрываются при run.
+- JS `applyTaskType()` — toggle + listener.
+- `parseCommand`: ветка `else if (result.action === "run")`.
+- Pending: установка `task_type`/`run_action` из `pending_command`.
+
+**`ai_coder/gui/templates/help.html`:**
+- Секция `#run-examples` — 5 примеров run-команд + кнопки «→ в форму».
+
+**`ai_coder/gui/static/style.css`:**
+- `.field-hidden { display: none !important; }`.
+
+### E19
+
+См. `docs/experiments.md` → E19 (4 файла, связанные, --decompose,
+1/4 подзадач, 16.87 RUB + баг бюджета).
+
+### Как сделано
+
+- **app.py (подзадача 1):** агент `--tool-loop --decompose` — ✅
+  (33 строки, правильно с первого раза).
+- **index.html, help.html, style.css:** вручную (~1.5 ч, 0 RUB).
+- **Fix бюджета:** вручную (3 строки + help).
+
+---
+
 ## [2026-10-13] iteration 10.42 — GUI A.8 (статистика расходов, Chart.js)
 
 ### Что сделано

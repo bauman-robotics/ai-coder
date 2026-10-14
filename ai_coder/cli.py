@@ -992,7 +992,8 @@ def _run_chain(
                     interactive=interactive,
                     replan=replan,
                     rollback_on_fail=rollback_on_fail,
-                    max_cost_rub=decompose_max_cost_rub,
+                    # --decompose-max-cost-rub приоритетнее; fallback — --max-cost-rub.
+                    max_cost_rub=decompose_max_cost_rub or max_cost_rub,
                     allow_blacklist=allow_blacklist,
                     plan=pre_plans[i] if do_plan else None,
                 )
@@ -1290,7 +1291,10 @@ def agent_cmd(
     decompose_max_cost_rub: float | None = typer.Option(
         None,
         "--decompose-max-cost-rub",
-        help="Остановка decompose при превышении стоимости (RUB).",
+        help=(
+            "Остановка decompose при превышении стоимости (RUB). "
+            "Если не задан — наследует --max-cost-rub."
+        ),
     ),
     plan: bool = typer.Option(
         False,
@@ -1674,7 +1678,8 @@ def agent_cmd(
                     interactive=interactive,
                     replan=decompose_replan,
                     rollback_on_fail=decompose_rollback_on_fail,
-                    max_cost_rub=decompose_max_cost_rub,
+                    # --decompose-max-cost-rub приоритетнее; fallback — --max-cost-rub.
+                    max_cost_rub=decompose_max_cost_rub or max_cost_rub,
                     allow_blacklist=allow_blacklist,
                     plan=pre_plan,
                     max_iterations=max_iterations,

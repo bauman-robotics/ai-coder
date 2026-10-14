@@ -444,3 +444,8 @@ button.primary:hover {
     font-size: 0.9rem;
     color: #c8e6c9;
 }
+
+/* ---- A.11: переключатель agent/run ---- */
+.field-hidden {
+    display: none !important;
+}
