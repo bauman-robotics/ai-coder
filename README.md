@@ -214,6 +214,15 @@ ai-coder run write_readme . --apply --no-verify
 - **`--verify-commands "pytest -q;ruff check ."`** — свои проверки.
 - **`--resume <journal-dir>`** — продолжить прерванный tool loop.
 
+### Reverse-check (вторая проверка)
+
+- **`--reverse-check`** — после `finish(success)` LLM перечитывает
+  diff и проверяет соответствие goal (требует `--tool-loop`).
+  ~0.04 RUB для маленького diff. См. `docs/examples.md` → раздел 14.
+- **Не работает** при `--decompose`, `--commit`, `--dry-run` (MVP).
+- **Не спасает** от связанных правок (JS↔Python↔HTML) —
+  см. `docs/tools.md` → «Когда НЕ использовать tool loop».
+
 ### Превью
 
 - **`--preview-only`** — только план без выполнения.

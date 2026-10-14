@@ -419,6 +419,14 @@
       и `exit_code == 5` → считать успехом (с предупреждением).
       Файл: `ai_coder/apply.py`, `run_verify_commands`.
       **Приоритет:** 🟡 средний.
+- [ ] **`--commit` ломает reverse-check.**
+      Diff берётся из `git diff HEAD`; после автокоммита агента
+      (`--commit`) — пусто, reverse-check пропускается
+      («diff пустой — пропуск»).
+      **Фикс:** брать diff из истории tool loop
+      (`write_file`/`edit_file` в `history`), а не из git.
+      Файл: `ai_coder/agent.py`, `_collect_diff`.
+      **Приоритет:** 🟡 средний.
 
 ---
 
