@@ -360,3 +360,109 @@ E2E: 3 issues (0.19 RUB) → 3 задачи ✅ (0.77 RUB).
 - **E5 (10.17)** — `--auto-fix-issues`: цикл fix.
 - **E4 (10.15)** — scan-cache **отклонён** (замер: 0.1% времени).
 - **E3 (10.16)** — `read_symbol`: 2 итерации вместо 3.
+
+---
+
+## 9. Subagents и оркестрация (10.70+, идея)
+
+**Основание:** E36 (2026-10-15) — `--decompose` **уже** реализует
+базовую оркестрацию: разбиение, изоляция контекстов, retry, verify.
+
+**Не строить с нуля.** **Доработать.**
+
+### Что уже есть
+
+- **Разбиение** — v4-pro планирует подзадачи (1 файл = 1 подзадача).
+- **Изоляция** — каждая подзадача свой `_ToolLoopCtx` (своя история).
+- **Retry** — при `max_iterations` → повтор через v4-pro.
+- **Verify** — `pytest` после каждой подзадачи.
+- **Rollback** — при `verify_failed` (откат файлов).
+
+### Что нужно добавить
+
+**1. Router (модель по сложности).**
+
+Проблема: `symbols.py` (1 функция) — flash справляется.
+`tools.py` (1146 строк, связанные правки) — flash **вязнет**,
+retry v4-pro — **+2-3 RUB**.
+
+Решение: **классифицировать** подзадачу **до запуска**:
+- **`explore`** — разведка (read-only, flash, 5 ит).
+- **`edit-simple`** — правка в 1 функции (flash, 8 ит).
+- **`edit-complex`** — связанные правки, большой файл (v4-pro, 15 ит).
+- **`verify`** — запуск тестов (flash, 3 ит).
+
+**Реализация:** LLM-классификатор **или** эвристики (размер файла,
+`target_files`).
+
+**2. Validator (семантическая проверка).**
+
+Проблема: «success» — потому что **pytest прошёл**. Header
+`# (total: N symbols)` — **никто не проверил семантически**.
+
+Решение: после подзадачи — LLM-проверка (как `--reverse-check`):
+- «goal: добавить count_symbols».
+- «diff: вот изменения».
+- «вопрос: сделано?»
+
+**Адаптация:** существующий `run_reverse_check` per подзадачу.
+
+**3. Feedback loop (явная передача результатов).**
+
+Проблема: subtask 3 **не знает**, что subtask 2 retry'нулась.
+
+Решение: после **каждой** подзадачи — **краткий summary** (не весь
+`step-N.md`) передаётся в **следующую** подзадачу **и** в планировщик
+(для replan).
+
+**4. Retry-политика.**
+
+Уже есть: retry v4-pro при `max_iterations`.
+Добавить: **retry flash** при `parse_error` (повтор), **retry v4-pro**
+при `verify_failed` (с анализом ошибок).
+
+### Формат subagent (в `config.yaml`)
+
+    agent:
+      subagents:
+        - name: code-explorer
+          description: "Ищет определения символов. Read-only."
+          tools: [read_file, read_symbol, run_shell]
+          model: deepseek-flash
+          max_iterations: 5
+        - name: test-runner
+          description: "Запускает pytest, возвращает ошибки."
+          tools: [run_shell]
+          model: deepseek-flash
+          max_iterations: 3
+        - name: markdown-writer
+          description: "Пишет markdown. Write-only."
+          tools: [read_file, write_file]
+          model: deepseek-v4-pro
+          max_iterations: 8
+
+### Инструмент `spawn_subagent`
+
+**Позже** (после Router/Validator/Feedback):
+
+    spawn_subagent(name="code-explorer", goal="найди все вызовы _collect_diff")
+
+Родитель **видит** subagents в промпте, **вызывает** их.
+Результат — **краткая выжимка** в родителя.
+
+**Это — уровень 4 автономности** (после Feedback).
+
+### Оценка
+
+- **Router:** ~3-4 дня.
+- **Validator:** ~3-4 дня.
+- **Feedback:** ~2-3 дня.
+- **Инструмент `spawn_subagent`:** ~5-7 дней.
+- **Итого:** 2-3 недели (не месяцы).
+
+**Порядок:** Router → Validator → Feedback → `spawn_subagent`.
+
+### Связь
+
+- **E36** (`docs/experiments.md`) — данные.
+- **TODO** — добавить пункт «Направление 12: subagents».

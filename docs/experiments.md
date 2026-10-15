@@ -6,6 +6,81 @@
 
 ---
 
+## 2026-10-15 — E36: --decompose на связанной задаче (✅ успех)
+
+**Гипотеза:** `--decompose` вязнет на связанных задачах (3 файла,
+функция используется в другом файле), даже с бюджетом ×2.
+
+**Задача:** `count_symbols` — новая функция в `ai_coder/symbols.py`,
+использование в `ai_coder/tools.py`, тесты в `tests/test_symbols.py`.
+
+**Изоляция:** git worktree `/tmp/ai-coder-test` (ветка `test-decompose`),
+основной проект `main` не тронут.
+
+**Команда:**
+
+    ai-coder agent --issue issues/2026-10-15/7-decompose-count-symbols.md . \
+        --decompose --tool-loop --apply --decompose-replan \
+        --max-iterations 15 --max-cost-rub 10
+
+**Результат:**
+- ✅ **Успех.** 3 подзадачи, все ✅, **5.69 RUB**.
+- **Планировщик разбил точно:**
+  - 1: `symbols.py` — добавить `count_symbols` (flash).
+  - 2: `tools.py` — использовать в `tool_read_symbol` (flash → v4-pro).
+  - 3: `tests/test_symbols.py` — 3 теста (flash).
+- Explanation: *«Каждая подзадача атомарна и затрагивает один файл»*.
+
+**Ключевое наблюдение — retry:**
+
+- **Subtask 2 (tools.py)** — flash **провалился** (`max_iterations`).
+- **Retry через v4-pro** — **успех**.
+- Стоимость retry — **~2-3 RUB**.
+- **Механизм retry уже работает** — это **часть оркестрации**.
+
+**Проверка качества:**
+
+- ✅ `count_symbols` — правильно (через `_parse_line`, коротко,
+  docstring на русском).
+- ✅ `tools.py` — правильно (условие `not rel.endswith(".py")`,
+  try/except OSError, вложен в `if len(matches) > 1`).
+- ✅ Тесты — осмысленные (свои примеры, 3 языка в `empty`-тесте).
+- ✅ **489 passed** (+3).
+
+**Что подтвердилось:**
+
+- ✅ Планировщик **понимает ограничения** (1 файл = 1 подзадача).
+- ✅ Retry **спасает** при провале flash.
+- ✅ Verify после **каждой** подзадачи.
+- ✅ Изоляция контекстов (каждый subtask — свой ctx).
+- ❌ **H3 опровергнута:** подзадача 2 **не** провалилась
+  из-за невидения функции — **retry помог** flash.
+
+**Что нового:**
+
+1. **Subagents — уже частично** в `--decompose`.
+   Базовая оркестрация: разбиение, изоляция, retry, verify.
+2. **Router нужен.** Subtask 2 (`tools.py`, 1146 строк) провалился
+   на flash. Если бы модель выбиралась **сразу** по сложности —
+   экономия ~2 RUB.
+3. **Semantic validator отсутствует.** «Success» — потому что pytest
+   прошёл. Header `# (total: N symbols)` — никто не проверил
+   семантически.
+4. **Feedback loop отсутствует.** Subtask 3 не знает, что subtask 2
+   retry'нулась.
+
+**Выводы:**
+
+- **Строить subagents с нуля не нужно.** База есть.
+- **Доработать:** Router (модель по сложности), Validator
+  (семантика), Feedback (явная передача результатов).
+- **Оценка доработки:** 1-2 недели.
+
+**Артефакты:** worktree `/tmp/ai-coder-test` (ветка `test-decompose`),
+журнал `.ai-out/ai-coder-test/decompose-2026-10-15T21-11-56`.
+
+---
+
 ## 2026-10-15 — E35: fix 8.5 (--commit + reverse-check) (⚠️ + инцидент)
 
 **Гипотеза:** v4-pro справится с перестановкой вызовов
