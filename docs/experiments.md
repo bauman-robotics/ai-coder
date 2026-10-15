@@ -6,6 +6,82 @@
 
 ---
 
+## 2026-10-15 — E35: fix 8.5 (--commit + reverse-check) (⚠️ + инцидент)
+
+**Гипотеза:** v4-pro справится с перестановкой вызовов
+`_collect_diff` / `git commit` в `_tool_loop_finalize`.
+
+**Задача:** Issue 6 — при `--commit` собрать diff **до** коммита,
+reverse-check использует diff. Плюс новый тест.
+
+**Команда:**
+
+    ai-coder agent --issue issues/2026-10-15/6-commit-reverse-check.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 15 --max-cost-rub 5 --reverse-check
+
+**Результат:**
+- ❌ Формально: `stopped_reason=max_cost`, **9 итераций**, **3.75 RUB**.
+- ✅ **Правки (step-2, step-3) применены и корректны:**
+  - step-2: `diff = diff_before_commit` в RC (убрано дублирование);
+  - step-3: `run_shell grep test_` — **разведка** тестов.
+- ✅ Комментарий **на русском** (в отличие от E32).
+- ❌ **Тест не написан** — precheck сработал раньше.
+
+**Разбор итераций:**
+
+    1. read_file   tool_loop.py:630-770     → ✅
+    2. edit_file   tool_loop.py (1 repl.)   → ✅ RC
+    3. run_shell   grep "def test_"         → ✅
+    4. read_file   test_agent.py:1-500      → ✅
+    5. run_shell   grep run_tool_loop       → ✅
+    6. run_shell   grep finish              → ✅
+    7. read_file   test_agent.py:550-700    → ✅
+    8. read_file   conftest.py              → ✅
+    9. —           ❌ precheck: 1.58 > 1.25 → last_iteration
+
+**Новый precheck (10.69) работает:**
+- Остановил на 9-й итерации с `last_iteration=True`.
+- `stopped_reason="max_cost"`, summary «budget last iteration: ...».
+- **Правки на диске, отката нет** (verify не запускался).
+
+**НО:** precheck **сработал слишком рано.**
+- Остаток 1.25 RUB.
+- Оценка 1.58 (precheck).
+- **Реальная** стоимость edit_file теста — 0.5-1.0 RUB.
+- **Precheck переоценил.**
+
+**Значит:** TODO 8.7 **закрыт частично** — «последняя итерация
+завершается» (A), но **не** «точная оценка» (B).
+
+**Инцидент (мой баг):**
+
+Первый коммит `9e7b3a3` удалил **2318 строк** в `test_agent.py`:
+- Скрипт вставки теста забыл `lines[insert_line_idx:]`.
+- **Поймано** через `git show --stat` **сразу** после коммита.
+- **Восстановлено:** `reset --soft` + `checkout` + повторная вставка
+  **с проверкой** `wc -l`.
+- **Force push** (`--force-with-lease`).
+
+**Итог:**
+- 486 passed (+1 новый тест).
+- ruff, mypy — clean.
+- `test_agent.py` — 3638 строк (не порезан).
+
+**Выводы:**
+
+1. **v4-pro улучшил качество** — комментарий на русском, убрал
+   дублирование `_collect_diff`.
+2. **Precheck — недооценка осталась** (TODO 8.7, часть B).
+   Нужно: **точнее оценивать** следующую итерацию.
+3. **Урок:** после правки большого файла — **всегда** проверять
+   `wc -l`. Если `deletions > insertions` без причины — **не коммитить**.
+4. **`--force-with-lease`** — безопасный способ отката origin.
+
+**Артефакты:** коммит `cf5273f`, инцидент `9e7b3a3` (удалён).
+
+---
+
 ## 2026-10-15 — E34: fix precheck через агента (✅ с ручной доводкой)
 
 **Гипотеза:** v4-pro справится с правкой precheck (10.69) —

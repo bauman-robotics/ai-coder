@@ -588,7 +588,7 @@
       `pytest` (или `python -m pytest`) и `returncode == 5` —
       **пропускаем** (не ошибка). Покрыто тестами.
       См. `docs/experiments.md` → E20/E22.
-- [ ] **`--commit` ломает reverse-check (не E26).**
+- [ ] ✅ ЗАКРЫТО 2026-10-15 (8.5): **`--commit` ломает reverse-ch...
       В `tool_loop.py` при `--commit`: сначала `git commit` (строка ~662
       в `_tool_loop_finalize`), потом `_collect_diff` (`git diff HEAD`) —
       пусто → reverse-check пропускается.

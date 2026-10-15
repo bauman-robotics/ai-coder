@@ -4,6 +4,57 @@
 
 ---
 
+## [2026-10-15] iteration 8.5 — reverse-check видит diff при --commit
+
+### Что сделано
+
+**Проблема:** при `--commit` в `_tool_loop_finalize` порядок был:
+1. `git commit` (автокоммит).
+2. `_collect_diff(project_root)` — `git diff HEAD` **пустой**.
+3. Reverse-check **пропускался**.
+
+**Фикс** (`ai_coder/agent/tool_loop.py`, `_tool_loop_finalize`):
+- Diff собирается **до** автокоммита: `diff_before_commit`.
+- Reverse-check использует `diff_before_commit` (было `_collect_diff`).
+
+**Тесты** (`tests/test_agent.py`):
+- `test_run_tool_loop_commit_reverse_check` — **НОВЫЙ**:
+  при `--commit + --reverse-check` RC **не пропускается**
+  (`chat.call_count == 3`, `reverse_check_result` заполнен).
+
+### Как сделано
+
+**Агентом** (v4-pro, `--tool-loop`, **9 итераций**, **3.75 RUB**):
+- Правки (step-2, step-3) применены и корректны — **1-в-1** по issue.
+- **Тест не написан** — precheck сработал раньше (TODO 8.7, часть B).
+- **9 итераций** ушло на разведку тестов (`grep`, `read_file` × 4).
+
+**Тест** — написан вручную.
+
+### Инцидент
+
+**Первый коммит** (`9e7b3a3`) **удалил 2318 строк** в `tests/test_agent.py` —
+**баг скрипта вставки** (забыт хвост `lines[insert_line_idx:]`).
+
+**Поймано** через `git show --stat` сразу после коммита.
+**Восстановлено:** `git reset --soft HEAD~1` + `git checkout <prev> -- tests/test_agent.py`
++ повторная вставка **с проверкой** `wc -l`.
+**Force push** (`--force-with-lease`) — история переписана.
+
+### Проверки
+
+- pytest — **486 passed** (485 + 1 новый).
+- ruff, mypy — clean.
+- test_agent.py — **3638 строк** (не порезан).
+
+### Ссылки
+
+- Коммит `cf5273f`.
+- `docs/experiments.md` → E35.
+
+---
+
+
 ## [2026-10-15] iteration 10.69 — precheck: последняя итерация завершается
 
 ### Что сделано

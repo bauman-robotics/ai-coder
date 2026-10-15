@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (10.69 — precheck: последняя итерация завершается)
+**Дата обновления:** 2026-10-15 (8.5 — reverse-check при --commit)
 **Ветка:** main
-**Последний коммит:** `8e3d15a` (10.69 — precheck)
-**Тесты:** 485 passed (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response + 1 budget) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `cf5273f` (8.5 — reverse-check при --commit)
+**Тесты:** 486 passed (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response + 1 budget + 1 commit_rc) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -441,6 +441,9 @@ Python-проектов через DeepSeek API. Работает с git-про�
     `_stop_on_last_iteration`.
   - Остаток: `_MAX_DIFF_CHARS = 15000` хардкод (TODO 8.6) — reverse-check.
   - `step_max_output_tokens: 24000` (10.66, было 8000) — обход TODO 249-252.
+  - **8.5 — ✅ ЗАКРЫТО 2026-10-15 (cf5273f):**
+    reverse-check работает при `--commit` — diff собирается **до**
+    коммита (`diff_before_commit`).
 - **Tool loop — известные проблемы (2026-10-08):**
   - ✅ `format_tool_history` обрезал `read_file` — **исправлено (10.8)**.
   - ✅ Нет правила для `'old' not found` — **исправлено (10.8)**.
