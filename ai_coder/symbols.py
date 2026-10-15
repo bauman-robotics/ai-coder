@@ -131,7 +131,7 @@ def find_symbol(
     for i, line in enumerate(lines):
         # Для C/C++ пропускаем строки с отступом (уже проверяется в _parse_line)
         candidate_kind, candidate_name = _parse_line(lang, line)
-        if candidate_name is None:
+        if candidate_name is None or candidate_kind is None:
             continue
         if candidate_name != name:
             continue
@@ -161,6 +161,7 @@ def find_symbol(
             # Нет тела — только строка объявления
             end_line = i + 1
 
+        assert end_line is not None
         return (i + 1, end_line, candidate_kind)
 
     return None
