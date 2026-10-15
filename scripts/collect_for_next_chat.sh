@@ -151,7 +151,7 @@ fi
     echo "Для чтения конкретного участка используйте read_file(path, line_start, line_end)."
     echo ""
     echo '```'
-    for f in ai_coder/*.py; do
+    for f in ai_coder/*.py ai_coder/agent/*.py; do
         matches=$( (grep -n "^class \|^def " "$f" 2>/dev/null || true) | head -60)
         if [ -n "$matches" ]; then
             echo "## $f"
