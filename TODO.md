@@ -100,6 +100,95 @@
 
 ---
 
+## Из v4-pro-ревью ядра (2026-10-15, 3.99 RUB)
+
+Ревью после split-file 10.65. Отчёт: `docs/reviews/v4-pro-2026-10-15-core.md`.
+Из 10 находок — 8 подтверждены, 2 отклонены (проверено кодом).
+
+### 🟡 `run_verify_commands` — `python -c` разрешён
+
+- [ ] Blacklist `_VERIFY_FORBIDDEN_COMMANDS` проверяет **только первый
+      токен**. `python`/`python3`/`pip`/`bash` — **разрешены**. Через
+      `python -c "..."` — произвольный код.
+      **Контекст:** `verify_commands` — из `config.yaml` или
+      `--verify-commands` CLI (задаёт **пользователь**, не LLM). **Не
+      RCE-вектор** напрямую, но **защита в глубину**.
+      **Фикс:** запретить `python`/`python3`/`pip`/`bash`/`sh` с
+      `-c`/`-e`, или проверять все токены на опасные флаги.
+      **Файл:** `ai_coder/apply.py`, `run_verify_commands`.
+      **Приоритет:** 🟡 средний.
+
+### 🟡 `_handle_finish` — бессмысленное условие
+
+- [ ] `if ctx.success and action.tool not in ("read_file", ...)` — при
+      `finish` `action.tool == "finish"` — условие **всегда true**.
+      **Фикс:** упростить или убрать.
+      **Файл:** `ai_coder/agent/tool_loop.py`, `_handle_finish`.
+      **Приоритет:** 🟢 низкий.
+
+### 🟡 `parse_response` — хрупкий парсер markdown
+
+- [ ] `parse_response` режет ` ``` ` по **первой/последней** строке.
+      **Ломается**, если внутри JSON есть ` ``` `.
+      **Фикс:** regex по первой `{` / последней `}`.
+      **Файл:** `ai_coder/apply.py`, `parse_response`.
+      **Приоритет:** 🟡 средний.
+
+### 🟡 Дублирование LLM-запроса (10 мест)
+
+- [ ] Копипаста: `is_peak_now` → `LLMClient` → `chat` →
+      `calculate_cost` → `append_usage`. **Фикс:** вынести
+      `_call_llm_and_charge(...)` в `ai_coder/llm.py`.
+      **Файлы:** `ai_coder/agent/planner.py`, `classic.py`,
+      `decomposer.py`, `autofix.py`, `tool_loop.py`.
+      **Приоритет:** 🟡 средний.
+
+### 🟡 Локальные импорты для обхода циклов
+
+- [ ] `classic.py` — `from ..actions import run_fix_action` **внутри**
+      функции. **Симптом** циклической зависимости.
+      **Фикс:** выделить `run_fix_action` в `ai_coder/fixers.py`.
+      **Файл:** `ai_coder/agent/classic.py`.
+      **Приоритет:** 🟡 средний.
+
+### 🟢 `planner.py` — размытая ответственность
+
+- [ ] `planner.py` (1021) содержит парсеры + LLM-запросы + slug + кэш
+      + оценку. **Фикс:** `planner.py` + `parsers.py`.
+      **Приоритет:** 🟢 низкий.
+
+### 🟢 Ручное `__all__` в `agent/__init__.py`
+
+- [ ] Хрупко — легко забыть. **Фикс:** автогенерация через обход
+      `__all__` модулей.
+      **Файл:** `ai_coder/agent/__init__.py`.
+      **Приоритет:** 🟢 низкий.
+
+### 🟢 `tool_loop.py` — дальнейшее разбиение
+
+- [ ] 31k символов. Кандидат на `ToolLoopSession`, `Journal`,
+      `BackupManager`.
+      **Приоритет:** 🟢 низкий.
+
+### 🟡 Тесты / CI
+
+- [ ] **4.2** — интеграционные тесты циклов агента с моком LLM.
+- [ ] **4.3** — тесты безопасности для `_safe_path`, `_validate_command`.
+- [ ] **4.4** — тесты отката `apply_plan` и `rollback`.
+- [ ] **6.5** — `bandit` (SAST) в CI.
+      **Приоритет:** 🟡 средний.
+
+### ❌ Отклонено (проверено кодом)
+
+- **1.2 (пустые директории при откате)** — **ошибка v4-pro**:
+      `created_dirs` **используется** в `rollback` (`apply.py:487-489`).
+      Пустые каталоги **удаляются**.
+- **1.3 (`llm=None` при phase1 cache hit)** — **ошибка v4-pro**:
+      `phase1_result.llm` **не читается** с обращением к атрибутам.
+
+
+---
+
 ## Из E11 (self-hosted провал) — 2026-10-11
 
 - [x] **`applied_count == 0` + `apply=True` → `skipped`.** ЗАКРЫТО
