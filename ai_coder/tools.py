@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 from .scanner import mask_secrets
+from .symbols import detect_language
+from .symbols import find_symbol as find_symbol_other
 
 
 @dataclass
@@ -534,15 +536,16 @@ def _iter_python_files(project_root: Path):
 
 def tool_read_symbol(args: dict[str, Any], project_root: Path) -> ToolResult:
     """
-    read_symbol(name, path=None, kind=None) → тело функции/класса Python.
+    read_symbol(name, path=None, kind=None) → тело функции/класса.
 
     name: имя символа (обязательно).
-    path: опциональный путь к .py файлу (если None — искать везде).
-    kind: 'def' | 'class' (опционально; иначе — любой).
+    path: опциональный путь к файлу (если None — искать в .py проекта).
+    kind: 'def' | 'class' | 'func' | 'struct' (опционально; иначе — любой).
 
     Возвращает заголовок '# <path>:<line> (<kind> <name>)' и тело.
     Если символов несколько — возвращает первый и помечает в шапке.
-    Только .py файлы.
+    Поддержка: .py, .c, .h, .cpp, .hpp, .cc, .hh,
+    .js, .jsx, .mjs, .ts, .tsx, .go.
     """
     name = str(args.get("name", "")).strip()
     if not name:
@@ -550,20 +553,21 @@ def tool_read_symbol(args: dict[str, Any], project_root: Path) -> ToolResult:
 
     path_arg = args.get("path")
     kind = args.get("kind")
-    if kind not in (None, "def", "class"):
+    if kind not in (None, "def", "class", "func", "struct"):
         return ToolResult(
             ok=False,
-            error="read_symbol: kind must be 'def' or 'class'",
+            error="read_symbol: kind must be 'def'|'class'|'func'|'struct'",
         )
 
     # --- выбор файлов ---
     candidates: list[tuple[Path, str]] = []
     if path_arg:
         p_str = str(path_arg).strip()
-        if not p_str.endswith(".py"):
+        lang = detect_language(p_str)
+        if lang is None and not p_str.endswith(".py"):
             return ToolResult(
                 ok=False,
-                error=f"read_symbol supports only .py files, got: {p_str}",
+                error=f"read_symbol: unsupported file type: {p_str}",
             )
         try:
             abs_p = _safe_path(project_root, p_str)
@@ -573,6 +577,7 @@ def tool_read_symbol(args: dict[str, Any], project_root: Path) -> ToolResult:
             return ToolResult(ok=False, error=f"file not found: {p_str}")
         candidates.append((abs_p, p_str))
     else:
+        lang = None
         candidates = list(_iter_python_files(project_root))
 
     # --- ищем во всех кандидатах, собираем совпадения ---
@@ -582,7 +587,10 @@ def tool_read_symbol(args: dict[str, Any], project_root: Path) -> ToolResult:
             text = abs_p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        found = _find_symbol_in_text(text, name, kind)
+        if lang is None:
+            found = _find_symbol_in_text(text, name, kind)
+        else:
+            found = find_symbol_other(text, name, lang, kind)
         if found is not None:
             start, end, k = found
             matches.append((abs_p, rel, start, end, k))

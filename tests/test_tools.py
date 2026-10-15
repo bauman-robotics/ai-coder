@@ -869,7 +869,7 @@ def test_read_symbol_missing_name(tmp_path: Path):
     assert "missing 'name'" in r.error
 
 
-def test_read_symbol_rejects_non_py(tmp_path: Path):
+def test_read_symbol_rejects_unsupported_ext(tmp_path: Path):
     (tmp_path / "config.yaml").write_text("key: value\n", encoding="utf-8")
 
     r = execute_tool(
@@ -878,7 +878,63 @@ def test_read_symbol_rejects_non_py(tmp_path: Path):
         tmp_path,
     )
     assert not r.ok
-    assert ".py" in r.error
+    assert "unsupported file type" in r.error
+
+
+def test_read_symbol_c_func(tmp_path: Path):
+    """read_symbol находит функцию в .c файле."""
+    (tmp_path / "calc.c").write_text(
+        "int calc_add(int a, int b) {\n    return a + b;\n}\nint main(void) {\n    return 0;\n}\n",
+        encoding="utf-8",
+    )
+    r = execute_tool(
+        "read_symbol",
+        {"name": "calc_add", "path": "calc.c"},
+        tmp_path,
+    )
+    assert r.ok, r.error
+    assert "calc_add" in r.output
+    assert "func" in r.output
+    # main не должен попасть в тело calc_add
+    assert "int main" not in r.output
+
+
+def test_read_symbol_js_arrow(tmp_path: Path):
+    """read_symbol находит arrow-функцию в .js файле."""
+    (tmp_path / "app.js").write_text(
+        "function hello() {\n"
+        "    console.log('hi');\n"
+        "}\n"
+        "const world = () => {\n"
+        "    return 42;\n"
+        "};\n",
+        encoding="utf-8",
+    )
+    r = execute_tool(
+        "read_symbol",
+        {"name": "world", "path": "app.js"},
+        tmp_path,
+    )
+    assert r.ok, r.error
+    assert "world" in r.output
+    # hello не должен попасть в тело world
+    assert "function hello" not in r.output
+
+
+def test_read_symbol_go_struct(tmp_path: Path):
+    """read_symbol находит struct в .go файле."""
+    (tmp_path / "types.go").write_text(
+        "package main\n\ntype Point struct {\n    X, Y int\n}\n",
+        encoding="utf-8",
+    )
+    r = execute_tool(
+        "read_symbol",
+        {"name": "Point", "path": "types.go"},
+        tmp_path,
+    )
+    assert r.ok, r.error
+    assert "Point" in r.output
+    assert "struct" in r.output
 
 
 def test_read_symbol_kind_filter(tmp_path: Path):
