@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (10.66 — read_symbol: C/C++/JS/TS/Go)
+**Дата обновления:** 2026-10-15 (10.68 — parse_response: устойчивость к обёрткам)
 **Ветка:** main
-**Последний коммит:** `60cec3a` (10.66 — read_symbol: C/C++/JS/TS/Go)
-**Тесты:** 480 passed (460 + 17 GUI smoke + 3 read_symbol) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `4abd511` (10.68 — parse_response)
+**Тесты:** 484 passed (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -298,6 +298,14 @@ Python-проектов через DeepSeek API. Работает с git-про�
       тело функции/класса по имени, без `grep`+`read_file`.
       E2E: **2 итерации вместо 3**, 0.11 RUB вместо 0.13.
       **10.66:** `.py` + C/C++/JS/TS/Go через `ai_coder/symbols.py`.
+  - **Ядро (10.67):**
+    - `_handle_finish` — упрощено условие warning (убрано
+      бессмысленное `action.tool not in (...)` — там всегда
+      `finish`). Добавлено `write_attempts > 0`.
+  - **Парсер (10.68):**
+    - `parse_response` — устойчив к любым обёрткам: убран хрупкий
+      `startswith("```")`, всегда `find("{") / rfind("}")`.
+      +4 теста (бэктики внутри content, мусор вокруг).
   - **Автономность (10.17):**
     - `--auto-fix-issues` — после tool loop, если verify упал,
       запускается `run_auto_fix` (до 3 попыток).

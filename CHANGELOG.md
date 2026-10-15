@@ -4,6 +4,85 @@
 
 ---
 
+## [2026-10-15] iteration 10.68 — parse_response: устойчивость к обёрткам
+
+### Что сделано
+
+**`ai_coder/apply.py::parse_response`** — упрощён и починен:
+- **Убран** хрупкий блок снятия markdown-обёртки
+  (`if text.startswith("```"): lines[1:-1]`). Ломался, если
+  внутри JSON `content` — вложенные тройные бэктики (markdown
+  с блоками кода в `create_file`).
+- **`find("{")` / `rfind("}")`** теперь применяются **всегда** —
+  устойчиво к любой обёртке (markdown, мусор до/после).
+- **Docstring** обновлён.
+
+**`tests/test_apply.py`** — +4 теста на крайние случаи:
+- `test_parse_markdown_fence_with_backticks_in_content` —
+  обёртка + бэктики внутри `content`;
+- `test_parse_markdown_fence_plain_with_backticks_in_content` —
+  то же, обёртка без `json`;
+- `test_parse_markdown_fence_with_backticks_at_end_of_content` —
+  **ключевой** кейс: старый код падал;
+- `test_parse_json_with_surrounding_text_and_braces_in_content` —
+  мусор вокруг + фигурные скобки внутри `content`.
+
+### Как сделано
+
+**Агентом** (v4-pro, `--tool-loop`, **6 итераций**, **5.05 RUB**).
+Правки применены, но **precheck остановил до `finish`/verify**
+(3-й случай за день, см. TODO 8.7).
+
+Правки агента корректны, но потребовали **ручной доводки:**
+- Комментарий переведён на русский (агент написал по-английски).
+- В 3 тестах заменено двойное экранирование `\n` → `
+`
+  (тесты проходили, но проверяли не то, что нужно).
+
+### Проверки
+
+- pytest — **484 passed** (480 + 4 новых).
+- ruff, mypy — clean.
+- E2E: `test_parse_*` — 10 passed.
+
+### Ссылки
+
+- Коммит `4abd511`.
+- `docs/experiments.md` → **E32**.
+- TODO 8.7 (precheck).
+
+---
+
+
+## [2026-10-15] iteration 10.67 — _handle_finish: упрощение условия
+
+### Что сделано
+
+**`ai_coder/agent/tool_loop.py::_handle_finish`** (строки 278-283):
+- **Убрано** бессмысленное условие
+  `action.tool not in ("read_file", "read_symbol", "list_files")`.
+  Внутри `_handle_finish` `action.tool` — **всегда** `"finish"`,
+  условие всегда `True`.
+- **Добавлено** `write_attempts > 0`: не писать warning
+  `applied 0/0`, если модель ничего не писала (только читала).
+
+Поведение для существующих тестов (`partial 1/2`, `clean 2/2`)
+**не изменилось**.
+
+### Проверки
+
+- pytest — **480 passed** (до 10.68).
+- Существующие тесты `partial_*` и `clean_*` — зелёные.
+
+### Ссылки
+
+- Коммит `f0e390f`.
+- Из v4-pro-ревью ядра (2026-10-15, 3.99 RUB), раздел
+  «🟡 _handle_finish — бессмысленное условие».
+
+---
+
+
 ## [2026-10-15] iteration 10.66 — read_symbol: C/C++/JS/TS/Go
 
 ### Что сделано
