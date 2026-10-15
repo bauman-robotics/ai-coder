@@ -2630,8 +2630,8 @@ def test_run_agent_decompose_passes_max_iterations(sample_project, minimal_cfg, 
     assert captured["max_iterations"] == 42, "аргумент должен победить cfg"
 
 
-def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg, prompts_cfg):
-    """Если max_iterations не передан — используется cfg.agent.max_steps."""
+def test_run_agent_decompose_router_edit_simple_iters(sample_project, minimal_cfg, prompts_cfg):
+    """Router: type="edit" → edit-simple → 10 итераций (не cfg.max_steps)."""
     from ai_coder.agent import DecomposeResult, run_agent_decompose
 
     minimal_cfg.agent.decompose_model = None
@@ -2667,7 +2667,7 @@ def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg
             plan=dec,
         )
 
-    assert captured["max_iterations"] == 7, "fallback на cfg.agent.max_steps"
+    assert captured["max_iterations"] == 10, "Router: edit → edit-simple=10"
 
 
 # ---------- split-goals (10F) ----------
