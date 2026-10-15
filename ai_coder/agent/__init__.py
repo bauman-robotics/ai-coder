@@ -44,10 +44,13 @@ from ._legacy import __all__ as _legacy_all  # noqa: F401
 # Всё содержимое _legacy (включая приватное — через __all__ в _legacy)
 from .models import *  # noqa: F401,F403
 from .models import __all__ as _models_all  # noqa: F401
+from .planner import *  # noqa: F401,F403
+from .planner import __all__ as _planner_all  # noqa: F401
 
 # Расширяем __all__ внешними именами
 __all__ = (
     list(_models_all)
+    + list(_planner_all)
     + list(_legacy_all)
     + [
         "WritePlan",
