@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (8.7B — precheck: оценка по инструменту)
+**Дата обновления:** 2026-10-15 (10.70 — Router: выбор модели подзадачи по типу)
 **Ветка:** main
-**Последний коммит:** `4965dcb` (8.7B — precheck по инструменту)
-**Тесты:** 487 passed (+1 precheck_by_tool) (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response + 1 budget + 1 commit_rc) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `94e113d` (merge: Router — выбор модели подзадачи по типу)
+**Тесты:** 487 passed (переименован fallback → router_edit_simple_iters; кол-во не изменилось) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -257,6 +257,18 @@ Python-проектов через DeepSeek API. Работает с git-про�
 `next-chat/in-progress.md`.
 
 ### Agent
+
+**Router (10.70, Направление 12):**
+- `Subtask.type`: `explore` | `edit-simple` | `edit-complex` | `verify`.
+- v4-pro планировщик возвращает `type` в JSON (`agent_decompose_json`).
+- `parse_decompose_response` — валидация, fallback `"edit"`.
+- `_resolve_subagent(st) -> (model, iters)`:
+  explore→flash/5, edit-simple→flash/10, edit-complex→v4-pro/15,
+  verify→flash/3.
+- В `run_agent_decompose`: `model=subtask_model`, `max_iterations=final_iters`.
+- **Приоритет:** явный `max_iterations` → Router → `cfg.agent.max_steps`.
+- Retry v4-pro при fail — оставлен (страховка).
+- Основание: E36, E38.
 
 - Планировщик: LLM → JSON-план шагов
 - Цикл: план → шаг → apply → verify → fix

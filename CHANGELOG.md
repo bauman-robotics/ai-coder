@@ -4,6 +4,78 @@
 
 ---
 
+## [2026-10-15] iteration 10.70 — Router: выбор модели подзадачи по типу
+
+### Что сделано
+
+**`ai_coder/agent/models.py` → `Subtask`:**
+- Новое поле `type: str = "edit"`.
+- Значения: `explore` | `edit-simple` | `edit-complex` | `verify`.
+
+**`config/prompts.yaml` → `agent_decompose_json`:**
+- В JSON-схему subtask добавлено поле `"type"`.
+- Правила классификации: `edit-complex` — >1 файла ИЛИ файл >500 строк;
+  `explore` — только чтение; `verify` — только запуск тестов.
+
+**`ai_coder/agent/planner.py` → `parse_decompose_response`:**
+- Читает `type`, приводит к lower, валидирует по whitelist.
+- Fallback — `"edit"`.
+
+**`ai_coder/agent/decomposer.py`:**
+- Константы `_SUBAGENT_MODEL` / `_SUBAGENT_ITERS` (хардкод).
+- Функция `_resolve_subagent(st) -> tuple[str, int]`.
+- В `run_agent_decompose`: `subtask_model, subtask_iters = _resolve_subagent(st)`.
+- **Приоритет:** явный `max_iterations` побеждает Router; Router
+  побеждает `cfg.agent.max_steps` (было — fallback).
+- Удалена неиспользуемая `eff_iters`.
+- Retry v4-pro при fail — **оставлен** (страховка).
+
+**`tests/test_agent.py`:**
+- `test_run_agent_decompose_max_iterations_fallback` **переименован** в
+  `test_run_agent_decompose_router_edit_simple_iters` — проверяет Router
+  (10 для `type="edit"`), а не fallback на `cfg.max_steps`.
+- `test_run_agent_decompose_passes_max_iterations` — **без изменений**
+  (42 побеждает Router).
+
+### Контракт Router
+
+Приоритет для `max_iterations` в `run_agent_decompose`:
+
+1. Явный `max_iterations` (аргумент) — **побеждает**.
+2. `_SUBAGENT_ITERS[st.type]` (Router) — если аргумент не передан.
+3. ~~`cfg.agent.max_steps`~~ — **больше не участвует** в decompose.
+
+Для `model` — `subtask_model` из `_resolve_subagent` (Router).
+Retry при fail — `fallback_model` (v4-pro), **не** Router.
+
+### Как сделано
+
+**Агентом + ручной доводкой, 3 прогона, ~32 RUB.**
+
+- **Прогон 1** (`--tool-loop`, без `--allow-blacklist`, 15 RUB) —
+  ❌ 15.34 RUB, 3/5 правок. `prompts.yaml` — blacklist.
+- **Прогон 2** (`--decompose --allow-blacklist`, 15 RUB) —
+  ⚠️ 11.74 RUB, 3/4 подзадач. Планировщик разбил точно, но
+  подзадача 4 (decomposer.py) — verify упал (2 теста). Откат.
+- **Прогон 3** (`--tool-loop`, 6 RUB) — ⚠️ 5.19 RUB, max_cost,
+  но 2 edit применены (константы + `_resolve_subagent`).
+- **Ручная доводка:** 2 замены в вызовах `run_tool_loop`, удаление
+  `eff_iters`, обновление 1 теста.
+
+### Проверки
+
+- pytest — **487 passed**.
+- ruff, mypy — clean.
+- Merge в main: `94e113d`.
+
+### Ссылки
+
+- `docs/experiments.md` → E38.
+- `docs/autonomy.md` → раздел 9.
+- TODO — Направление 12: Router ✅.
+
+---
+
 ## [2026-10-15] iteration 8.7B — precheck: оценка по типу инструмента
 
 ### Что сделано

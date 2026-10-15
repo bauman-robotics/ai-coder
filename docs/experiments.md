@@ -6,6 +6,85 @@
 
 ---
 
+## 2026-10-15 — E38: Router — выбор модели подзадачи по типу (⚠️ успех через 3 прогона)
+
+**Гипотеза:** v4-pro планировщик разобьёт задачу на 4 подзадачи,
+`run_agent_decompose` использует модель по типу (E36: retry v4-pro
+дорог, ~2-3 RUB).
+
+**Результат — 3 прогона агента, ~32 RUB.**
+
+**Прогон 1** (`--tool-loop`, без `--allow-blacklist`, `--max-cost-rub 15`):
+
+    ai-coder agent --issue ...1-router-by-type.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 25 --max-cost-rub 15 --reverse-check
+
+- ❌ `stopped_reason=max_cost`, 16 итераций, **15.34 RUB**.
+- **3/5 правок** (models, planner, decomposer-импорт).
+- **Итерация 9:** `edit_file config/prompts.yaml` → **blacklist**.
+  Модель **не сказала «не могу»** — пошла дальше, будто сделала.
+- **Урок:** если issue трогает `config/**` — **обязательно**
+  `--allow-blacklist`, и **указать** это в issue.
+
+**Прогон 2** (`--decompose --allow-blacklist`, `--max-cost-rub 15`):
+
+    ai-coder agent --issue ...1-router-by-type.md . \
+        --decompose --tool-loop --apply --allow-blacklist \
+        --model deepseek-v4-pro --max-iterations 15 \
+        --max-cost-rub 15 --reverse-check
+
+- ⚠️ **11.74 RUB**, 3/4 подзадач, **откат подзадачи 4**.
+- **Планировщик разбил точно** (1 файл = 1 подзадача):
+  - 1: `models.py` (`Subtask.type`) → ✅
+  - 2: `prompts.yaml` (JSON-схема) → ✅ (--allow-blacklist сработал)
+  - 3: `planner.py` (валидация) → ✅
+  - 4: `decomposer.py` (`_resolve_subagent`) → ❌ verify упал.
+- **Причина fail:** Router меняет контракт `max_iterations`:
+  было — `cfg.agent.max_steps`, стало — `_SUBAGENT_ITERS[type]`.
+  Два существующих теста (`passes_max_iterations`, `fallback`)
+  проверяют старый контракт.
+- **Откат** `decomposer.py` — файл вернулся к исходному.
+- **Урок:** issue должен **предвидеть** verify-конфликты: явно
+  «обнови тест X, ожидай Y». Иначе verify блокирует подзадачу.
+
+**Прогон 3** (`--tool-loop` на `decomposer.py`, `--max-cost-rub 6`):
+
+    ai-coder agent --issue ...2-router-decomposer.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 12 --max-cost-rub 6 --reverse-check
+
+- ⚠️ **5.19 RUB**, 7 итераций, `stopped_reason=max_cost`.
+- **2 edit применены**: константы + `_resolve_subagent`.
+- **Не успел:** заменить вызовы `run_tool_loop` (2 места).
+- **Ручная доводка:** 2 замены (`model=model → model=subtask_model`,
+  `max_iterations=eff_iters → max_iterations=final_iters`),
+  удаление `eff_iters` (ruff F841), обновление 1 теста (7 → 10).
+
+**Стоимость:** ~32 RUB. **Тесты:** 487 passed. **Merge:** `94e113d`.
+
+**Уроки:**
+
+1. **`--allow-blacklist` — обязателен**, если issue трогает
+   `config/**`. Указать в issue явно.
+2. **`--max-cost-rub`** — считать по итерациям: v4-pro ≈ 0.7 RUB
+   за итерацию. На 12 итераций нужно **8-10 RUB**, не 5-6.
+3. **Issue должен предвидеть verify-конфликты.** Если Router
+   меняет контракт (fallback `cfg.max_steps` → Router) — **явно**
+   написать: «обнови тест X (7 → 10)».
+4. **`--decompose`** — правильно для 5+ файлов, но
+   **verify-конфликт** стопорит 4/4 (одна подзадача ломает все).
+5. **Ruff** ловит unused после смены контракта (`eff_iters`).
+   pre-commit hook (10.68.1) — **спасает** от коммита со сломанным
+   ruff.
+6. **Precheck (10.69) работает** — останавливает **после**
+   применения правок, **до** verify/finish. Правки на диске, не теряются.
+
+**Артефакты:** worktree `/tmp/ai-coder-router` (ветка `test-router`),
+merge `94e113d`.
+
+---
+
 ## 2026-10-15 — E37: precheck — оценка по типу инструмента (✅ + урок)
 
 **Гипотеза (E37.1):** v4-pro выберет разумный подход, если дать

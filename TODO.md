@@ -1093,7 +1093,7 @@ Decompose **не решает** — связь между файлами сох�
 
 ### Что добавить
 
-- [ ] **Router** — модель по сложности (explore/edit-simple/edit-complex/verify).
+- [x] **Router** — модель по сложности (explore/edit-simple/edit-complex/verify). ✅ 10.70 (2026-10-15). Конфиг `agent.subagents` — TODO.
   ~3-4 дня.
 - [ ] **Validator** — семантическая проверка результата подзадачи
   (адаптация `--reverse-check`). ~3-4 дня.
