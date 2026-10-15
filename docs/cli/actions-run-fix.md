@@ -58,6 +58,16 @@ ai-coder run analyze .
 ai-coder run modify . --apply
 ```
 
+> **Примечание про `--max-cost-rub`:**
+> У `run` **НЕТ** `--max-cost-rub` (в отличие от `agent` и `fix`).
+> Это **by design**: `run` — один запрос, стоимость предсказуема
+> (~0.05–0.4 RUB). Для **дорогих** `run` (`--depth deep`,
+> `--model deepseek-v4-pro`, весь проект) — следи за `usage` **после**
+> запуска. Если нужно **ограничение** — обходной путь:
+> `agent "<goal>" . --tool-loop --max-cost-rub N`.
+> См. `TODO.md` → «run не поддерживает --max-cost-rub (10.67)».
+
+
 ## fix
 
 Автоматическое исправление: verify → fix → verify → ...

@@ -293,6 +293,26 @@
       честно сказать: «не могу проверить результат» и остановиться.
       Опционально, под флагом `--strict-verify`.
 
+### `run` не поддерживает `--max-cost-rub` (10.67)
+
+- [ ] У `agent`/`fix` — есть, у `run` — **нет** (by design: `run` —
+      один запрос, стоимость предсказуема ~0.05–0.4 RUB). **НО:** для
+      дорогих `run`-запросов (`--depth deep`, `--model v4-pro`,
+      весь проект) — лимит **полезен**.
+      **GUI** — **правильно** не вставляет `--max-cost-rub` в ветку
+      `run` (`ai_coder/gui/app.py:86-88` — комментарий «у команды run
+      нет флагов --max-cost-rub и --commit»).
+      **Что делать (если нужно):**
+      1. `cli.py` — параметр `--max-cost-rub` для `run`.
+      2. `actions.py` — precheck через `_estimate_next_cost_rub` **до**
+         запроса + post-check после.
+      3. `gui/app.py` — включить `--max-cost-rub` в ветку `run`.
+      **Файлы:** `ai_coder/cli.py`, `ai_coder/actions.py`,
+      `ai_coder/gui/app.py`.
+      **Обходной путь:** `agent "<goal>" . --tool-loop --max-cost-rub N`.
+      **Приоритет:** 🟢 низкий.
+
+
 ---
 
 ## Кэш и парсинг
