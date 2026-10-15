@@ -46,11 +46,14 @@ from .models import *  # noqa: F401,F403
 from .models import __all__ as _models_all  # noqa: F401
 from .planner import *  # noqa: F401,F403
 from .planner import __all__ as _planner_all  # noqa: F401
+from .reverse import *  # noqa: F401,F403
+from .reverse import __all__ as _reverse_all  # noqa: F401
 
 # Расширяем __all__ внешними именами
 __all__ = (
     list(_models_all)
     + list(_planner_all)
+    + list(_reverse_all)
     + list(_legacy_all)
     + [
         "WritePlan",
