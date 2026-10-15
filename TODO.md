@@ -55,8 +55,8 @@
 - [x] **`ai-coder` console script.** ЗАКРЫТО 10.29: работает,
       `.venv/bin/ai-coder`, `pip install -e .` сделан.
 - [ ] **Self-hosted рекомендации в docs/examples.md.**
-      Для больших файлов (agent.py 3000+ строк):
-      - `--only-path ai_coder/agent.py`;
+      Для больших файлов (после split-file 10.65 — модули ≤1021 строк):
+      - `--only-path ai_coder/agent/tool_loop.py`;  # был agent.py
       - `--max-iterations 15+`;
       - v4-pro вместо flash;
       - точная формулировка (файл + функция + строка).
@@ -71,7 +71,7 @@
       принимают явный `verify_commands`.
       **Фикс:** прокинуть `verify` / `verify_commands` параметром в
       `run_agent_decompose` и `run_tool_loop`.
-      Файлы: `ai_coder/agent.py`, `ai_coder/cli.py`.
+      Файлы: `ai_coder/agent/decomposer.py`, `ai_coder/cli.py`.
 
 - [ ] **Verify на чужом проекте ломает прогон** (E12: `legacy/test_url.py`
       — фикстура `url` не найдена). Нужна возможность **указывать
@@ -202,7 +202,7 @@
 - [ ] Помечать `applied_count == 0` как `skipped`, а не «применено».
       Если `apply_plan` вернул пустой список без ошибок — это не успех, а
       отсутствие работы. Не запускать verify, не считать шаг выполненным.
-      Файл: `ai_coder/agent.py`, `_run_agent_step`.
+      Файл: `ai_coder/agent/classic.py`, `_run_agent_step`.
 
 ### README
 
@@ -274,7 +274,7 @@
       Read-шаг: LLM получает контекст + вопрос, возвращает свободный текст
       (не JSON-операции). Результат пишется в журнал как `step-N.md`,
       но не применяется.
-      Файлы: `ai_coder/agent.py` (`AgentStep.type`, `_run_agent_step`),
+      Файлы: `ai_coder/agent/classic.py` (`AgentStep.type` — в models.py, `_run_agent_step`),
       `config/prompts.yaml` (`agent_read_json` или `agent_read_text`).
 
 ### Агент: verify-команды
@@ -286,7 +286,7 @@
       Примеры для config.yaml:
       - "python -m pytest tests/ -q"
       - "ruff check ."
-      Файлы: `ai_coder/agent.py`, `ai_coder/config.py`.
+      Файлы: `ai_coder/agent/classic.py`, `ai_coder/config.py`.
 
 - [ ] Отказ агента от задач без верификации.
       Если `verify_commands` пуст, а действие — не .py-правка,
@@ -421,7 +421,7 @@
       («diff пустой — пропуск»).
       **Фикс:** брать diff из истории tool loop
       (`write_file`/`edit_file` в `history`), а не из git.
-      Файл: `ai_coder/agent.py`, `_collect_diff`.
+      Файл: `ai_coder/agent/reverse.py`, `_collect_diff`.
       **Приоритет:** 🟡 средний.
 
 ---
@@ -611,7 +611,7 @@
 - [ ] **Фикс (код):** автовыбор модели по сложности (TODO `### Модели`).
 - **Приоритет:** 🔴 высокий.
 
-### 8.6. `_MAX_DIFF_CHARS` — хардкод в agent.py
+### 8.6. `_MAX_DIFF_CHARS` — хардкод в reverse.py
 
 - [ ] **Проблема:** `_collect_diff` использует `_MAX_DIFF_CHARS = 15000`
       (константа модуля), а `run_reverse_check` — `cfg.agent.reverse_check_max_diff_chars`
