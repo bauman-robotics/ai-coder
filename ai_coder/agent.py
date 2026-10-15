@@ -2757,6 +2757,424 @@ def _estimate_next_cost_rub(
     return cost_cny * cny_to_rub.value
 
 
+@dataclass
+class _ToolLoopCtx:
+    """Контекст одной сессии tool loop. Мутируется в цикле."""
+
+    # --- входные (не меняются) ---
+    goal: str
+    project_root: Path
+    cfg: AppConfig
+    prompts_cfg: PromptsConfig
+    client: LLMClient
+    model: str
+    depth: str
+    extra_exclude: list[str] | None
+    max_iterations: int
+    max_cost_rub: float | None
+    dry_run: bool
+    dry_read: bool
+    interactive: bool
+    auto_commit: bool
+    allow_blacklist: bool
+    verify_commands: list[str] | None
+    step_type: str | None
+    reverse_check: bool
+    prompt_entry: object  # PromptEntry
+    tools_block: str
+    scan_meta: object  # MetadataScanResult
+
+    # --- выходные (меняются) ---
+    journal_dir: Path | None = None
+    history: list = field(default_factory=list)
+    total_cost_rub: float = 0.0
+    total_cost_cny: float = 0.0
+    total_cost_usd: float = 0.0
+    backup_dir: Path | None = None
+    backup_manifest: dict = field(default_factory=dict)
+    backed_up: set = field(default_factory=set)
+    success: bool = False
+    stopped_reason: str = "completed"
+    summary: str = ""
+    applied_ops: int = 0
+    read_ops: int = 0
+    warnings: list = field(default_factory=list)
+    parse_retries: int = 0
+    max_parse_retries: int = 2
+    arg_retries: int = 0
+    max_arg_retries: int = 3
+    accept_all_ref: list = field(default_factory=lambda: [False])
+    verify_errors: list = field(default_factory=list)
+    commit_hash: str | None = None
+    reverse_result: object | None = None
+    result: object | None = None
+    start_iteration: int = 1
+    end_iteration: int = 0
+
+
+def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
+    """Одна итерация цикла. Возвращает "ok" | "continue" | "break".
+
+    Мутирует ctx. НЕ вызывает break/continue — возвращает строку.
+    """
+    cfg = ctx.cfg
+    goal = ctx.goal
+    project_root = ctx.project_root
+    max_cost_rub = ctx.max_cost_rub
+    dry_run = ctx.dry_run
+    dry_read = ctx.dry_read
+    interactive = ctx.interactive
+    allow_blacklist = ctx.allow_blacklist
+    max_iterations = ctx.max_iterations
+
+    # --- промпт с текущей историей ---
+    history_block = format_tool_history(
+        ctx.history,
+        read_file_max_chars=cfg.agent.tool_loop_history_max_chars,
+        other_max_chars=cfg.agent.tool_loop_history_other_max_chars,
+    )
+    system, user = render_prompt(
+        ctx.prompt_entry,
+        depth=ctx.depth,
+        scan=ScanResult(root=project_root),
+        extra={
+            "goal": goal,
+            "tools": ctx.tools_block,
+            "tree": ctx.scan_meta.tree,
+            "history": history_block,
+            "max_iterations": str(max_iterations),
+        },
+    )
+
+    # --- тариф ---
+    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
+    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
+    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
+
+    # --- precheck бюджета ---
+    if max_cost_rub is not None:
+        remaining = max_cost_rub - ctx.total_cost_rub
+        est = _estimate_next_cost_rub(
+            cfg,
+            ctx.model,
+            system,
+            user,
+            cny_to_rub,
+            expected_completion_tokens=500,
+        )
+        if est >= remaining:
+            ctx.stopped_reason = "max_cost"
+            ctx.summary = (
+                f"budget precheck: оценка {est:.4f} RUB >= остатка "
+                f"{remaining:.4f} RUB (лимит {max_cost_rub:.4f}, "
+                f"потрачено {ctx.total_cost_rub:.4f})"
+            )
+            _console.print(f"[yellow]Бюджет: {ctx.summary}[/yellow]")
+            return "break"
+
+    # --- запрос ---
+    try:
+        llm_resp = ctx.client.chat(
+            system=system,
+            user=user,
+            model=ctx.model,
+            json_mode=True,
+            max_tokens=cfg.agent.step_max_output_tokens,
+        )
+    except Exception as e:  # noqa: BLE001
+        ctx.stopped_reason = "error"
+        ctx.summary = f"LLM call failed: {type(e).__name__}: {e}"
+        return "break"
+
+    # --- стоимость + учёт ---
+    _accumulate_cost_and_usage(
+        ctx, iteration, llm_resp, is_peak, peak_window, cny_to_rub, usd_to_rub
+    )
+
+    # --- парсинг ---
+    action = parse_tool_action(llm_resp.content)
+    if action.parse_error:
+        ctx.parse_retries += 1
+        if ctx.parse_retries > ctx.max_parse_retries:
+            ctx.stopped_reason = "parse_error"
+            ctx.summary = (
+                f"parse error at iteration {iteration}: "
+                f"{action.parse_error} (после {ctx.parse_retries} попыток)"
+            )
+            ctx.history.append((action, ToolResult(ok=False, error=action.parse_error)))
+            if ctx.journal_dir is not None:
+                _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
+            return "break"
+        # retry
+        ctx.history.append((action, ToolResult(ok=False, error=action.parse_error)))
+        if ctx.journal_dir is not None:
+            _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
+        return "continue"
+
+    # --- retry missing args ---
+    if _has_missing_args(action):
+        ctx.arg_retries += 1
+        if ctx.arg_retries <= ctx.max_arg_retries:
+            hint = _required_args_hint(action.tool)
+            ctx.history.append(
+                (
+                    action,
+                    ToolResult(
+                        ok=False,
+                        error=f"missing args: {hint}. Повтори вызов с полными аргументами.",
+                    ),
+                )
+            )
+            if ctx.journal_dir is not None:
+                _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
+            return "continue"
+
+    # arg_retries сброс при успешной итерации (не finish)
+    if not action.finish:
+        ctx.arg_retries = 0
+
+    # --- finish ---
+    if action.finish:
+        _handle_finish(ctx, action, iteration, llm_resp)
+        return "break"
+
+    # --- interactive ---
+    if interactive:
+        spec, _ = TOOL_REGISTRY.get(action.tool, (None, None))
+        if spec is not None and spec.dangerous:
+            answer = _prompt_tool_review(action, ctx.accept_all_ref)
+            if answer == "n":
+                ctx.stopped_reason = "cancelled"
+                ctx.summary = "отменено пользователем"
+                if ctx.journal_dir is not None:
+                    _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
+                return "break"
+            if answer == "s":
+                skip_result = ToolResult(ok=False, error="пропущено пользователем")
+                ctx.history.append((action, skip_result))
+                if ctx.journal_dir is not None:
+                    _save_tool_loop_step(ctx.journal_dir, iteration, action, skip_result, llm_resp)
+                return "continue"
+            if answer == "a":
+                ctx.accept_all_ref[0] = True
+
+    # --- бэкап ---
+    if not dry_run and action.tool in ("write_file", "edit_file"):
+        ctx.backup_dir = _backup_file_for_tool_loop(
+            action=action,
+            project_root=project_root,
+            backup_dir=ctx.backup_dir,
+            backed_up=ctx.backed_up,
+            backup_manifest=ctx.backup_manifest,
+        )
+
+    # --- исполнение ---
+    tool_result = execute_tool(
+        action.tool,
+        action.args,
+        project_root,
+        dry_run=dry_run,
+        dry_read=dry_read,
+        write_cfg=cfg.write,
+        allow_blacklist=allow_blacklist,
+    )
+    ctx.history.append((action, tool_result))
+    if action.tool in ("write_file", "edit_file") and tool_result.ok:
+        ctx.applied_ops += 1
+    if action.tool in ("read_file", "read_symbol", "list_files") and tool_result.ok:
+        ctx.read_ops += 1
+
+    if ctx.journal_dir is not None:
+        _save_tool_loop_step(ctx.journal_dir, iteration, action, tool_result, llm_resp)
+        _save_tool_loop_history(ctx.journal_dir, ctx.history)
+
+    # --- post-check бюджета ---
+    if max_cost_rub is not None and ctx.total_cost_rub >= max_cost_rub:
+        ctx.stopped_reason = "max_cost"
+        ctx.summary = f"budget exceeded: {ctx.total_cost_rub:.4f} RUB >= {max_cost_rub:.4f} RUB"
+        return "break"
+
+    return "ok"
+
+
+def _handle_finish(ctx: _ToolLoopCtx, action: ToolAction, iteration: int, llm_resp) -> None:
+    """Обработка finish: success, warnings, сохранение шага."""
+    ctx.summary = action.summary or "(no summary)"
+    if not action.success:
+        ctx.success = False
+    elif ctx.step_type is None:
+        ctx.success = True
+    elif ctx.step_type == "read":
+        ctx.success = ctx.read_ops > 0
+    else:
+        ctx.success = ctx.applied_ops > 0
+
+    if ctx.success and action.tool not in ("read_file", "read_symbol", "list_files"):
+        write_attempts = sum(1 for a, _ in ctx.history if a.tool in ("write_file", "edit_file"))
+        if write_attempts > ctx.applied_ops:
+            ctx.warnings.append(
+                f"applied {ctx.applied_ops}/{write_attempts} (часть операций отклонена)"
+            )
+
+    if ctx.journal_dir is not None:
+        _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
+        _save_tool_loop_history(ctx.journal_dir, ctx.history)
+
+
+def _accumulate_cost_and_usage(
+    ctx, iteration, llm_resp, is_peak, peak_window, cny_to_rub, usd_to_rub
+) -> None:
+    """Стоимость + append_usage — точная копия оригинала."""
+    cost = calculate_cost(
+        pricing=ctx.cfg.api.pricing_for(ctx.model),
+        is_peak=is_peak,
+        peak_window=peak_window,
+        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
+        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        cny_to_rub=cny_to_rub,
+        usd_to_rub=usd_to_rub,
+    )
+    ctx.total_cost_rub += cost.cost_rub
+    ctx.total_cost_cny += cost.cost_cny
+    ctx.total_cost_usd += cost.cost_usd
+
+    output_root = ctx.project_root / ctx.cfg.output.dir
+    append_usage(
+        project_root=ctx.project_root,
+        output_root=output_root,
+        action=f"agent:tool{iteration}",
+        project_name=ctx.project_root.name,
+        model=ctx.model,
+        depth=ctx.depth,
+        files_count=0,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok",
+        usage_cfg=ctx.cfg.usage,
+        iteration=iteration,
+        parent_action="agent",
+    )
+
+
+def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
+    """Хвост: манифест, verify, откат, коммит, RC, отчёт. Мутирует ctx."""
+    # --- манифест бэкапа ---
+    if ctx.backup_dir is not None and not ctx.dry_run:
+        try:
+            (ctx.backup_dir / "manifest.json").write_text(
+                json.dumps(ctx.backup_manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    # --- verify ---
+    eff_verify = (
+        ctx.verify_commands if ctx.verify_commands is not None else ctx.cfg.agent.verify_commands
+    )
+    if ctx.success and eff_verify and not ctx.dry_run:
+        _console.print(f"[dim]Проверка: {'; '.join(eff_verify)}[/dim]")
+        ctx.verify_errors = run_verify_commands(
+            eff_verify,
+            ctx.project_root,
+            timeout_sec=ctx.cfg.agent.verify_timeout_sec,
+            max_output_chars=ctx.cfg.agent.verify_max_output_chars,
+        )
+        if ctx.verify_errors:
+            ctx.success = False
+            ctx.stopped_reason = "verify_failed"
+            ctx.summary = f"verify failed: {len(ctx.verify_errors)} ошибок"
+            _console.print(f"[red]Проверка не прошла ({len(ctx.verify_errors)}):[/red]")
+            for err in ctx.verify_errors[:5]:
+                _console.print(f"  [red]✗[/red] {err}")
+            if len(ctx.verify_errors) > 5:
+                _console.print(f"  [dim]... ещё {len(ctx.verify_errors) - 5}[/dim]")
+            if ctx.backup_dir is not None:
+                from .apply import rollback as _do_rollback
+
+                try:
+                    _restored = _do_rollback(ctx.backup_dir, ctx.project_root)
+                    if _restored:
+                        _console.print(
+                            f"[yellow]Откат после verify_failed: {len(_restored)} файлов[/yellow]"
+                        )
+                except Exception as _e:  # noqa: BLE001
+                    _console.print(f"[red]Ошибка отката: {_e}[/red]")
+        else:
+            _console.print("[green]✅ Проверка пройдена[/green]")
+
+    # --- автокоммит ---
+    if ctx.auto_commit and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
+        from .git import commit as git_commit
+        from .git import format_commit_message, status_porcelain
+
+        dirty = status_porcelain(ctx.project_root)
+        if dirty:
+            ops_total = len(ctx.history)
+            msg = format_commit_message(goal=ctx.goal, ops=ops_total, cost_rub=ctx.total_cost_rub)
+            ctx.commit_hash = git_commit(ctx.project_root, msg)
+            if ctx.commit_hash:
+                _console.print(f"[green]Коммит:[/green] {ctx.commit_hash}")
+        else:
+            _console.print("[dim]Автокоммит: нечего коммитить (дерево чистое)[/dim]")
+
+    # --- reverse-check ---
+    if ctx.reverse_check and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
+        diff = _collect_diff(ctx.project_root)
+        if diff:
+            _console.print("[dim]Reverse-check...[/dim]")
+            ctx.reverse_result = run_reverse_check(
+                goal=ctx.goal,
+                diff=diff,
+                project_root=ctx.project_root,
+                cfg=ctx.cfg,
+                prompts_cfg=ctx.prompts_cfg,
+            )
+            ctx.total_cost_rub += ctx.reverse_result.cost_rub
+            ctx.total_cost_cny += ctx.reverse_result.cost_cny
+            ctx.total_cost_usd += ctx.reverse_result.cost_usd
+            if not ctx.reverse_result.ok:
+                for pr in ctx.reverse_result.problems:
+                    ctx.warnings.append(f"reverse-check: {pr}")
+                _console.print("[yellow]Reverse-check нашёл проблемы:[/yellow]")
+                for pr in ctx.reverse_result.problems:
+                    _console.print(f"[yellow]   - {pr}[/yellow]")
+                if ctx.reverse_result.suggestion:
+                    _console.print(f"[yellow]   -> {ctx.reverse_result.suggestion}[/yellow]")
+            else:
+                _console.print("[green]Reverse-check: ок[/green]")
+        else:
+            _console.print("[dim]Reverse-check: diff пустой — пропуск[/dim]")
+
+    # --- результат ---
+    ctx.result = ToolLoopResult(
+        success=ctx.success,
+        summary=ctx.summary,
+        iterations=len(ctx.history),
+        history=ctx.history,
+        total_cost_rub=ctx.total_cost_rub,
+        total_cost_cny=ctx.total_cost_cny,
+        total_cost_usd=ctx.total_cost_usd,
+        stopped_reason=ctx.stopped_reason,
+        journal_dir=ctx.journal_dir,
+        dry_run=ctx.dry_run,
+        backup_dir=ctx.backup_dir,
+        commit_hash=ctx.commit_hash,
+        verify_errors=ctx.verify_errors,
+        applied_ops=ctx.applied_ops,
+        read_ops=ctx.read_ops,
+        warnings=ctx.warnings,
+        reverse_check_result=ctx.reverse_result,
+    )
+
+    if ctx.journal_dir is not None:
+        _save_tool_loop_report(ctx.journal_dir, ctx.result, ctx.goal)
+
+
 def run_tool_loop(
     *,
     goal: str,
@@ -2773,23 +3191,16 @@ def run_tool_loop(
     dry_read: bool = False,
     interactive: bool = False,
     auto_commit: bool = False,
-    resume_from: Path | None = None,  # NEW
-    journal_subdir: Path | None = None,  # NEW: куда писать журнал
-    allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
-    verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
-    step_type: str | None = None,  # NEW: "edit" | "read" | None (без проверки)
-    reverse_check: bool = False,  # NEW: вторая LLM-проверка после success
+    resume_from: Path | None = None,
+    journal_subdir: Path | None = None,
+    allow_blacklist: bool = False,
+    verify_commands: list[str] | None = None,
+    step_type: str | None = None,
+    reverse_check: bool = False,
 ) -> ToolLoopResult:
-    """
-    Tool loop: модель сама вызывает инструменты до завершения.
+    """Tool loop: модель сама вызывает инструменты до завершения.
 
-    Каждая итерация:
-      1. Рендер промпта (goal, tools, tree, history).
-      2. Запрос к LLM.
-      3. parse_tool_action.
-      4. finish → выходим.
-      5. execute_tool → результат в history.
-      6. Проверка бюджета.
+    Оркестратор: setup + цикл + finalize.
     """
     started_at = datetime.now(ZoneInfo("UTC"))
     model = model or cfg.api.model
@@ -2804,7 +3215,7 @@ def run_tool_loop(
             journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- metadata-scan для дерева ---
+    # --- metadata-scan ---
     scan_meta = scan_project_metadata(
         project_root,
         cfg.scanning,
@@ -2815,437 +3226,82 @@ def run_tool_loop(
     prompt_entry = prompts_cfg.get("agent_tool_json")
     tools_block = format_tools_for_prompt()
 
-    # --- история и стоимость ---
-    history: list[tuple[ToolAction, ToolResult]] = []
-    applied_ops = 0  # NEW: считаем успешные write_file/edit_file
-    warnings: list[str] = []  # NEW: partial / blacklist
-    read_ops = 0  # NEW: считаем успешные read_file/read_symbol/list_files
-    total_cost_rub = 0.0
-    total_cost_cny = 0.0
-    total_cost_usd = 0.0
-    stopped_reason = "completed"
-    success = False
-    summary = ""
-    accept_all_ref: list[bool] = [False]
-
-    # --- NEW: retry при parse_error ---
-    parse_retries = 0
-    max_parse_retries = 2
-    arg_retries = 0
-    max_arg_retries = 3
-
-    # --- NEW: resume из журнала ---
-    start_iteration = 1
+    # --- resume ---
+    history: list = []
+    start_iteration = 0
+    end_iteration = max_iterations
+    loaded_history, err = None, None
     if resume_from is not None:
         loaded_history, err = _load_tool_loop_history(resume_from)
         if err is not None:
-            _console.print(f"[red]Resume: {err}[/red]")
             return ToolLoopResult(
                 success=False,
                 summary=f"resume failed: {err}",
                 iterations=0,
                 stopped_reason="resume_error",
             )
-        history = loaded_history
-        applied_ops = sum(
+        history = loaded_history or []
+        # пересчёт applied_ops / read_ops из загруженной истории
+        _applied = sum(
             1 for act, res in history if act.tool in ("write_file", "edit_file") and res.ok
         )
-        read_ops = sum(
+        _read = sum(
             1
             for act, res in history
             if act.tool in ("read_file", "read_symbol", "list_files") and res.ok
         )
-        start_iteration = len(history) + 1
-        # журнал: используем существующий resume_from
-        journal_dir = resume_from
-        _console.print(
-            f"[dim]Resume: загружено {len(history)} итераций, продолжаем с {start_iteration}[/dim]"
-        )
+    else:
+        _applied = 0
+        _read = 0
 
-    # --- NEW: бэкап перед первым изменением ---
-    backup_dir: Path | None = None
-    backed_up: set[str] = set()
-    backup_manifest: dict = {}
-
+    # --- client (только если resume ok) ---
     client = LLMClient(cfg.api)
 
-    end_iteration = start_iteration + max_iterations
-    for iteration in range(start_iteration, end_iteration):
-        # --- промпт с текущей историей ---
-        history_block = format_tool_history(
-            history,
-            read_file_max_chars=cfg.agent.tool_loop_history_max_chars,
-            other_max_chars=cfg.agent.tool_loop_history_other_max_chars,
-        )
-        system, user = render_prompt(
-            prompt_entry,
-            depth=depth,
-            scan=ScanResult(root=project_root),  # заглушка, используется extra
-            extra={
-                "goal": goal,
-                "tools": tools_block,
-                "tree": scan_meta.tree,
-                "history": history_block,
-                "max_iterations": str(max_iterations),
-            },
-        )
+    # --- ctx ---
+    ctx = _ToolLoopCtx(
+        goal=goal,
+        project_root=project_root,
+        cfg=cfg,
+        prompts_cfg=prompts_cfg,
+        client=client,
+        model=model,
+        depth=depth,
+        extra_exclude=extra_exclude,
+        max_iterations=max_iterations,
+        max_cost_rub=max_cost_rub,
+        dry_run=dry_run,
+        dry_read=dry_read,
+        interactive=interactive,
+        auto_commit=auto_commit,
+        allow_blacklist=allow_blacklist,
+        verify_commands=verify_commands,
+        step_type=step_type,
+        reverse_check=reverse_check,
+        prompt_entry=prompt_entry,
+        tools_block=tools_block,
+        scan_meta=scan_meta,
+        journal_dir=journal_dir,
+        history=history,
+        start_iteration=start_iteration,
+        end_iteration=end_iteration,
+    )
+    ctx.applied_ops = _applied
+    ctx.read_ops = _read
 
-        # --- тариф ---
-        is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
-        cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
-        usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
-
-        # --- precheck бюджета (до запроса) ---
-        # Проверка ПОСЛЕ запроса не спасает: одна итерация может стоить
-        # больше лимита (E25 Task 1: 2.28 RUB при --max-cost-rub 1).
-        # Поэтому — оценка ДО, консервативно (peak, miss).
-        if max_cost_rub is not None:
-            remaining = max_cost_rub - total_cost_rub
-            est = _estimate_next_cost_rub(
-                cfg,
-                model,
-                system,
-                user,
-                cny_to_rub,
-                expected_completion_tokens=500,
-            )
-            if est >= remaining:
-                stopped_reason = "max_cost"
-                summary = (
-                    f"budget precheck: оценка {est:.4f} RUB >= остатка "
-                    f"{remaining:.4f} RUB (лимит {max_cost_rub:.4f}, "
-                    f"потрачено {total_cost_rub:.4f})"
-                )
-                _console.print(f"[yellow]Бюджет: {summary}[/yellow]")
-                break
-
-        # --- запрос ---
-        try:
-            llm_resp = client.chat(
-                system=system,
-                user=user,
-                model=model,
-                json_mode=True,
-                max_tokens=cfg.agent.step_max_output_tokens,
-            )
-        except Exception as e:
-            stopped_reason = "error"
-            summary = f"LLM call failed: {type(e).__name__}: {e}"
-            break
-
-        # --- стоимость ---
-        cost = calculate_cost(
-            pricing=cfg.api.pricing_for(model),
-            is_peak=is_peak,
-            peak_window=peak_window,
-            prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
-            prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
-            completion_tokens=llm_resp.completion_tokens,
-            cny_to_rub=cny_to_rub,
-            usd_to_rub=usd_to_rub,
-        )
-        total_cost_rub += cost.cost_rub
-        total_cost_cny += cost.cost_cny
-        total_cost_usd += cost.cost_usd
-
-        # --- учёт ---
-        output_root = project_root / cfg.output.dir
-        append_usage(
-            project_root=project_root,
-            output_root=output_root,
-            action=f"agent:tool{iteration}",
-            project_name=project_root.name,
-            model=model,
-            depth=depth,
-            files_count=0,
-            prompt_tokens=llm_resp.prompt_tokens,
-            completion_tokens=llm_resp.completion_tokens,
-            total_tokens=llm_resp.total_tokens,
-            cost=cost,
-            duration_ms=llm_resp.duration_ms,
-            status="ok",
-            usage_cfg=cfg.usage,
-            iteration=iteration,
-            parent_action="agent",
-        )
-
-        # --- парсинг ---
-        action = parse_tool_action(llm_resp.content)
-        if action.parse_error:
-            parse_retries += 1
-            if parse_retries > max_parse_retries:
-                stopped_reason = "parse_error"
-                summary = (
-                    f"parse error at iteration {iteration}: "
-                    f"{action.parse_error} (после {parse_retries} попыток)"
-                )
-                history.append((action, ToolResult(ok=False, error=action.parse_error)))
-                if journal_dir is not None:
-                    _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
-                break
-
-            # NEW: retry — просим модель вернуть корректный JSON
-            _console.print(
-                f"[yellow]parse_error (попытка {parse_retries}/"
-                f"{max_parse_retries}): {action.parse_error}[/yellow]\n"
-                f"[dim]Повторяю запрос...[/dim]"
-            )
-            error_result = ToolResult(
-                ok=False,
-                error=(
-                    f"Твой предыдущий ответ не распознан как JSON: "
-                    f"{action.parse_error}. Верни СТРОГО JSON без текста вокруг."
-                ),
-            )
-            history.append((action, error_result))
-            if journal_dir is not None:
-                _save_tool_loop_step(journal_dir, iteration, action, error_result, llm_resp)
-            continue
-
-        # --- NEW: retry для «пустых args» (missing 'path'/'old'/'new') ---
-        if _has_missing_args(action):
-            arg_retries += 1
-            if arg_retries > max_arg_retries:
-                stopped_reason = "missing_args"
-                summary = f"missing args at iteration {iteration}: после {arg_retries} попыток"
-                history.append((action, ToolResult(ok=False, error="missing args")))
-                if journal_dir is not None:
-                    _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
-                break
-
-            _console.print(
-                f"[yellow]missing args (попытка {arg_retries}/"
-                f"{max_arg_retries}): {action.tool}[/yellow]\n"
-                f"[dim]Повторяю запрос...[/dim]"
-            )
-            error_result = ToolResult(
-                ok=False,
-                error=(
-                    f"Твой ответ не содержит обязательных полей args "
-                    f"для {action.tool}. Нужны: "
-                    f"{_required_args_hint(action.tool)}. "
-                    f"Верни СТРОГО JSON с этими полями."
-                ),
-            )
-            history.append((action, error_result))
-            if journal_dir is not None:
-                _save_tool_loop_step(journal_dir, iteration, action, error_result, llm_resp)
-            continue
-
-        # Сброс arg_retries при успешной итерации
-        arg_retries = 0
-
-        # --- finish ---
-        if action.finish:
-            summary = action.summary or "(no summary)"
-            if not action.success:
-                success = False
-            elif step_type is None:
-                # без типа: доверяем LLM (обратная совместимость)
-                success = True
-            elif step_type == "read":
-                # read-шаг: успех = хотя бы одно успешное чтение
-                success = read_ops > 0
-            else:
-                # edit-шаг: успех = хотя бы одна применённая правка
-                success = applied_ops > 0
-            # NEW: partial — правки применены, но не все (blacklist,
-            # duplicate, mismatch и т.п.). Не считаем полным провалом.
-            if success and action.tool not in ("read_file", "read_symbol", "list_files"):
-                # сколько попыток write/edit было в history
-                write_attempts = sum(1 for a, _ in history if a.tool in ("write_file", "edit_file"))
-                if write_attempts > applied_ops:
-                    warnings.append(
-                        f"applied {applied_ops}/{write_attempts} (часть операций отклонена)"
-                    )
-            if journal_dir is not None:
-                _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
-                _save_tool_loop_history(journal_dir, history)
-            break
-
-        # --- NEW: interactive — подтверждение dangerous ---
-        if interactive:
-            spec, _ = TOOL_REGISTRY.get(action.tool, (None, None))
-            if spec is not None and spec.dangerous:
-                answer = _prompt_tool_review(action, accept_all_ref)
-                if answer == "n":
-                    stopped_reason = "cancelled"
-                    summary = "отменено пользователем"
-                    if journal_dir is not None:
-                        _save_tool_loop_step(journal_dir, iteration, action, None, llm_resp)
-                    break
-                if answer == "s":
-                    skip_result = ToolResult(ok=False, error="пропущено пользователем")
-                    history.append((action, skip_result))
-                    if journal_dir is not None:
-                        _save_tool_loop_step(journal_dir, iteration, action, skip_result, llm_resp)
-                    continue
-                if answer == "a":
-                    accept_all_ref[0] = True
-
-        # --- NEW: бэкап перед изменением файла ---
-        if not dry_run and action.tool in ("write_file", "edit_file"):
-            backup_dir = _backup_file_for_tool_loop(
-                action=action,
-                project_root=project_root,
-                backup_dir=backup_dir,  # ← передаём текущий
-                backed_up=backed_up,
-                backup_manifest=backup_manifest,
-            )
-
-        # --- исполнение инструмента ---
-        tool_result = execute_tool(
-            action.tool,
-            action.args,
-            project_root,
-            dry_run=dry_run,
-            dry_read=dry_read,
-            write_cfg=cfg.write,
-            allow_blacklist=allow_blacklist,
-        )
-        history.append((action, tool_result))
-        if action.tool in ("write_file", "edit_file") and tool_result.ok:
-            applied_ops += 1
-        if action.tool in ("read_file", "read_symbol", "list_files") and tool_result.ok:
-            read_ops += 1
-
-        if journal_dir is not None:
-            _save_tool_loop_step(journal_dir, iteration, action, tool_result, llm_resp)
-            _save_tool_loop_history(journal_dir, history)  # NEW
-
-        # --- проверка бюджета ---
-        if max_cost_rub is not None and total_cost_rub >= max_cost_rub:
-            stopped_reason = "max_cost"
-            summary = f"budget exceeded: {total_cost_rub:.4f} RUB >= {max_cost_rub:.4f} RUB"
+    # --- цикл ---
+    for iteration in range(ctx.start_iteration, ctx.end_iteration):
+        action = _tool_loop_one_iteration(ctx, iteration)
+        if action == "break":
             break
     else:
-        # цикл завершился без break — max_iterations
-        stopped_reason = "max_iterations"
-        summary = f"reached max_iterations={max_iterations}"
+        # цикл дошёл до конца без break
+        if ctx.stopped_reason == "completed":
+            ctx.stopped_reason = "max_iterations"
 
-    # --- NEW: сохранить манифест бэкапа ---
-    if backup_dir is not None and not dry_run:
-        try:
-            (backup_dir / "manifest.json").write_text(
-                json.dumps(backup_manifest, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
-
-    # --- NEW: verify_commands после успеха ---
-    verify_errors: list[str] = []
-    eff_verify = verify_commands if verify_commands is not None else cfg.agent.verify_commands
-    if success and eff_verify and not dry_run:
-        _console.print(f"[dim]Проверка: {'; '.join(eff_verify)}[/dim]")
-        verify_errors = run_verify_commands(
-            eff_verify,
-            project_root,
-            timeout_sec=cfg.agent.verify_timeout_sec,
-            max_output_chars=cfg.agent.verify_max_output_chars,
-        )
-        if verify_errors:
-            success = False
-            stopped_reason = "verify_failed"
-            summary = f"verify failed: {len(verify_errors)} ошибок"
-            _console.print(f"[red]Проверка не прошла ({len(verify_errors)}):[/red]")
-            for err in verify_errors[:5]:
-                _console.print(f"  [red]✗[/red] {err}")
-            if len(verify_errors) > 5:
-                _console.print(f"  [dim]... ещё {len(verify_errors) - 5}[/dim]")
-            # Откат при verify_failed: правки невалидны — убираем.
-            # Раньше откат делала вызывающая сторона (run_agent),
-            # но tool loop / --chain / --decompose оставляли мусор
-            # (см. E27, 2026-10-14: cli.py +12 строк после verify_failed).
-            if backup_dir is not None:
-                from .apply import rollback as _do_rollback
-
-                try:
-                    _restored = _do_rollback(backup_dir, project_root)
-                    if _restored:
-                        _console.print(
-                            f"[yellow]Откат после verify_failed: {len(_restored)} файлов[/yellow]"
-                        )
-                except Exception as _e:  # noqa: BLE001
-                    _console.print(f"[red]Ошибка отката: {_e}[/red]")
-        else:
-            _console.print("[green]✅ Проверка пройдена[/green]")
-
-    # --- NEW: автокоммит после успеха ---
-    commit_hash: str | None = None
-    if auto_commit and success and not dry_run and stopped_reason == "completed":
-        from .git import commit as git_commit
-        from .git import format_commit_message, status_porcelain
-
-        dirty = status_porcelain(project_root)
-        if dirty:
-            ops_total = len(history)
-            msg = format_commit_message(
-                goal=goal,
-                ops=ops_total,
-                cost_rub=total_cost_rub,
-            )
-            commit_hash = git_commit(project_root, msg)
-            if commit_hash:
-                _console.print(f"[green]Коммит:[/green] {commit_hash}")
-        else:
-            _console.print("[dim]Автокоммит: нечего коммитить (дерево чистое)[/dim]")
-
-    # --- reverse-check (вторая LLM-проверка) ---
-    reverse_result: ReverseCheckResult | None = None
-    if reverse_check and success and not dry_run and stopped_reason == "completed":
-        diff = _collect_diff(project_root)
-        if diff:
-            _console.print("[dim]Reverse-check...[/dim]")
-            reverse_result = run_reverse_check(
-                goal=goal,
-                diff=diff,
-                project_root=project_root,
-                cfg=cfg,
-                prompts_cfg=prompts_cfg,
-            )
-            total_cost_rub += reverse_result.cost_rub
-            total_cost_cny += reverse_result.cost_cny
-            total_cost_usd += reverse_result.cost_usd
-
-            if not reverse_result.ok:
-                for p in reverse_result.problems:
-                    warnings.append(f"reverse-check: {p}")
-                _console.print("[yellow]Reverse-check нашёл проблемы:[/yellow]")
-                for p in reverse_result.problems:
-                    _console.print(f"[yellow]   - {p}[/yellow]")
-                if reverse_result.suggestion:
-                    _console.print(f"[yellow]   -> {reverse_result.suggestion}[/yellow]")
-            else:
-                _console.print("[green]Reverse-check: ок[/green]")
-        else:
-            _console.print("[dim]Reverse-check: diff пустой — пропуск[/dim]")
-
-    # --- итоговый отчёт ---
-    result = ToolLoopResult(
-        success=success,
-        summary=summary,
-        iterations=len(history),
-        history=history,
-        total_cost_rub=total_cost_rub,
-        total_cost_cny=total_cost_cny,
-        total_cost_usd=total_cost_usd,
-        stopped_reason=stopped_reason,
-        journal_dir=journal_dir,
-        dry_run=dry_run,
-        backup_dir=backup_dir,
-        commit_hash=commit_hash,  # NEW
-        verify_errors=verify_errors,
-        applied_ops=applied_ops,  # NEW
-        read_ops=read_ops,  # NEW
-        warnings=warnings,  # NEW: partial / blacklist
-        reverse_check_result=reverse_result,  # NEW
-    )
-
-    if journal_dir is not None:
-        _save_tool_loop_report(journal_dir, result, goal)
-
-    return result
+    # --- хвост ---
+    _tool_loop_finalize(ctx)
+    assert ctx.result is not None
+    return ctx.result
 
 
 def _save_tool_loop_history(
