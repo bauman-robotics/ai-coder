@@ -4,6 +4,63 @@
 
 ---
 
+## [2026-10-15] iteration 10.62 — проверка бюджета: E25 закрыт, E26 не баг
+
+### Что сделано
+
+**Проверка фикса 10.54** (precheck бюджета в tool loop + planner)
+на живом коде после релиза 10.61.
+
+**Команда:**
+
+    pytest tests/ -k "budget or max_cost or precheck" -v
+
+**Результат: 6 passed.**
+
+- `test_run_tool_loop_max_cost` — post-check.
+- `test_run_tool_loop_budget_precheck_no_call` — **ключевой**:
+  `client.chat.call_count == 0`, `cost_rub == 0.0`,
+  `stopped_reason == "max_cost"`, `"precheck" in summary`.
+- `test_run_planner_decompose_budget_precheck` — planner, `parse_error` «budget».
+- `test_run_auto_fix_max_cost` — post-check в auto-fix.
+- `test_run_agent_decompose_max_cost` — `parse_error="max_cost exceeded"`.
+- `test_run_agent_decompose_max_cost_saves_report` — регрессия 10.14.18.
+
+### Разбор E25/E26
+
+**E25 (Task 1, 2.28 RUB при `--max-cost-rub 1`)** — **старый** баг
+(до 10.54). Фикс precheck закрыл: при превышении лимита LLM **не
+дёргается**.
+
+**E26 (0.47 / 0.85 / 0.68 RUB при `--max-cost-rub 2.0`)** — **не баг**.
+Стоимость **не превысила** лимит, остановки не было — **правильное**
+поведение. Три задачи, каждая дешевле 1 RUB.
+
+**E26 — открытие:** лимит 2.0 **достаточен** для трёх коротких issue
+на 4-8 итераций. Это **полезное знание** — не «баг».
+
+### Остаток
+
+- **`_MAX_DIFF_CHARS = 15000`** — хардкод (TODO 8.6, E26-a).
+  Это reverse-check, **не бюджет**. Приоритет 🟡 низкий.
+- **Precheck-оценка** (`_estimate_next_cost_rub`) — грубая
+  (по длине промпта, худшая ставка). Может **переоценивать**,
+  останавливая раньше, чем нужно. Сейчас — приемлемо.
+
+### Проверки
+
+- pytest — **460 passed** (бюджетные — 6 passed).
+- ruff, mypy — не затронуты (только TODO/CHANGELOG).
+
+### Ссылки
+
+- `docs/experiments.md` → E25, E26.
+- `docs/state.md` — обновлено.
+- Фикс: 10.54 (precheck), 10.44 (decompose).
+
+---
+
+
 ## [2026-10-14] iteration 10.61 — coverage: omit gui/
 
 ### Что сделано
