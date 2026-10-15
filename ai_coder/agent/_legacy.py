@@ -12,24 +12,30 @@ from zoneinfo import ZoneInfo
 from rich.console import Console
 from rich.panel import Panel
 
-from .apply import (
+from ..apply import (
     WritePlan,
     apply_plan,
     build_plan,
     check_python_files,
     run_verify_commands,  # NEW
 )
-from .config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
-from .llm import LLMClient, LLMResponse
-from .pricing import Rate, calculate_cost, get_rate, is_peak_now
-from .prompts import render_prompt
-from .scanner import (
+from ..config import (
+    WEB_ASSET_EXTENSIONS,
+    AppConfig,
+    PromptEntry,
+    PromptsConfig,
+)
+from ..llm import LLMClient, LLMResponse
+from ..pricing import Rate, calculate_cost, get_rate, is_peak_now
+from ..prompts import render_prompt
+from ..scanner import (
+    MetadataScanResult,
     ScanResult,
     render_metadata_block,
     scan_project,
     scan_project_metadata,
 )
-from .tools import (
+from ..tools import (
     TOOL_REGISTRY,
     ToolAction,
     ToolResult,
@@ -39,10 +45,10 @@ from .tools import (
     format_tools_for_prompt,
     parse_tool_action,
 )
-from .usage import append_usage
+from ..usage import append_usage
 
 if TYPE_CHECKING:
-    from .apply import WritePlan
+    from ..apply import WritePlan
 # ---------- структуры ----------
 
 _console = Console()
@@ -954,7 +960,7 @@ def run_agent_decompose(
             # Но если fail случился по другой причине (и backup_dir есть) —
             # откатываем здесь, чтобы не оставлять мусор.
             if not dry_run and loop_result.backup_dir:
-                from .apply import rollback as do_rollback_fail
+                from ..apply import rollback as do_rollback_fail
 
                 try:
                     restored = do_rollback_fail(loop_result.backup_dir, project_root)
@@ -969,7 +975,7 @@ def run_agent_decompose(
             # --- NEW: откат при fail ---
             if rollback_on_fail and not dry_run:
                 _console.print("[yellow]Откат всех успешных подзадач...[/yellow]")
-                from .apply import rollback as do_rollback
+                from ..apply import rollback as do_rollback
 
                 for prev in dec_result.subtask_results:
                     if prev.get("success") and prev.get("backup_dir"):
@@ -1676,8 +1682,8 @@ def _run_agent_step(
     10.33: для read-шагов (step.type == "read") — вызывается _run_read_step
     (через run_tool_loop), не обычный edit-путь.
     """
-    from .actions import run_fix_action
-    from .apply import rollback as do_rollback
+    from ..actions import run_fix_action
+    from ..apply import rollback as do_rollback
 
     model = model or cfg.api.model
 
@@ -2278,7 +2284,7 @@ def _run_read_step(
         step_type="read",
     )
 
-    from .llm import LLMResponse
+    from ..llm import LLMResponse
 
     synth_llm = LLMResponse(
         content=loop_result.summary,
@@ -2567,7 +2573,7 @@ def _collect_diff(project_root: Path) -> str:
     """
     import subprocess
 
-    from .git import is_git_repo
+    from ..git import is_git_repo
 
     if not is_git_repo(project_root):
         return ""
@@ -2739,7 +2745,7 @@ def _estimate_next_cost_rub(
       - decompose JSON (список подзадач): ~500–2000.
     """
     # Локальный импорт, чтобы не тянуть scanner на верхнем уровне.
-    from .scanner import _estimate_tokens
+    from ..scanner import _estimate_tokens
 
     prompt_tokens = _estimate_tokens(system) + _estimate_tokens(user)
     pricing = cfg.api.pricing_for(model)
@@ -2780,9 +2786,9 @@ class _ToolLoopCtx:
     verify_commands: list[str] | None
     step_type: str | None
     reverse_check: bool
-    prompt_entry: object  # PromptEntry
+    prompt_entry: PromptEntry
     tools_block: str
-    scan_meta: object  # MetadataScanResult
+    scan_meta: MetadataScanResult
 
     # --- выходные (меняются) ---
     journal_dir: Path | None = None
@@ -2806,8 +2812,8 @@ class _ToolLoopCtx:
     accept_all_ref: list = field(default_factory=lambda: [False])
     verify_errors: list = field(default_factory=list)
     commit_hash: str | None = None
-    reverse_result: object | None = None
-    result: object | None = None
+    reverse_result: ReverseCheckResult | None = None
+    result: ToolLoopResult | None = None
     start_iteration: int = 1
     end_iteration: int = 0
 
@@ -3094,7 +3100,7 @@ def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
             if len(ctx.verify_errors) > 5:
                 _console.print(f"  [dim]... ещё {len(ctx.verify_errors) - 5}[/dim]")
             if ctx.backup_dir is not None:
-                from .apply import rollback as _do_rollback
+                from ..apply import rollback as _do_rollback
 
                 try:
                     _restored = _do_rollback(ctx.backup_dir, ctx.project_root)
@@ -3109,8 +3115,8 @@ def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
 
     # --- автокоммит ---
     if ctx.auto_commit and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
-        from .git import commit as git_commit
-        from .git import format_commit_message, status_porcelain
+        from ..git import commit as git_commit
+        from ..git import format_commit_message, status_porcelain
 
         dirty = status_porcelain(ctx.project_root)
         if dirty:
@@ -3661,3 +3667,72 @@ def _save_tool_loop_report(
             status = "ok" if tool_result.ok else "FAIL"
             lines.append(f"{i}. {action.tool}({action.args}) → {status}")
     (journal_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+__all__ = [
+    "AgentPlan",
+    "AgentRunResult",
+    "AgentStep",
+    "AutoFixResult",
+    "DecomposeResult",
+    "PlannerPhase1Result",
+    "PlannerResult",
+    "ReplanResult",
+    "ReverseCheckResult",
+    "SplitGoalsResult",
+    "SplitIssue",
+    "StepResult",
+    "Subtask",
+    "ToolLoopResult",
+    "_MAX_DIFF_CHARS",
+    "_ToolLoopCtx",
+    "_accumulate_cost_and_usage",
+    "_backup_file_for_tool_loop",
+    "_collect_diff",
+    "_console",
+    "_estimate_next_cost_rub",
+    "_extract_target_files",
+    "_handle_finish",
+    "_has_missing_args",
+    "_is_diagnostic_step",
+    "_load_tool_loop_history",
+    "_parse_phase1_response",
+    "_phase1_cache_dir",
+    "_phase1_cache_key",
+    "_phase1_from_cache",
+    "_phase1_save_cache",
+    "_print_step_for_review",
+    "_prompt_review",
+    "_prompt_tool_review",
+    "_render_plan_summary",
+    "_required_args_hint",
+    "_run_agent_step",
+    "_run_read_step",
+    "_save_agent_report",
+    "_save_auto_fix_report",
+    "_save_decompose_report",
+    "_save_plan_json",
+    "_save_step_md",
+    "_save_tool_loop_history",
+    "_save_tool_loop_report",
+    "_save_tool_loop_step",
+    "_select_step_only_paths",
+    "_slug_for_issue",
+    "_tool_loop_finalize",
+    "_tool_loop_one_iteration",
+    "extract_changed_files",
+    "parse_agent_plan",
+    "parse_decompose_response",
+    "parse_replan_response",
+    "parse_split_goals_response",
+    "run_agent",
+    "run_agent_decompose",
+    "run_auto_fix",
+    "run_planner",
+    "run_planner_decompose",
+    "run_planner_phase1",
+    "run_planner_replan",
+    "run_reverse_check",
+    "run_split_goals",
+    "run_tool_loop",
+]
