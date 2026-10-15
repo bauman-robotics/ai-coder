@@ -6,6 +6,96 @@
 
 ---
 
+## 2026-10-15 — E34: fix precheck через агента (✅ с ручной доводкой)
+
+**Гипотеза:** v4-pro справится с правкой precheck (10.69) —
+дать последней итерации завершиться, если остаток > 0.
+
+**Задача:** Issue 5 — добавить `last_iteration` в `_ToolLoopCtx`,
+в precheck — не рубить при `remaining > 0`, обновить тесты.
+
+**Команда:**
+
+    ai-coder agent --issue issues/2026-10-15/5-precheck-last-iteration.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 20 --max-cost-rub 8 --reverse-check
+
+**Результат:**
+- ❌ Формально неуспех: `stopped_reason=verify_failed`, **10 итераций**,
+  **6.21 RUB**.
+- ✅ **3 правки применены и корректны:**
+  - step-8: `_ToolLoopCtx` + `last_iteration` + precheck
+    (точно по issue);
+  - step-9: postcheck — **улучшение** (агент добавил
+    `if ctx.last_iteration: return "break"` **перед** стандартным
+    postcheck — этого **не было** в issue);
+  - step-10: `finish(success=True)`.
+- ❌ **verify упал:** `test_run_tool_loop_budget_precheck_no_call`
+  использовал `max_cost_rub=0.0000001` (положительный остаток),
+  теперь это `last_iteration`-ветка. **Автоматический откат.**
+
+**Разбор итераций:**
+
+    1. read_file   tool_loop.py                → ✅
+    2. run_shell   grep "class _ToolLoopCtx"   → ✅
+    3. run_shell   grep с метасимволами        → ❌ (правило 17)
+    4. run_shell   grep "precheck бюджета"     → ✅
+    5. read_file   tool_loop.py:450-530        → ✅
+    6. read_file   tool_loop.py:580-640        → ✅
+    7. read_file   tool_loop.py:63-130         → ✅
+    8. edit_file   tool_loop.py (1 repl.)      → ✅ precheck
+    9. edit_file   tool_loop.py (1 repl.)      → ✅ postcheck
+   10. —           finish(success=True)        → ⚠️ до verify
+
+**Ручная доработка (30 мин):**
+
+1. Восстановлены правки из step-8, step-9 (после откатa).
+2. `_handle_finish` — добавлена проверка `last_iteration`:
+   - **Причина:** `finish` возвращает `break` **до** postcheck,
+     значит `postcheck` **не выполнится**.
+   - **Фикс:** в `_handle_finish` — если `last_iteration`, установить
+     `stopped_reason="max_cost"`.
+3. Вынесен helper `_stop_on_last_iteration(ctx)` — единая логика
+   для postcheck и `_handle_finish`.
+4. Обновлён `test_run_tool_loop_budget_precheck_no_call`:
+   `max_cost_rub=0` вместо `0.0000001`.
+5. Добавлен `test_run_tool_loop_budget_last_iteration`.
+
+**Итог:**
+- **485 passed** (+1 новый тест).
+- ruff, mypy — clean.
+- E2E: precheck → `last_iteration` → `chat` → `finish` →
+  `_handle_finish` → `stopped_reason="max_cost"`.
+
+**Выводы:**
+
+1. **Агент **улучшил** issue.** Postcheck с `last_iteration` —
+   не было в issue, но **правильно**. Сильная сторона v4-pro.
+
+2. **Тест — снова проблема.** Мы **не предусмотрели**, что
+   `test_run_tool_loop_budget_precheck_no_call` сломается. Агент
+   **не мог** этого увидеть без запуска pytest **до** finish.
+   **Задача для будущего:** научить агента **запускать тесты
+   перед finish**, если меняет код.
+
+3. **Откат сработал.** После verify_failed — автоматический откат
+   (1 файл). Хорошо, что **правки сохранились в step-8, step-9** —
+   восстановили вручную.
+
+4. **Гибридный подход.** Агент — механику (precheck, postcheck),
+   человек — семантику (`_handle_finish`, тесты). 6.21 RUB агента
+   + 30 мин ручной.
+
+5. **Разведка E33 — полезна.** Без неё мы бы **не знали**,
+   что `expected_completion_tokens=500` — фиксированное.
+   Разведка **дала** всю картину за 0.62 RUB.
+
+**Артефакты:** коммит `8e3d15a`, журнал
+`.ai-out/ai-coder/tool-loop-2026-10-15T16-38-34`, backup
+`tool-loop-backup-20261015-194027`.
+
+---
+
 ## 2026-10-15 — E33: разведка `--dry-read` перед 8.7 (✅ + ирония)
 
 **Гипотеза:** `--dry-read` + flash справятся с read-only разведкой

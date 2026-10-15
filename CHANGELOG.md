@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-10-15] iteration 10.69 — precheck: последняя итерация завершается
+
+### Что сделано
+
+**Precheck бюджета** больше не рубит цикл **после** применения
+правок, но **до** `finish`/`verify`. Симптом закрыт
+(E30/E31/E32/E33).
+
+**`ai_coder/agent/tool_loop.py`:**
+- `_ToolLoopCtx`: новое поле `last_iteration: bool = False`.
+- **Precheck:** если `remaining > 0` — установить
+  `last_iteration=True` и **разрешить** итерацию. Если
+  `remaining <= 0` — `break` как раньше.
+- **`_stop_on_last_iteration(ctx)`** — helper: установка
+  `stopped_reason="max_cost"` с `summary="budget last iteration: ..."`.
+- **`_handle_finish`:** если `ctx.last_iteration` — вызвать helper.
+  Причина: `finish` возвращает `break` **до** postcheck.
+- **Postcheck:** использует helper (для не-finish операций).
+
+**`tests/test_agent.py`:**
+- `test_run_tool_loop_budget_precheck_no_call`:
+  `max_cost_rub=0` (было `0.0000001`) — проверяет break **без**
+  вызова `chat`.
+- `test_run_tool_loop_budget_last_iteration`: **НОВЫЙ** — при
+  положительном остатке `chat` вызывается, `stopped_reason=max_cost`.
+
+### Как сделано
+
+**Агентом** (v4-pro, `--tool-loop`, **10 итераций**, **6.21 RUB**):
+- Правки (step-8, step-9) **применены**, но verify упал на
+  устаревшем тесте → **автоматический откат**.
+- Правки **восстановлены вручную** из `step-8.md` и `step-9.md`.
+- Дообработка (`_stop_on_last_iteration`, 2 теста) — вручную.
+
+**Урок:** агент **улучшил** план из issue (postcheck через
+`last_iteration` — не было в моём issue, но правильно). Проблема
+была **в тесте**, который мы **не предусмотрели**.
+
+### Проверки
+
+- pytest — **485 passed** (484 + 1 новый).
+- ruff, mypy — clean.
+- E2E (тест `test_run_tool_loop_budget_last_iteration`):
+  precheck → `last_iteration` → `chat` → `finish` →
+  `_handle_finish` → `stopped_reason=max_cost`.
+
+### Ссылки
+
+- Коммит `8e3d15a`.
+- `docs/experiments.md` → E30, E31, E32, E33.
+- TODO 8.7 — закрыт.
+
+---
+
+
 ## [2026-10-15] iteration 10.68.1 — mypy fix + pre-commit hook
 
 ### Что сделано
