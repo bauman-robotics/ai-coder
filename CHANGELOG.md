@@ -4,6 +4,60 @@
 
 ---
 
+## [2026-10-15] iteration 10.65 — split-file: agent.py → 9 модулей
+
+### Что сделано
+
+**`ai_coder/agent.py` (3614 строк)** разбит на пакет `ai_coder/agent/`:
+
+| Модуль | Строк | Что внутри |
+|---|---:|---|
+| `__init__.py` | ~100 | реэкспорт публичного API + приватных имён |
+| `models.py` | 251 | 14 dataclass-ов |
+| `planner.py` | 1021 | парсеры + run_planner* + phase1-кэш |
+| `reverse.py` | 184 | reverse-check + collect_diff |
+| `tool_loop.py` | 922 | tool loop (14 сущностей) |
+| `autofix.py` | 181 | auto-fix |
+| `decomposer.py` | 493 | декомпозиция + split-goals |
+| `classic.py` | ~450 | классический агент |
+| `_legacy.py` | ~40 | compatibility-shim (патчи в тестах) |
+
+**Зачем:** flash теряет фокус на файлах >1000 строк (E7, E11). После
+split-file агент читает любой свой модуль целиком и может его править.
+
+**Что доказывает:** E2E-автономность — агент правит `_handle_finish`
+в `tool_loop.py` (922 строки) за 1 итерацию, 0.08 RUB. Раньше (E11)
+на `agent.py` (3614 строк) — 10 итераций, 0 правок.
+
+### Подшаги
+
+- 10.65.1 (`bfd654e`) — `agent.py` → `agent/` пакет (`_legacy.py`).
+- 10.65.2 (`59e9737`) — dataclass-ы в `models.py`.
+- 10.65.3a (`a91a6a1`) — парсеры в `planner.py`.
+- 10.65.3b (`985a683`) — `run_planner*` в `planner.py`.
+- 10.65.4a (`ae4076d`) — reverse-check в `reverse.py`.
+- 10.65.4b (`91820d9`) — tool loop в `tool_loop.py`.
+- 10.65.5 (`9f3f055`) — декомпозиция в `decomposer.py`.
+- 10.65.6 (`bf0716e`) — классический агент в `classic.py`.
+- 10.65.7 (`0d7f687`) — `_legacy.py` как compatibility-shim.
+
+### Особенности
+
+- **Патчи в тестах** — самая тонкая часть. Когда функция переезжает
+  в новый модуль, её нужно патчить **в новом namespace**, а не в `_legacy`.
+  Решение: `patch("ai_coder.agent.<модуль>.X")` **в дополнение** к
+  `patch("ai_coder.agent._legacy.X")`.
+- **`_legacy.py`** — оставлен как shim: 140+ патчей в тестах используют
+  `ai_coder.agent._legacy.X`. Удаление — отдельный рефакторинг тестов.
+- **Побочный фикс:** в 10.65.1 закрыты 4 mypy-ошибки в `_ToolLoopCtx`
+  (заглушки `object` → реальные типы: `PromptEntry`, `MetadataScanResult`,
+  `ReverseCheckResult`, `ToolLoopResult`).
+
+477 passed, mypy clean, ruff clean.
+
+---
+
+
 ## [2026-10-15] iteration 10.64 — refactor: split run_tool_loop (491 → 94)
 
 ### Что сделано
