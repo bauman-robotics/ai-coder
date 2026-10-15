@@ -65,6 +65,94 @@ def test_parse_unknown_operation_type():
     assert any("неизвестный type" in p for p in plan.problems)
 
 
+def test_parse_markdown_fence_with_backticks_in_content():
+    json_str = json.dumps(
+        {
+            "explanation": "create markdown with code block",
+            "operations": [
+                {
+                    "type": "create_file",
+                    "path": "README.md",
+                    "content": "# Title\n\n```python\nprint('hello')\n```\n",
+                }
+            ],
+        }
+    )
+    content = f"```json\\n{json_str}\\n```"
+    plan = parse_response(content)
+    assert plan.parse_error is None
+    assert len(plan.operations) == 1
+    op = plan.operations[0]
+    assert op.type == "create_file"
+    assert op.content == "# Title\n\n```python\nprint('hello')\n```\n"
+
+
+def test_parse_markdown_fence_plain_with_backticks_in_content():
+    json_str = json.dumps(
+        {
+            "explanation": "create markdown with code block",
+            "operations": [
+                {
+                    "type": "create_file",
+                    "path": "README.md",
+                    "content": "# Title\n\n```python\nprint('hello')\n```\n",
+                }
+            ],
+        }
+    )
+    content = f"```\\n{json_str}\\n```"
+    plan = parse_response(content)
+    assert plan.parse_error is None
+    assert len(plan.operations) == 1
+    op = plan.operations[0]
+    assert op.type == "create_file"
+    assert op.content == "# Title\n\n```python\nprint('hello')\n```\n"
+
+
+def test_parse_markdown_fence_with_backticks_at_end_of_content():
+    # Старый код срезал последнюю строку, если она начинается с ```
+    json_str = json.dumps(
+        {
+            "explanation": "content ends with backticks",
+            "operations": [
+                {
+                    "type": "create_file",
+                    "path": "docs.md",
+                    "content": "Some text\n```",
+                }
+            ],
+        }
+    )
+    content = f"```json\\n{json_str}\\n```"
+    plan = parse_response(content)
+    assert plan.parse_error is None
+    assert len(plan.operations) == 1
+    op = plan.operations[0]
+    assert op.content == "Some text\n```"
+
+
+def test_parse_json_with_surrounding_text_and_braces_in_content():
+    # Вырезание от первой { до последней } не должно ломаться из-за внутренних }
+    json_str = json.dumps(
+        {
+            "explanation": "contains braces in content",
+            "operations": [
+                {
+                    "type": "create_file",
+                    "path": "data.txt",
+                    "content": "some { text }",
+                }
+            ],
+        }
+    )
+    content = f"Here is the plan:\\n{json_str}\\nEnd of plan."
+    plan = parse_response(content)
+    assert plan.parse_error is None
+    assert len(plan.operations) == 1
+    op = plan.operations[0]
+    assert op.content == "some { text }"
+
+
 # ---------- validate_operations ----------
 
 

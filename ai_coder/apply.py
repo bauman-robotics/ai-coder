@@ -64,31 +64,19 @@ class WritePlan:
 
 def parse_response(content: str) -> WritePlan:
     """
-    Парсит JSON-ответ модели. Устойчив к типичным «обёрткам»:
-      ```json ... ```
-      ``` ... ```
-      текст до/после JSON
+    Парсит JSON-ответ модели. Устойчив к любым «обёрткам»:
+    markdown-блоки, текст до/после JSON.
+    Всегда вырезает первый {...} — от первой { до последней }.
     """
     plan = WritePlan(raw_json=content)
 
     text = content.strip()
 
-    # снимаем markdown-обёртку, если есть
-    if text.startswith("```"):
-        lines = text.splitlines()
-        # первая строка — ``` или ```json
-        lines = lines[1:]
-        # последняя ``` — если есть
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-
-    # если модель добавила текст до/после JSON — вырежем первый {...}
-    if not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            text = text[start : end + 1]
+    # Всегда вырезаем первый {...} — устойчиво к любой обёртке.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
 
     try:
         data = json.loads(text)
