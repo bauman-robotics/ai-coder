@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from dataclasses import dataclass, field
@@ -24,7 +23,7 @@ from ..config import (
     PromptsConfig,
 )
 from ..llm import LLMClient, LLMResponse
-from ..pricing import Rate, calculate_cost, get_rate, is_peak_now
+from ..pricing import calculate_cost, get_rate, is_peak_now
 from ..prompts import render_prompt
 from ..scanner import (
     MetadataScanResult,
@@ -65,13 +64,14 @@ from .models import (
 
 # --- парсеры/хелперы вынесены в planner.py (10.65.3a split-file) ---
 from .planner import (
+    _estimate_next_cost_rub,
     _extract_target_files,
-    _parse_phase1_response,
     _slug_for_issue,
-    parse_agent_plan,
-    parse_decompose_response,
-    parse_replan_response,
     parse_split_goals_response,
+    run_planner,
+    run_planner_decompose,
+    run_planner_phase1,
+    run_planner_replan,
 )
 
 # ---------- структуры ----------
@@ -210,122 +210,6 @@ def run_split_goals(
         fname = f"{iss.n}-{slug}.md"
         content = f"# task: {iss.title}\n\n{iss.goal}\n"
         (out_dir / fname).write_text(content, encoding="utf-8")
-
-    return result
-
-
-def run_planner_decompose(
-    *,
-    goal: str,
-    project_root: Path,
-    cfg: AppConfig,
-    prompts_cfg: PromptsConfig,
-    model: str | None = None,
-    depth: str = "normal",
-    extra_exclude: list[str] | None = None,
-    max_cost_rub: float | None = None,
-) -> DecomposeResult:
-    """
-    Планировщик-декомпозитор: одна задача → список подзадач.
-    """
-    model = model or cfg.api.model
-
-    # metadata-scan (дерево + метаданные)
-    scan_meta = scan_project_metadata(project_root, cfg.scanning, extra_exclude=extra_exclude)
-
-    # промпт
-    prompt_entry = prompts_cfg.get("agent_decompose_json")
-    metadata_block = render_metadata_block(scan_meta)
-    empty_scan = ScanResult(root=project_root)
-    system, user = render_prompt(
-        prompt_entry,
-        depth=depth,
-        scan=empty_scan,
-        extra={
-            "goal": goal,
-            "tree": scan_meta.tree,
-            "metadata": metadata_block,
-        },
-    )
-
-    # тариф и курсы
-    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
-    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
-    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
-
-    # precheck бюджета — до запроса
-    if max_cost_rub is not None:
-        est = _estimate_next_cost_rub(
-            cfg,
-            model,
-            system,
-            user,
-            cny_to_rub,
-            expected_completion_tokens=1500,
-        )
-        if est >= max_cost_rub:
-            _console.print(
-                f"[red]Бюджет исчерпан до запроса:[/red] "
-                f"оценка {est:.4f} RUB >= лимита {max_cost_rub:.4f} RUB"
-            )
-            return DecomposeResult(
-                explanation="",
-                subtasks=[],
-                cost_rub=0.0,
-                cost_cny=0.0,
-                cost_usd=0.0,
-                parse_error=(f"budget: оценка {est:.4f} RUB >= лимита {max_cost_rub:.4f} RUB"),
-            )
-
-    # запрос
-    client = LLMClient(cfg.api)
-    llm_resp = client.chat(
-        system=system,
-        user=user,
-        model=model,
-        json_mode=True,
-        max_tokens=cfg.agent.step_max_output_tokens,
-    )
-
-    # парсим
-    result = parse_decompose_response(llm_resp.content)
-    result.llm = llm_resp
-
-    # стоимость
-    cost = calculate_cost(
-        pricing=cfg.api.pricing_for(model),
-        is_peak=is_peak,
-        peak_window=peak_window,
-        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
-        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        cny_to_rub=cny_to_rub,
-        usd_to_rub=usd_to_rub,
-    )
-    result.cost_rub = cost.cost_rub
-    result.cost_cny = cost.cost_cny
-    result.cost_usd = cost.cost_usd
-
-    # учёт
-    output_root = project_root / cfg.output.dir
-    append_usage(
-        project_root=project_root,
-        output_root=output_root,
-        action="agent:decompose",
-        project_name=project_root.name,
-        model=model,
-        depth=depth,
-        files_count=scan_meta.total_files,
-        prompt_tokens=llm_resp.prompt_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        total_tokens=llm_resp.total_tokens,
-        cost=cost,
-        duration_ms=llm_resp.duration_ms,
-        status="ok" if result.parse_error is None else "parse_error",
-        usage_cfg=cfg.usage,
-        iteration=0,
-        parent_action="agent",
-    )
 
     return result
 
@@ -670,396 +554,7 @@ def _save_decompose_report(
     (decompose_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def run_planner_replan(
-    *,
-    goal: str,
-    project_root: Path,
-    cfg: AppConfig,
-    prompts_cfg: PromptsConfig,
-    failed_subtask: Subtask,
-    failed_error: str,
-    completed_subtasks: list[Subtask],
-    remaining_subtasks: list[Subtask],
-    model: str | None = None,
-    depth: str = "normal",
-) -> ReplanResult:
-    """
-    Планировщик-replan: подзадача провалилась → решаем,
-    что делать (skip / modify / stop).
-    """
-    model = model or cfg.api.model
-
-    # форматируем списки подзадач
-    completed_text = "\n".join(f"  {s.n}. {s.goal}" for s in completed_subtasks) or "(нет)"
-    remaining_text = "\n".join(f"  {s.n}. {s.goal}" for s in remaining_subtasks) or "(нет)"
-
-    # промпт
-    prompt_entry = prompts_cfg.get("agent_replan_json")
-    empty_scan = ScanResult(root=project_root)
-    system, user = render_prompt(
-        prompt_entry,
-        depth=depth,
-        scan=empty_scan,
-        extra={
-            "goal": goal,
-            "completed": completed_text,
-            "failed_n": str(failed_subtask.n),
-            "failed_goal": failed_subtask.goal,
-            "error": failed_error,
-            "remaining": remaining_text,
-        },
-    )
-
-    # тариф и курсы
-    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
-    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
-    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
-
-    # запрос
-    client = LLMClient(cfg.api)
-    llm_resp = client.chat(
-        system=system,
-        user=user,
-        model=model,
-        json_mode=True,
-        max_tokens=cfg.agent.step_max_output_tokens,
-    )
-
-    # парсим
-    result = parse_replan_response(llm_resp.content)
-    result.llm = llm_resp
-
-    # стоимость
-    cost = calculate_cost(
-        pricing=cfg.api.pricing_for(model),
-        is_peak=is_peak,
-        peak_window=peak_window,
-        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
-        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        cny_to_rub=cny_to_rub,
-        usd_to_rub=usd_to_rub,
-    )
-    result.cost_rub = cost.cost_rub
-    result.cost_cny = cost.cost_cny
-    result.cost_usd = cost.cost_usd
-
-    # учёт
-    output_root = project_root / cfg.output.dir
-    append_usage(
-        project_root=project_root,
-        output_root=output_root,
-        action="agent:replan",
-        project_name=project_root.name,
-        model=model,
-        depth=depth,
-        files_count=0,
-        prompt_tokens=llm_resp.prompt_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        total_tokens=llm_resp.total_tokens,
-        cost=cost,
-        duration_ms=llm_resp.duration_ms,
-        status="ok" if result.parse_error is None else "parse_error",
-        usage_cfg=cfg.usage,
-        iteration=0,
-        parent_action="agent",
-    )
-
-    return result
-
-
 # ---------- кэш phase1 ----------
-
-
-def _phase1_cache_key(goal: str, tree: str, model: str) -> str:
-    """Хэш phase1: goal + tree + model. SHA256, первые 32 hex."""
-    h = hashlib.sha256()
-    h.update(b"ai-coder-phase1-v1\n")
-    h.update(f"model:{model}\n".encode("utf-8"))
-    h.update(f"goal:{goal}\n".encode("utf-8"))
-    h.update(b"---TREE---\n")
-    h.update(tree.encode("utf-8"))
-    return h.hexdigest()[:32]
-
-
-def _phase1_cache_dir(project_root: Path, cfg: AppConfig) -> Path:
-    """Папка для кэша phase1 — та же, что у apply.py."""
-    return project_root / cfg.output.dir / project_root.name / cfg.output.cache_dir_name
-
-
-def _phase1_from_cache(cache_dir: Path, key: str) -> list[str] | None:
-    """Читает target_files из кэша phase1. None — если нет/битый."""
-    p = cache_dir / f"phase1-{key}.json"
-    if not p.exists():
-        return None
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    tf = data.get("target_files", [])
-    if not isinstance(tf, list):
-        return None
-    return [str(x) for x in tf if str(x).strip()]
-
-
-def _phase1_save_cache(cache_dir: Path, key: str, target_files: list[str]) -> None:
-    """Сохраняет target_files в кэш phase1."""
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        p = cache_dir / f"phase1-{key}.json"
-        p.write_text(
-            json.dumps(
-                {
-                    "target_files": target_files,
-                    "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
-
-
-def run_planner_phase1(
-    *,
-    goal: str,
-    project_root: Path,
-    cfg: AppConfig,
-    prompts_cfg: PromptsConfig,
-    model: str | None = None,
-    depth: str = "normal",
-    extra_exclude: list[str] | None = None,
-    use_cache: bool = True,  # NEW
-    refresh: bool = False,  # NEW
-) -> PlannerPhase1Result:
-    """
-    Первый проход планировщика: видит только дерево + метаданные,
-    определяет target_files для phase2.
-
-    Кэш: если use_cache и не refresh — сначала проверяем кэш по
-    хэшу (goal + tree + model). При попадании — LLM не вызывается.
-    """
-    model = model or cfg.api.model
-
-    # 1. metadata-scan (без содержимого)
-    scan_meta = scan_project_metadata(
-        project_root,
-        cfg.scanning,
-        extra_exclude=extra_exclude,
-    )
-
-    # --- NEW: кэш phase1 ---
-    cache_dir = _phase1_cache_dir(project_root, cfg)
-    cache_key: str | None = None
-    cache_enabled = use_cache and cfg.output.use_cache
-
-    if cache_enabled:
-        cache_key = _phase1_cache_key(goal, scan_meta.tree, model)
-        if not refresh:
-            cached = _phase1_from_cache(cache_dir, cache_key)
-            if cached is not None:
-                _console.print(f"[dim]Фаза 1: из кэша ({len(cached)} файл(ов))[/dim]")
-                return PlannerPhase1Result(
-                    target_files=cached,
-                    llm=None,
-                    cost_rub=0.0,
-                    cost_cny=0.0,
-                    cost_usd=0.0,
-                    parse_error=None,
-                    from_cache=True,
-                )
-
-    # 2. промпт — scan обязателен как заглушка, {{tree}} переопределяется
-    #    через extra (render_prompt: extra перезаписывает базовые values)
-    prompt_entry = prompts_cfg.get("agent_plan_json_phase1")
-    metadata_block = render_metadata_block(scan_meta)
-    empty_scan = ScanResult(root=project_root)
-    system, user = render_prompt(
-        prompt_entry,
-        depth=depth,
-        scan=empty_scan,
-        extra={
-            "goal": goal,
-            "tree": scan_meta.tree,
-            "metadata": metadata_block,
-        },
-    )
-
-    # 3. тариф и курсы
-    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
-    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
-    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
-
-    # 4. запрос
-    client = LLMClient(cfg.api)
-    llm_resp = client.chat(
-        system=system,
-        user=user,
-        model=model,
-        json_mode=True,
-        max_tokens=cfg.agent.phase1_max_output_tokens,
-    )
-
-    # 5. парсим
-    target_files, parse_error = _parse_phase1_response(llm_resp.content)
-
-    # 6. стоимость
-    cost = calculate_cost(
-        pricing=cfg.api.pricing_for(model),
-        is_peak=is_peak,
-        peak_window=peak_window,
-        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
-        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        cny_to_rub=cny_to_rub,
-        usd_to_rub=usd_to_rub,
-    )
-
-    # 7. учёт
-    output_root = project_root / cfg.output.dir
-    append_usage(
-        project_root=project_root,
-        output_root=output_root,
-        action="agent:plan1",
-        project_name=project_root.name,
-        model=model,
-        depth=depth,
-        files_count=scan_meta.total_files,
-        prompt_tokens=llm_resp.prompt_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        total_tokens=llm_resp.total_tokens,
-        cost=cost,
-        duration_ms=llm_resp.duration_ms,
-        status="ok" if parse_error is None else "parse_error",
-        usage_cfg=cfg.usage,
-        iteration=0,
-        parent_action="agent",
-    )
-
-    # --- NEW: сохраняем в кэш при успехе ---
-    if cache_enabled and cache_key is not None and parse_error is None:
-        _phase1_save_cache(cache_dir, cache_key, target_files)
-
-    return PlannerPhase1Result(
-        target_files=target_files,
-        llm=llm_resp,
-        cost_rub=cost.cost_rub,
-        cost_cny=cost.cost_cny,
-        cost_usd=cost.cost_usd,
-        parse_error=parse_error,
-        from_cache=False,
-    )
-
-
-def run_planner(
-    *,
-    goal: str,
-    project_root: Path,
-    cfg: AppConfig,
-    prompts_cfg: PromptsConfig,
-    model: str | None = None,
-    depth: str = "normal",
-    extra_exclude: list[str] | None = None,
-    max_steps: int | None = None,
-    only_paths: list[str] | None = None,  # NEW
-) -> PlannerResult:
-    """
-    Один запрос к LLM: получаем план шагов для достижения цели.
-    """
-    model = model or cfg.api.model
-    if max_steps is None:
-        max_steps = cfg.agent.max_steps
-
-    # 1. сканируем проект (с учётом only_paths от phase1)
-    scan = scan_project(
-        project_root,
-        cfg.scanning,
-        extra_exclude=extra_exclude,
-        only_paths=only_paths,  # NEW
-    )
-
-    # 2. промпт планировщика
-    prompt_entry = prompts_cfg.get("agent_plan_json")
-    system, user = render_prompt(
-        prompt_entry,
-        depth=depth,
-        scan=scan,
-        extra={
-            "goal": goal,
-            "max_steps": str(max_steps),
-        },
-    )
-
-    # 3. тариф и курсы
-    started_at = datetime.now(ZoneInfo("UTC"))
-    is_peak, peak_window = is_peak_now(cfg.api.peak_schedule)
-    cny_to_rub = get_rate(project_root, cfg.currency.cny_to_rub, key="CNY")
-    usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
-
-    # 4. запрос
-    client = LLMClient(cfg.api)
-    llm_resp = client.chat(
-        system=system,
-        user=user,
-        model=model,
-        json_mode=True,
-        max_tokens=cfg.agent.step_max_output_tokens,
-    )
-    finished_at = datetime.now(ZoneInfo("UTC"))
-
-    # 5. парсим
-    plan = parse_agent_plan(llm_resp.content, goal)
-
-    # 6. стоимость
-    cost = calculate_cost(
-        pricing=cfg.api.pricing_for(model),
-        is_peak=is_peak,
-        peak_window=peak_window,
-        prompt_hit_tokens=llm_resp.prompt_cache_hit_tokens,
-        prompt_miss_tokens=llm_resp.prompt_cache_miss_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        cny_to_rub=cny_to_rub,
-        usd_to_rub=usd_to_rub,
-    )
-
-    # 7. учёт
-    output_root = project_root / cfg.output.dir
-    append_usage(
-        project_root=project_root,
-        output_root=output_root,
-        action="agent:plan",
-        project_name=project_root.name,
-        model=model,
-        depth=depth,
-        files_count=len(scan.files),
-        prompt_tokens=llm_resp.prompt_tokens,
-        completion_tokens=llm_resp.completion_tokens,
-        total_tokens=llm_resp.total_tokens,
-        cost=cost,
-        duration_ms=llm_resp.duration_ms,
-        status="ok",
-        usage_cfg=cfg.usage,
-        iteration=0,
-        parent_action="agent",
-    )
-
-    return PlannerResult(
-        plan=plan,
-        llm=llm_resp,
-        cost_rub=cost.cost_rub,
-        cost_cny=cost.cost_cny,
-        cost_usd=cost.cost_usd,
-        is_peak=is_peak,
-        peak_window=peak_window,
-        started_at=started_at,
-        finished_at=finished_at,
-    )
-
-
 # ---------- журнал агента ----------
 # ---------- декомпозиция задач ----------
 # ---------- split-goals (10F) ----------
@@ -2137,44 +1632,6 @@ def run_reverse_check(
         )
 
 
-def _estimate_next_cost_rub(
-    cfg: AppConfig,
-    model: str,
-    system: str,
-    user: str,
-    cny_to_rub: Rate,
-    *,
-    expected_completion_tokens: int = 500,
-) -> float:
-    """
-    Грубая консервативная оценка стоимости следующего запроса.
-
-    Считает prompt_tokens как len(text)//3 (см. scanner._estimate_tokens),
-    берёт ХУДШУЮ ставку (peak, cache miss) — чтобы не превысить лимит.
-
-    expected_completion_tokens — сколько примерно вернёт модель:
-      - finish JSON: ~100–500;
-      - decompose JSON (список подзадач): ~500–2000.
-    """
-    # Локальный импорт, чтобы не тянуть scanner на верхнем уровне.
-    from ..scanner import _estimate_tokens
-
-    prompt_tokens = _estimate_tokens(system) + _estimate_tokens(user)
-    pricing = cfg.api.pricing_for(model)
-    price_miss = max(
-        pricing.cache_miss_per_1m_cny.off_peak,
-        pricing.cache_miss_per_1m_cny.peak,
-    )
-    price_out = max(
-        pricing.output_per_1m_cny.off_peak,
-        pricing.output_per_1m_cny.peak,
-    )
-    cost_cny = (
-        prompt_tokens / 1_000_000 * price_miss + expected_completion_tokens / 1_000_000 * price_out
-    )
-    return cost_cny * cny_to_rub.value
-
-
 @dataclass
 class _ToolLoopCtx:
     """Контекст одной сессии tool loop. Мутируется в цикле."""
@@ -3087,14 +2544,9 @@ __all__ = [
     "_backup_file_for_tool_loop",
     "_collect_diff",
     "_console",
-    "_estimate_next_cost_rub",
     "_handle_finish",
     "_has_missing_args",
     "_load_tool_loop_history",
-    "_phase1_cache_dir",
-    "_phase1_cache_key",
-    "_phase1_from_cache",
-    "_phase1_save_cache",
     "_print_step_for_review",
     "_prompt_review",
     "_prompt_tool_review",
@@ -3117,10 +2569,6 @@ __all__ = [
     "run_agent",
     "run_agent_decompose",
     "run_auto_fix",
-    "run_planner",
-    "run_planner_decompose",
-    "run_planner_phase1",
-    "run_planner_replan",
     "run_reverse_check",
     "run_split_goals",
     "run_tool_loop",
