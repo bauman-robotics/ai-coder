@@ -2,7 +2,7 @@
 # Минимальный bundle для нового чата.
 # Включает: git, проверки, state.md, TODO.md (открытые),
 # последние 8 секций CHANGELOG, последние 4 experiments,
-# обзор scenarios, шапку tools. Без ядра кода.
+# docs/dsh.md (D1+), обзор scenarios, шапку tools. Без ядра кода.
 
 set -eu
 
@@ -96,6 +96,11 @@ fi
     echo ""
     echo '```'
     awk '/^## [0-9]{4}-/{c++} c>=1 && c<=4' docs/experiments.md | head -200
+
+    echo ""
+    echo "# docs/dsh.md — эксперименты с DeepSeek Harness (D1+)"
+    echo ""
+    cat docs/dsh.md 2>/dev/null || echo "(файл не найден)"
     echo '```'
     echo ""
 
@@ -210,6 +215,11 @@ fi
     echo ""
     echo '```'
     grep '^## ' docs/experiments.md 2>/dev/null || true
+
+    echo ""
+    echo "# Оглавление docs/dsh.md (заголовки записей)"
+    echo ""
+    grep '^## ' docs/dsh.md 2>/dev/null || true
     echo '```'
     echo ""
 
