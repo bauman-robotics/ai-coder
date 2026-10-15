@@ -794,6 +794,11 @@
 
 ### 8.7. Precheck бюджета — ✅ ЗАКРЫТО 2026-10-15 (10.69)
 
+**8.7B — ✅ ЗАКРЫТО 2026-10-15 (4965dcb):**
+оценка `_estimate_next_cost_rub` по типу инструмента
+(`last_tool`). Формула: read=500, edit=2000, write=8000,
+run_shell=300, default=500. E37.
+
 **✅ Закрыто 10.69:** последняя итерация завершается (verify + finish),
 если остаток > 0. Helper `_stop_on_last_iteration`.
 
