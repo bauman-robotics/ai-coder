@@ -616,6 +616,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 | `CHANGELOG.md` | что сделано, по датам и итерациям |
 | `docs/state.md` | этот файл, текущее состояние |
 | `docs/autonomy.md` | автономность: принципы, план (E8-E9) |
+| `docs/dsh.md` | DeepSeek Harness — эксперименты (D1+) |
 | `docs/reviews/` | внешние обзоры проекта |
 | `config/config.yaml` | настройки (API, scanning, write, fix, agent) |
 | `config/prompts.yaml` | тексты промптов по действиям |
