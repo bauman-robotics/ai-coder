@@ -296,6 +296,39 @@ def test_agent_config_step_max_output_tokens(minimal_cfg):
     assert minimal_cfg.agent.step_max_output_tokens == 8000
 
 
+def test_estimate_next_cost_rub_by_tool(minimal_cfg):
+    """Оценка растёт с типом инструмента."""
+    from ai_coder.agent.planner import _estimate_next_cost_rub
+    from ai_coder.pricing import Rate
+
+    rate = Rate(value=12.5, source="config", fetched_at=0)
+    cost_read = _estimate_next_cost_rub(
+        minimal_cfg,
+        "test-model",
+        "",
+        "",
+        rate,
+        last_tool="read_file",
+    )
+    cost_edit = _estimate_next_cost_rub(
+        minimal_cfg,
+        "test-model",
+        "",
+        "",
+        rate,
+        last_tool="edit_file",
+    )
+    cost_write = _estimate_next_cost_rub(
+        minimal_cfg,
+        "test-model",
+        "",
+        "",
+        rate,
+        last_tool="write_file",
+    )
+    assert cost_write > cost_edit > cost_read
+
+
 def test_extract_target_files_empty_plan():
     plan = AgentPlan(goal="x", steps=[])
     assert _extract_target_files(plan) == []

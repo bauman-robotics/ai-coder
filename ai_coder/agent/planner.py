@@ -465,6 +465,7 @@ def _estimate_next_cost_rub(
     cny_to_rub: Rate,
     *,
     expected_completion_tokens: int = 500,
+    last_tool: str | None = None,
 ) -> float:
     """
     Грубая консервативная оценка стоимости следующего запроса.
@@ -475,6 +476,8 @@ def _estimate_next_cost_rub(
     expected_completion_tokens — сколько примерно вернёт модель:
       - finish JSON: ~100–500;
       - decompose JSON (список подзадач): ~500–2000.
+    last_tool — инструмент предыдущей итерации; если задан,
+      пересчитывает ожидаемое число completion-токенов.
     """
     # Локальный импорт, чтобы не тянуть scanner на верхнем уровне.
     from ..scanner import _estimate_tokens
@@ -489,9 +492,21 @@ def _estimate_next_cost_rub(
         pricing.output_per_1m_cny.off_peak,
         pricing.output_per_1m_cny.peak,
     )
-    cost_cny = (
-        prompt_tokens / 1_000_000 * price_miss + expected_completion_tokens / 1_000_000 * price_out
-    )
+
+    completion_tokens = expected_completion_tokens
+    if last_tool is not None:
+        if last_tool in ("read_file", "read_symbol", "list_files"):
+            completion_tokens = 500
+        elif last_tool == "edit_file":
+            completion_tokens = 2000
+        elif last_tool == "write_file":
+            completion_tokens = 8000
+        elif last_tool == "run_shell":
+            completion_tokens = 300
+        else:
+            completion_tokens = 500
+
+    cost_cny = prompt_tokens / 1_000_000 * price_miss + completion_tokens / 1_000_000 * price_out
     return cost_cny * cny_to_rub.value
 
 

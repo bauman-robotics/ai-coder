@@ -485,13 +485,16 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
     # --- precheck бюджета ---
     if max_cost_rub is not None and not ctx.last_iteration:
         remaining = max_cost_rub - ctx.total_cost_rub
+        last_tool = None
+        if ctx.history:
+            last_tool = ctx.history[-1][0].tool
         est = _estimate_next_cost_rub(
             cfg,
             ctx.model,
             system,
             user,
             cny_to_rub,
-            expected_completion_tokens=500,
+            last_tool=last_tool,
         )
         if est >= remaining:
             if remaining > 0:
