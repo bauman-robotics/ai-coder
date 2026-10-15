@@ -322,7 +322,12 @@ def parse_decompose_response(content: str) -> DecomposeResult:
             continue
         files_raw = s.get("files", [])
         files = [str(f) for f in files_raw] if isinstance(files_raw, list) else []
-        result.subtasks.append(Subtask(n=i, goal=goal, files=files))
+
+        stype = str(s.get("type", "edit")).strip().lower()
+        if stype not in ("edit", "read"):
+            stype = "edit"
+
+        result.subtasks.append(Subtask(n=i, goal=goal, files=files, type=stype))
 
     if not result.subtasks and result.parse_error is None:
         result.parse_error = "empty subtasks"

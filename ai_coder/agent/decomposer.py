@@ -22,7 +22,7 @@ from ..scanner import (
     scan_project_metadata,
 )
 from ..usage import append_usage
-from .models import DecomposeResult, SplitGoalsResult
+from .models import DecomposeResult, SplitGoalsResult, Subtask
 from .planner import (
     _slug_for_issue,
     parse_split_goals_response,
@@ -30,6 +30,25 @@ from .planner import (
     run_planner_replan,
 )
 from .tool_loop import run_tool_loop
+
+_SUBAGENT_MODEL = {
+    "explore": "deepseek-flash",
+    "edit-simple": "deepseek-flash",
+    "edit-complex": "deepseek-v4-pro",
+    "verify": "deepseek-flash",
+}
+_SUBAGENT_ITERS = {
+    "explore": 5,
+    "edit-simple": 10,
+    "edit-complex": 15,
+    "verify": 3,
+}
+
+
+def _resolve_subagent(st: Subtask) -> tuple[str, int]:
+    t = st.type if st.type in _SUBAGENT_MODEL else "edit-simple"
+    return _SUBAGENT_MODEL[t], _SUBAGENT_ITERS[t]
+
 
 _console = Console()
 
@@ -173,7 +192,6 @@ def run_agent_decompose(
     Если передан `plan` — повторно не декомпозирует, использует его
     (для workflow `--plan`: показать → подтвердить → выполнить).
     """
-    eff_iters = max_iterations if max_iterations is not None else cfg.agent.max_steps
 
     # 1. Декомпозиция (через v4-pro, если задано)
     decompose_model = getattr(cfg.agent, "decompose_model", None) or model
@@ -230,15 +248,17 @@ def run_agent_decompose(
         remaining = (
             max(0.0, max_cost_rub - dec_result.cost_rub) if max_cost_rub is not None else None
         )
+        subtask_model, subtask_iters = _resolve_subagent(st)
+        final_iters = max_iterations if max_iterations is not None else subtask_iters
         loop_result = run_tool_loop(
             goal=st.goal,
             project_root=project_root,
             cfg=cfg,
             prompts_cfg=prompts_cfg,
-            model=model,  # для tool loop — flash
+            model=subtask_model,
             depth=depth,
             extra_exclude=extra_exclude,
-            max_iterations=eff_iters,
+            max_iterations=final_iters,
             max_cost_rub=remaining,
             dry_run=dry_run,
             dry_read=dry_read,
@@ -290,7 +310,7 @@ def run_agent_decompose(
                     model=fallback_model,
                     depth=depth,
                     extra_exclude=extra_exclude,
-                    max_iterations=eff_iters,
+                    max_iterations=final_iters,
                     max_cost_rub=remaining,
                     dry_run=dry_run,
                     dry_read=dry_read,

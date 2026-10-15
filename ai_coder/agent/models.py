@@ -37,6 +37,7 @@ class Subtask:
     n: int
     goal: str
     files: list[str] = field(default_factory=list)
+    type: str = "edit"
 
 
 @dataclass
