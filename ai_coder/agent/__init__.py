@@ -42,6 +42,8 @@ from ._legacy import *  # noqa: F401,F403
 from ._legacy import __all__ as _legacy_all  # noqa: F401
 from .autofix import *  # noqa: F401,F403
 from .autofix import __all__ as _autofix_all  # noqa: F401
+from .classic import *  # noqa: F401,F403
+from .classic import __all__ as _classic_all  # noqa: F401
 from .decomposer import *  # noqa: F401,F403
 from .decomposer import __all__ as _decomposer_all  # noqa: F401
 
@@ -63,6 +65,7 @@ __all__ = (
     + list(_tool_loop_all)
     + list(_autofix_all)
     + list(_decomposer_all)
+    + list(_classic_all)
     + list(_legacy_all)
     + [
         "WritePlan",

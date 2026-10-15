@@ -1847,7 +1847,7 @@ def test_run_auto_fix_max_cost(sample_project, minimal_cfg, prompts_cfg):
         patch("ai_coder.agent._legacy.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.autofix.run_tool_loop", return_value=expensive),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=expensive),
     ):
         result = run_auto_fix(
             project_root=sample_project,
@@ -1980,7 +1980,7 @@ def test_run_agent_decompose_replan_skip(sample_project, minimal_cfg, prompts_cf
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
@@ -2020,7 +2020,7 @@ def test_run_agent_decompose_replan_stop(sample_project, minimal_cfg, prompts_cf
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_fail_loop()),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=_fail_loop()),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
@@ -2071,7 +2071,7 @@ def test_run_agent_decompose_replan_modify(sample_project, minimal_cfg, prompts_
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
@@ -2123,7 +2123,7 @@ def test_run_agent_decompose_retry_cost_summation(sample_project, minimal_cfg, p
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
@@ -2181,7 +2181,7 @@ def test_run_agent_decompose_max_cost(sample_project, minimal_cfg, prompts_cfg):
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=expensive),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2218,7 +2218,7 @@ def test_run_agent_decompose_max_cost_saves_report(sample_project, minimal_cfg, 
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=expensive),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2417,7 +2417,7 @@ def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_c
         patch("ai_coder.agent.decomposer.run_planner_decompose", mock_planner),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop()),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2460,7 +2460,7 @@ def test_run_agent_decompose_passes_max_iterations(sample_project, minimal_cfg, 
         patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2501,7 +2501,7 @@ def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg
         patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2670,7 +2670,7 @@ def test_run_agent_decompose_success_requires_applied_ops(sample_project, minima
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop_no_ops()),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop_no_ops()),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2703,7 +2703,7 @@ def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cf
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop()),
-        patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.classic.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2739,7 +2739,7 @@ def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_
         patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2907,7 +2907,7 @@ def test_run_agent_decompose_verify_commands_passthrough(sample_project, minimal
         patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
-        patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.classic.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2985,7 +2985,7 @@ def test_run_read_step_calls_tool_loop(sample_project, minimal_cfg, prompts_cfg)
             read_ops=1,
         )
 
-    with patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop):
+    with patch("ai_coder.agent.classic.run_tool_loop", side_effect=fake_loop):
         result = _run_read_step(
             step=step,
             project_root=sample_project,
@@ -3013,7 +3013,7 @@ def test_run_read_step_success(sample_project, minimal_cfg, prompts_cfg):
     step = AgentStep(n=1, title="read", type="read", details="", target_files=[])
 
     with patch(
-        "ai_coder.agent._legacy.run_tool_loop",
+        "ai_coder.agent.classic.run_tool_loop",
         return_value=ToolLoopResult(
             success=True,
             summary="функция X делает Y",
@@ -3047,7 +3047,7 @@ def test_run_read_step_failure(sample_project, minimal_cfg, prompts_cfg):
     step = AgentStep(n=1, title="read", type="read", details="", target_files=[])
 
     with patch(
-        "ai_coder.agent._legacy.run_tool_loop",
+        "ai_coder.agent.classic.run_tool_loop",
         return_value=ToolLoopResult(
             success=False,
             summary="ничего не прочитано",
@@ -3158,10 +3158,10 @@ def test_run_agent_calls_read_step_for_read_type(sample_project, minimal_cfg, pr
 
     with (
         patch("ai_coder.agent.planner.run_planner", side_effect=fake_planner),
-        patch("ai_coder.agent._legacy.run_planner", side_effect=fake_planner),
-        patch("ai_coder.agent._legacy._run_read_step", side_effect=fake_read_step),
+        patch("ai_coder.agent.classic.run_planner", side_effect=fake_planner),
+        patch("ai_coder.agent.classic._run_read_step", side_effect=fake_read_step),
         patch("ai_coder.agent.planner.append_usage"),
-        patch("ai_coder.agent._legacy.append_usage"),
+        patch("ai_coder.agent.classic.append_usage"),
     ):
         result = run_agent(
             goal="объясни",
