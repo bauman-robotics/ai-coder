@@ -1796,6 +1796,7 @@ def test_run_auto_fix_loop_success(sample_project, minimal_cfg, prompts_cfg):
 
     with (
         patch("ai_coder.agent.tool_loop.run_verify_commands", side_effect=fake_verify),
+        patch("ai_coder.agent.autofix.run_verify_commands", side_effect=fake_verify),
         patch("ai_coder.agent._legacy.run_verify_commands", side_effect=fake_verify),
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
@@ -1842,8 +1843,10 @@ def test_run_auto_fix_max_cost(sample_project, minimal_cfg, prompts_cfg):
 
     with (
         patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=["always fail"]),
+        patch("ai_coder.agent.autofix.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent._legacy.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.autofix.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
     ):
         result = run_auto_fix(
@@ -1868,6 +1871,7 @@ def test_run_auto_fix_max_attempts(sample_project, minimal_cfg, prompts_cfg):
 
     with (
         patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=["always fail"]),
+        patch("ai_coder.agent.autofix.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent._legacy.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
