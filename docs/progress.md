@@ -50,9 +50,24 @@
 
 ### На следующий раз
 
-См. `next-chat/in-progress.md` → A + B:
-- A: `parse_response` — рефакторинг + 4 теста (агентом).
-- B: `_handle_finish` — бессмысленное условие, фикс вручную.
+См. `next-chat/in-progress.md` → TODO 8.7 (precheck бюджета).
+
+### Бонус — mypy + pre-commit
+
+**Нашли и закрыли пробел в проверках.**
+- После `git push` (коммит `5963fd4`) локально запустили
+  `mypy ai_coder` → 1 ошибка в `symbols.py:164`
+  (`candidate_kind: str | None`, `end_line: int | None`).
+- **Причина:** в `prompt.md` правило — «перед коммитом:
+  ruff + pytest», **без mypy**. CI гоняет mypy, но **только
+  на GitHub**.
+- **Фикс:** `5bcf010` (типы) + `a070b78` (mypy в pre-commit,
+  `local` hook, `language: system` — использует наш venv).
+- **Проверено:** фиктивная ошибка в pre-commit **не прошла**
+  (`exit code: 1`) — защита работает.
+- **Правило на будущее:** перед коммитом — `ruff format` +
+  `ruff check` + `pytest` + `mypy ai_coder`. Hook закрывает
+  mypy автоматически.
 
 ---
 

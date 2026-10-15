@@ -4,6 +4,42 @@
 
 ---
 
+## [2026-10-15] iteration 10.68.1 — mypy fix + pre-commit hook
+
+### Что сделано
+
+**mypy fix** в `ai_coder/symbols.py` (коммит `5bcf010`):
+- `candidate_kind: str | None` — сужено до `str` через
+  `if candidate_name is None or candidate_kind is None: continue`.
+- `assert end_line is not None` перед `return`.
+
+**mypy в pre-commit** (коммит `a070b78`):
+- Новый `local` hook в `.pre-commit-config.yaml`.
+- `language: system` — использует зависимости из текущего venv
+  (pydantic, rich, openai), а не изолированное окружение.
+
+### Причина
+
+**Пробел в проверках.** `prompt.md` требовал «перед коммитом:
+ruff format + pytest», **без mypy**. CI гоняет mypy **только на
+GitHub**. Локально ошибка не ловилась.
+
+**Как всплыло:** после `git push` (`5963fd4`) локально запустили
+`mypy ai_coder` — 1 ошибка в `symbols.py:164`. CI тоже упал бы.
+
+**Проверено:** в pre-commit попробовали закоммитить фиктивную
+ошибку (`x: int = 'string'`) — hook `mypy` **остановил** коммит
+(`exit code: 1`). Защита работает.
+
+### Ссылки
+
+- Коммиты `5bcf010` (fix), `a070b78` (pre-commit hook).
+- `.pre-commit-config.yaml`.
+- `docs/progress.md` → сессия 10.66, дополнение.
+
+---
+
+
 ## [2026-10-15] iteration 10.68 — parse_response: устойчивость к обёрткам
 
 ### Что сделано
