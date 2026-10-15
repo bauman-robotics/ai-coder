@@ -4,6 +4,62 @@
 
 ---
 
+## [2026-10-15] iteration 8.7B — precheck: оценка по типу инструмента
+
+### Что сделано
+
+**`_estimate_next_cost_rub`** (ai_coder/agent/planner.py:460):
+- Новый параметр `last_tool: str | None = None`.
+- Формула оценки completion-токенов:
+  - `read_file`/`read_symbol`/`list_files` → 500;
+  - `edit_file` → 2000;
+  - `write_file` → 8000;
+  - `run_shell` → 300;
+  - default → 500 (обратная совместимость).
+
+**`tool_loop.py`** (precheck, строка 491):
+- Передаёт `last_tool` из `ctx.history[-1][0].tool`.
+
+**`tests/test_agent.py`:**
+- `test_estimate_next_cost_rub_by_tool` — write > edit > read.
+
+### Как сделано
+
+**Агентом** (v4-pro, `--tool-loop`, **14 итераций**, **10.60 RUB**):
+- Итерации 1-4: изучение кода.
+- 5: `edit_file planner.py`.
+- 7: `edit_file tool_loop.py`.
+- 11: `edit_file test_agent.py` (тест).
+- 12-13: pytest ❌ (тест упал).
+- **14: `edit_file test_agent.py` — модель сама исправила** (self-correcting).
+- RC — ок.
+
+### Контекст E37
+
+**E37.1** (свобода, 4 варианта в issue, 53 строки) — **провал**:
+11 итераций, **только чтение**, 6.11 RUB, `git status` чисто.
+
+**E37.2** (упрощённый issue, вариант A явно, 20 строк) — **успех**:
+14 итераций, 10.60 RUB.
+
+**Урок:** v4-pro — **послушный** исполнитель, **не** свободный
+исследователь. Много контекста → анализ-паралич. Чёткая цель → успех.
+
+### Проверки
+
+- pytest — **487 passed** (+1).
+- mypy, ruff — clean.
+- RC — ок.
+
+### Ссылки
+
+- Коммиты `d6a40f6` (docs), `4965dcb` (feat).
+- `docs/experiments.md` → E37 (E37.1 + E37.2).
+- TODO 8.7B — закрыт.
+
+---
+
+
 ## [2026-10-15] iteration 8.5 — reverse-check видит diff при --commit
 
 ### Что сделано

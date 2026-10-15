@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (8.5 — reverse-check при --commit)
+**Дата обновления:** 2026-10-15 (8.7B — precheck: оценка по инструменту)
 **Ветка:** main
-**Последний коммит:** `cf5273f` (8.5 — reverse-check при --commit)
-**Тесты:** 486 passed (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response + 1 budget + 1 commit_rc) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `4965dcb` (8.7B — precheck по инструменту)
+**Тесты:** 487 passed (+1 precheck_by_tool) (460 + 17 GUI smoke + 3 read_symbol + 4 parse_response + 1 budget + 1 commit_rc) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
