@@ -687,6 +687,11 @@ def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
         else:
             _console.print("[green]✅ Проверка пройдена[/green]")
 
+    # --- diff для reverse-check (ДО коммита) ---
+    diff_before_commit = ""
+    if ctx.reverse_check and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
+        diff_before_commit = _collect_diff(ctx.project_root)
+
     # --- автокоммит ---
     if ctx.auto_commit and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
         from ..git import commit as git_commit
@@ -704,7 +709,7 @@ def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
 
     # --- reverse-check ---
     if ctx.reverse_check and ctx.success and not ctx.dry_run and ctx.stopped_reason == "completed":
-        diff = _collect_diff(ctx.project_root)
+        diff = diff_before_commit
         if diff:
             _console.print("[dim]Reverse-check...[/dim]")
             ctx.reverse_result = run_reverse_check(

@@ -1233,6 +1233,60 @@ def test_run_tool_loop_auto_commit_skipped_in_dry_run(git_repo, minimal_cfg, pro
     assert (git_repo / "test.py").read_text() == "x = 1\n"
 
 
+def test_run_tool_loop_commit_reverse_check(git_repo, minimal_cfg, prompts_cfg):
+    """8.5: при --commit + --reverse-check reverse-check НЕ пропускается.
+
+    Diff собирается ДО git commit, поэтому RC видит изменения.
+    Проверка: reverse_check_result заполнен (не None).
+    """
+    import subprocess
+
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.pricing import Rate
+
+    (git_repo / "test.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init test.py"], cwd=git_repo, check=True)
+
+    responses = [
+        '{"tool": "edit_file", "args": {"path": "test.py", "old": "x = 1", "new": "x = 42"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+        '{"ok": true, "problems": [], "suggestion": null}',
+    ]
+
+    with (
+        patch("ai_coder.agent.planner.LLMClient") as MockClient,
+        patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
+        patch("ai_coder.agent._legacy.LLMClient", MockClient),
+        patch("ai_coder.agent.planner.get_rate") as mock_rate,
+        patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
+        patch("ai_coder.agent._legacy.get_rate", mock_rate),
+        patch("ai_coder.agent.planner.append_usage"),
+        patch("ai_coder.agent.tool_loop.append_usage"),
+        patch("ai_coder.agent._legacy.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test commit + rc",
+            project_root=git_repo,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            auto_commit=True,
+            reverse_check=True,
+        )
+
+    assert result.commit_hash is not None
+    assert len(result.commit_hash) == 8
+    assert MockClient.return_value.chat.call_count == 3
+    assert result.reverse_check_result is not None
+    assert result.reverse_check_result.ok is True
+
+
 def test_run_tool_loop_saves_history_json(sample_project, minimal_cfg, prompts_cfg, tmp_path):
     """После tool loop history.json сохранён в журнал."""
     from ai_coder.agent import run_tool_loop
