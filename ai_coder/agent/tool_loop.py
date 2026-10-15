@@ -275,9 +275,9 @@ def _handle_finish(ctx: _ToolLoopCtx, action: ToolAction, iteration: int, llm_re
     else:
         ctx.success = ctx.applied_ops > 0
 
-    if ctx.success and action.tool not in ("read_file", "read_symbol", "list_files"):
+    if ctx.success:
         write_attempts = sum(1 for a, _ in ctx.history if a.tool in ("write_file", "edit_file"))
-        if write_attempts > ctx.applied_ops:
+        if write_attempts > 0 and write_attempts > ctx.applied_ops:
             ctx.warnings.append(
                 f"applied {ctx.applied_ops}/{write_attempts} (часть операций отклонена)"
             )
