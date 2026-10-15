@@ -110,6 +110,7 @@ class _ToolLoopCtx:
     commit_hash: str | None = None
     reverse_result: ReverseCheckResult | None = None
     result: ToolLoopResult | None = None
+    last_iteration: bool = False
     start_iteration: int = 1
     end_iteration: int = 0
 
@@ -263,6 +264,16 @@ def _accumulate_cost_and_usage(
     )
 
 
+def _stop_on_last_iteration(ctx: _ToolLoopCtx) -> None:
+    """Установить stopped_reason=max_cost, если исчерпали бюджет на
+    последней разрешённой итерации (last_iteration)."""
+    ctx.stopped_reason = "max_cost"
+    ctx.summary = (
+        f"budget last iteration: {ctx.total_cost_rub:.4f} RUB spent, "
+        f"limit {ctx.max_cost_rub:.4f} RUB"
+    )
+
+
 def _handle_finish(ctx: _ToolLoopCtx, action: ToolAction, iteration: int, llm_resp) -> None:
     """Обработка finish: success, warnings, сохранение шага."""
     ctx.summary = action.summary or "(no summary)"
@@ -281,6 +292,12 @@ def _handle_finish(ctx: _ToolLoopCtx, action: ToolAction, iteration: int, llm_re
             ctx.warnings.append(
                 f"applied {ctx.applied_ops}/{write_attempts} (часть операций отклонена)"
             )
+
+    # 10.69: если это была последняя разрешённая итерация — перезаписать
+    # stopped_reason на max_cost (postcheck не выполнится — finish
+    # возвращает break раньше).
+    if ctx.last_iteration:
+        _stop_on_last_iteration(ctx)
 
     if ctx.journal_dir is not None:
         _save_tool_loop_step(ctx.journal_dir, iteration, action, None, llm_resp)
@@ -466,7 +483,7 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
     usd_to_rub = get_rate(project_root, cfg.currency.usd_to_rub, key="USD")
 
     # --- precheck бюджета ---
-    if max_cost_rub is not None:
+    if max_cost_rub is not None and not ctx.last_iteration:
         remaining = max_cost_rub - ctx.total_cost_rub
         est = _estimate_next_cost_rub(
             cfg,
@@ -477,14 +494,23 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
             expected_completion_tokens=500,
         )
         if est >= remaining:
-            ctx.stopped_reason = "max_cost"
-            ctx.summary = (
-                f"budget precheck: оценка {est:.4f} RUB >= остатка "
-                f"{remaining:.4f} RUB (лимит {max_cost_rub:.4f}, "
-                f"потрачено {ctx.total_cost_rub:.4f})"
-            )
-            _console.print(f"[yellow]Бюджет: {ctx.summary}[/yellow]")
-            return "break"
+            if remaining > 0:
+                # Остаток положительный — дать итерации завершиться,
+                # но это последняя. Postcheck остановит после.
+                ctx.last_iteration = True
+                _console.print(
+                    f"[yellow]Бюджет: последняя итерация (остаток {remaining:.4f} RUB)[/yellow]"
+                )
+            else:
+                # Бюджет исчерпан — стоп сейчас
+                ctx.stopped_reason = "max_cost"
+                ctx.summary = (
+                    f"budget precheck: оценка {est:.4f} RUB >= остатка "
+                    f"{remaining:.4f} RUB (лимит {max_cost_rub:.4f}, "
+                    f"потрачено {ctx.total_cost_rub:.4f})"
+                )
+                _console.print(f"[yellow]Бюджет: {ctx.summary}[/yellow]")
+                return "break"
 
     # --- запрос ---
     try:
@@ -603,6 +629,9 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
         _save_tool_loop_history(ctx.journal_dir, ctx.history)
 
     # --- post-check бюджета ---
+    if ctx.last_iteration:
+        _stop_on_last_iteration(ctx)
+        return "break"
     if max_cost_rub is not None and ctx.total_cost_rub >= max_cost_rub:
         ctx.stopped_reason = "max_cost"
         ctx.summary = f"budget exceeded: {ctx.total_cost_rub:.4f} RUB >= {max_cost_rub:.4f} RUB"

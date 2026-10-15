@@ -587,7 +587,12 @@ def test_run_tool_loop_max_cost(sample_project, minimal_cfg, prompts_cfg):
 
 
 def test_run_tool_loop_budget_precheck_no_call(sample_project, minimal_cfg, prompts_cfg):
-    """Precheck: при крошечном бюджете client.chat НЕ вызывается вообще."""
+    """Precheck: при нулевом остатке client.chat НЕ вызывается вообще.
+
+    10.69: если remaining <= 0 — сразу break (без last_iteration).
+    Раньше тест использовал max_cost_rub=0.0000001 (положительный
+    остаток), теперь это ветка last_iteration — см. соседний тест.
+    """
     from ai_coder.agent import run_tool_loop
     from ai_coder.pricing import Rate
 
@@ -611,7 +616,7 @@ def test_run_tool_loop_budget_precheck_no_call(sample_project, minimal_cfg, prom
             cfg=minimal_cfg,
             prompts_cfg=prompts_cfg,
             max_iterations=10,
-            max_cost_rub=0.0000001,
+            max_cost_rub=0,  # ровно 0 → remaining=0 → break без итерации
             journal=False,
         )
 
@@ -622,6 +627,67 @@ def test_run_tool_loop_budget_precheck_no_call(sample_project, minimal_cfg, prom
     assert result.success is False
     assert result.stopped_reason == "max_cost"
     assert "precheck" in result.summary.lower()
+
+
+def test_run_tool_loop_budget_last_iteration(sample_project, minimal_cfg, prompts_cfg):
+    """Precheck: при положительном остатке — последняя итерация.
+
+    10.69: если remaining > 0, даём итерации завершиться (chat
+    вызывается), потом postcheck останавливает. Пользователь видит
+    финальный статус, а не «частичный без verify».
+    """
+    from ai_coder.agent import run_tool_loop
+    from ai_coder.llm import LLMResponse
+    from ai_coder.pricing import Rate
+
+    def _fake_response(content: str | None = None) -> LLMResponse:
+        if content is None:
+            content = '{"finish": true, "success": true, "summary": "done"}'
+        return LLMResponse(
+            content=content,
+            model="test-model",
+            prompt_tokens=100,
+            prompt_cache_hit_tokens=0,
+            prompt_cache_miss_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            duration_ms=100,
+            finish_reason="stop",
+        )
+
+    with (
+        patch("ai_coder.agent.planner.LLMClient") as MockClient,
+        patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
+        patch("ai_coder.agent._legacy.LLMClient", MockClient),
+        patch("ai_coder.agent.planner.get_rate") as mock_rate,
+        patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
+        patch("ai_coder.agent._legacy.get_rate", mock_rate),
+        patch("ai_coder.agent.planner.append_usage"),
+        patch("ai_coder.agent.tool_loop.append_usage"),
+        patch("ai_coder.agent._legacy.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _fake_response()
+
+        result = run_tool_loop(
+            goal="budget last iteration",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=10,
+            max_cost_rub=0.0000001,  # крошечный, но ПОЛОЖИТЕЛЬНЫЙ
+            journal=False,
+        )
+
+    # chat дёргался — итерация состоялась
+    assert MockClient.return_value.chat.call_count >= 1
+    # Стоимость ненулевая (итерация прошла)
+    assert result.total_cost_rub > 0
+    # Остановка — по бюджету (postcheck после last_iteration)
+    assert result.stopped_reason == "max_cost"
+    assert "last iteration" in result.summary.lower()
 
 
 def test_run_planner_decompose_budget_precheck(sample_project, minimal_cfg, prompts_cfg):
