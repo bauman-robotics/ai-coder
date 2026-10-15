@@ -1977,11 +1977,12 @@ def test_run_agent_decompose_replan_skip(sample_project, minimal_cfg, prompts_cf
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
-        patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2016,11 +2017,12 @@ def test_run_agent_decompose_replan_stop(sample_project, minimal_cfg, prompts_cf
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_fail_loop()),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
-        patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2066,11 +2068,12 @@ def test_run_agent_decompose_replan_modify(sample_project, minimal_cfg, prompts_
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
-        patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2117,11 +2120,12 @@ def test_run_agent_decompose_retry_cost_summation(sample_project, minimal_cfg, p
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
-        patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
+        patch("ai_coder.agent.decomposer.run_planner_replan", return_value=replan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2174,8 +2178,9 @@ def test_run_agent_decompose_max_cost(sample_project, minimal_cfg, prompts_cfg):
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2210,8 +2215,9 @@ def test_run_agent_decompose_max_cost_saves_report(sample_project, minimal_cfg, 
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2408,9 +2414,9 @@ def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_c
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose") as mock_planner,
-        patch("ai_coder.agent.planner.run_planner_decompose", mock_planner),
-        patch("ai_coder.agent._legacy.run_planner_decompose", mock_planner),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", mock_planner),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2451,8 +2457,9 @@ def test_run_agent_decompose_passes_max_iterations(sample_project, minimal_cfg, 
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
-        patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2491,8 +2498,9 @@ def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
-        patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2565,12 +2573,17 @@ def test_run_split_goals_saves_files(sample_project, minimal_cfg, prompts_cfg):
 
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
+        patch("ai_coder.agent.decomposer.LLMClient", MockClient),
+        patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
         patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
+        patch("ai_coder.agent.decomposer.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.decomposer.scan_project_metadata", mock_scan),
+        patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
         patch("ai_coder.agent.tool_loop.scan_project_metadata", mock_scan),
-        patch("ai_coder.agent._legacy.scan_project_metadata", mock_scan),
+        patch("ai_coder.agent.decomposer.scan_project_metadata", mock_scan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2610,12 +2623,17 @@ def test_run_split_goals_nonempty_dir_uses_timestamp(sample_project, minimal_cfg
 
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
+        patch("ai_coder.agent.decomposer.LLMClient", MockClient),
+        patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
         patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
+        patch("ai_coder.agent.decomposer.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.decomposer.scan_project_metadata", mock_scan),
+        patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
         patch("ai_coder.agent.tool_loop.scan_project_metadata", mock_scan),
-        patch("ai_coder.agent._legacy.scan_project_metadata", mock_scan),
+        patch("ai_coder.agent.decomposer.scan_project_metadata", mock_scan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
     ):
@@ -2649,8 +2667,9 @@ def test_run_agent_decompose_success_requires_applied_ops(sample_project, minima
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop_no_ops()),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2681,8 +2700,9 @@ def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cf
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
+        patch("ai_coder.agent.decomposer.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2716,8 +2736,9 @@ def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
-        patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2883,8 +2904,9 @@ def test_run_agent_decompose_verify_commands_passthrough(sample_project, minimal
 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
-        patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.decomposer.run_planner_decompose"),
         patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.decomposer.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
