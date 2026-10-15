@@ -4,6 +4,73 @@
 
 ---
 
+## [2026-10-15] iteration 10.63 — smoke-тесты GUI + omit убран
+
+### Что сделано
+
+**Smoke-тесты GUI** (`tests/test_gui_smoke.py`, 17 тестов) через
+`fastapi.testclient.TestClient`. Покрывают все GET/POST-роуты, кроме
+`POST /run` и `POST /stop/{run_id}` (запускают subprocess — не для smoke).
+
+**Список:**
+
+- `GET /` — 200, `build-form`.
+- `GET /health` — `{"status": "ok"}`.
+- `GET /help` — **301** → `/docs/cli/help`.
+- `GET /docs/cli/help` — 200.
+- `GET /docs/cli` — 200.
+- `GET /docs/cli/agent` — 200.
+- `GET /docs/cli/nonexistent` — **404**.
+- `POST /build` (пусто) — 200, `ai-coder agent`.
+- `POST /build` (tool-loop) — 200, `--tool-loop`.
+- `POST /build` (chain + chain_path) — 200, `--chain issues/demos`.
+- `POST /build` (task_type=run) — 200, `ai-coder run greet`.
+- `GET /stats/data` — JSON с ключами `summary`/`by_day`/`by_model`/`by_action`.
+- `GET /stats` — 200.
+- `GET /reports` — 200.
+- `GET /reports/nonexistent/nonexistent` — **404** (traversal-safe).
+- `POST /diff` (path=.) — 200, ключ `diff`.
+- `POST /diff` (bad path) — 200, ключ `error`.
+
+### Coverage
+
+- **Было** (с `omit gui/*`): TOTAL **73%**.
+- **Стало** (без omit): TOTAL **74%**, `gui/app.py` — **80%**.
+- **CI порог 70%** — держится с запасом.
+
+### Изменения
+
+- `tests/test_gui_smoke.py` — новый файл (~140 строк).
+- `pyproject.toml` — `omit` без `ai_coder/gui/*`.
+- CI не трогаем — порог 70% покрывает новый файл.
+
+### Что закрывает
+
+- **CHANGELOG 10.61** (omit gui/ как workaround).
+- **A.12/A.14** — откаты GUI были **из-за отсутствия тестов**.
+  Теперь регрессии в роутах ловятся автоматически.
+
+### Остаток
+
+- `POST /run`, `POST /stop/{run_id}` — не покрыты (subprocess).
+  При необходимости — `TestClient` + monkeypatch `Popen`.
+- Пагинация/фильтр `/reports` (A.9), встроенный терминал (A.10) —
+  в TODO.
+
+### Проверки
+
+- pytest — **477 passed** (460 + 17).
+- coverage — **74%** (порог 70%).
+- ruff, mypy — зелёные.
+
+### Ссылки
+
+- `docs/plan-dsh-inspired.md` → направление 4 (smoke-тесты GUI).
+- CHANGELOG 10.61 (omit gui/).
+
+---
+
+
 ## [2026-10-15] iteration 10.62 — проверка бюджета: E25 закрыт, E26 не баг
 
 ### Что сделано
