@@ -6,6 +6,162 @@
 
 ---
 
+## 2026-10-15 — E31: read_symbol C/C++/JS/TS/Go (агент, ✅ частично)
+
+**Гипотеза:** v4-pro справится с интеграцией `symbols.py` в `tools.py`
+через `--tool-loop` (6 связанных правок в одном файле).
+
+**Задача:** Issue 2 — заменить хардкод `.py` в `tool_read_symbol`
+на ветвление по расширению через `symbols.detect_language` /
+`symbols.find_symbol`.
+
+**Команда:**
+
+    ai-coder agent --issue issues/2026-10-15/2-read-symbol-integration.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 15 --max-cost-rub 4 --reverse-check
+
+**Результат:**
+- ❌ Формально неуспех: `stopped_reason=max_cost`, **5 итераций**, **3.49 RUB**.
+- ⚠️ Precheck остановил на итерации 6: остаток 0.51 RUB, оценка 1.15 RUB.
+- ✅ **2 из 6 правок** применены и **корректны:**
+  - импорт `detect_language` + `find_symbol as find_symbol_other`;
+  - ветка `path_arg`: `detect_language(p_str)` вместо `endswith(".py")`.
+- ❌ **4 правки не сделаны:** вызов `find_symbol_other`, валидация
+  `kind`, `lang = None` в else, docstring.
+
+**Разбор итераций:**
+
+    1. read_file   tools.py (520-640)         → ✅
+    2. read_file   symbols.py                 → ✅
+    3. edit_file   импорт                     → ✅ (1 replacement)
+    4. edit_file   ветка path_arg             → ✅ (1 replacement)
+    5. read_file   tools.py (545-600)         → ✅
+    6. —           ❌ precheck: 3.49 + 1.15 > 4.00 → max_cost
+
+**Доработка вручную (3 правки):**
+- вызов `find_symbol_other` для не-.py;
+- валидация `kind in (None, "def", "class", "func", "struct")`;
+- docstring: список расширений + новые kind.
+
+**Итог после ручной доработки:**
+- 480 passed (+3 теста: C func, JS arrow, Go struct).
+- E2E: `.c` → тело `calc_add` (без `main`), `.py` → регрессия ок,
+  `.rs` → `unsupported file type`, `kind=func` → ок,
+  `kind=bogus` → ошибка валидации.
+
+**Выводы:**
+
+1. **Precheck бюджета консервативен на edit_file.** Оценка 1.15 RUB
+   на предстоящую итерацию при лимите 4.00 остановила работу
+   **на полпути** (2 из 6 правок). Реальная оставшаяся работа
+   стоила бы ~2 RUB, но precheck не знает «сколько правок осталось».
+
+2. **Правки, которые агент успел применить, корректны.** Сверил
+   diff с issue — **дословно совпадает**. Проблема не в качестве,
+   а в **бюджете**.
+
+3. **Связанные правки в одном файле — всё ещё сложны.** 6 правок,
+   из которых 4 — семантические (`if lang is None`, вызов парсера,
+   валидация). v4-pro делал их последовательно (`read → edit → read
+   → edit → read`), но за 5 итераций осилил только 2.
+
+4. **Гибридный подход работает.** 2 правки от агента + 3 правки
+   вручную = 20 минут, 3.49 RUB. Сравни: полностью вручную — 40
+   минут, 0 RUB. Полностью агентом — упёрлись в бюджет.
+   Компромисс: агент делает «механику», человек — «семантику».
+
+**Артефакты:** коммиты `9b9f4c6` (config), `60cec3a` (feat).
+
+---
+
+## 2026-10-15 — E30: create_file 4752 символа через tool loop (✅ после фикса лимита)
+
+**Гипотеза:** v4-pro справится с `write_file` нового модуля
+(154 строки, 4752 символа) через `--tool-loop`.
+
+**Задача:** Issue 1 — создать `ai_coder/symbols.py` (regex-парсер
+C/C++/JS/TS/Go, 3 публичных имени).
+
+**Команда (первый прогон, провал):**
+
+    ai-coder agent --issue issues/2026-10-15/1-symbol-parsers.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 15 --max-cost-rub 2 --reverse-check
+
+**Результат 1 — провал:**
+- ❌ `finish_reason=length`, `completion=8000` (уперлись в лимит
+  `step_max_output_tokens=8000`).
+- ❌ `parse_error: Unterminated string starting at: ...`
+- ⚠️ Итерация 1: `read_file` tools.py (7520 prompt).
+- ⚠️ Итерация 2: обрезано (8000 completion), JSON не закрыт.
+- ⚠️ Итерация 3: precheck не пустил (2.13 RUB потрачено,
+  остаток < 0).
+- **Итого:** 2 итерации, **2.13 RUB**, файл **не создан**.
+
+**Фикс:** `config/config.yaml` → `step_max_output_tokens: 8000 → 24000`
+(обход TODO 249-252, отдельный коммит).
+
+**Команда (второй прогон, успех):**
+
+    ai-coder agent --issue issues/2026-10-15/1-symbol-parsers.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 15 --max-cost-rub 5 --reverse-check
+
+**Результат 2 — успех:**
+- ✅ Файл создан: `ai_coder/symbols.py` — 154 строки, 4752 символа.
+- ✅ Итераций: **2** (`read_file` tools.py → `write_file` symbols.py).
+- ✅ Reverse-check: **ок**.
+- ✅ Verify: `pytest -q` — passed.
+- ⚠️ **Стоимость: 5.92 RUB** при лимите 5.00 (**precheck недооценил**).
+
+**Что сделал агент (без правок после):**
+- Правильный `SUPPORTED_EXTENSIONS` (13 расширений).
+- `detect_language` через `Path().suffix.lower()`.
+- Разделил `_parse_line` (per-language) и `find_symbol` — чище, чем в issue.
+- Отфильтровал ключевые слова C (`if`, `for`, ...).
+- Границы тела — через баланс `{}`.
+
+**Что пришлось править вручную:**
+- **Имя файла:** агент создал `symbols.py`, а не `symbol_parsers.py`
+  (как в issue). **Приняли** `symbols.py` (короче).
+- **`end_line_exclusive`:** агент вернул 1-based `j + 2`, а
+  Python-путь возвращает 0-based `j`. **Расхождение семантики.**
+  Фикс: 4 строки (`+2` → `+1`, `len(lines) + 1` → `len(lines)`).
+  Причина: issue говорил «1-based exclusive», а Python-путь
+  исторически использует «0-based exclusive» — **мы выбрали
+  единый контракт** (Python).
+
+**Итог:**
+- Модуль создан, работает, протестирован.
+- Общая стоимость эксперимента: 2.13 + 5.92 = **8.05 RUB**
+  за два прогона.
+
+**Выводы:**
+
+1. **`step_max_output_tokens = 8000` — недостаточно** для
+   `write_file` модуля ~4.5 KB. Подтверждение TODO 249-252
+   живым воспроизведением.
+   - JSON-обёртка **удваивает** размер: 4752 символа текста
+     → ~10-14K output-токенов.
+   - `finish_reason=length` — точный диагностический признак.
+
+2. **`create_file` >4 KB через tool loop — дорого.** 5.92 RUB
+   за один файл. Плюс риск обрезки.
+
+3. **Precheck бюджета недооценивает output.** `write_file`
+   с output ~14K токенов при оценке ~1 RUB → фактическая 5.87 RUB.
+   Это **отдельный баг** (TODO 8.5), не чинили в этой сессии.
+
+4. **Reverse-check работает на write_file.** Не только на edit.
+
+5. **`create_file` — граница flash, не v4-pro.** Даже v4-pro
+   вязнет на объёме, но **справляется** при лимите 24000.
+
+**Артефакты:** коммиты `9b9f4c6` (config), `60cec3a` (feat).
+
+---
+
 ## 2026-10-15 — E29: v4-pro ревью после split-file (2 прогона, упирались в бюджет)
 
 **Гипотеза:** после split-file 10.65 (`agent.py` 3614 → 9 модулей)

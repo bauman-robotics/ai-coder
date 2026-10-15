@@ -4,6 +4,85 @@
 
 ---
 
+## [2026-10-15] iteration 10.66 — read_symbol: C/C++/JS/TS/Go
+
+### Что сделано
+
+**`read_symbol` теперь поддерживает не-Python языки:**
+- `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.hh` — C / C++;
+- `.js`, `.jsx`, `.mjs`, `.ts`, `.tsx` — JS / TS;
+- `.go` — Go.
+
+Через новый модуль **`ai_coder/symbols.py`** (154 строки) —
+regex-парсер без внешних зависимостей:
+- `SUPPORTED_EXTENSIONS` — 13 расширений;
+- `detect_language(path) -> str | None`;
+- `find_symbol(text, name, lang, kind=None) -> tuple[int, int, str] | None`.
+
+**`ai_coder/tools.py`** — `tool_read_symbol`:
+- ветвится по расширению: `.py` → `_find_symbol_in_text`,
+  остальные → `symbols.find_symbol`;
+- расширены `kind`: `'func'` | `'struct'` (к `'def'` | `'class'`);
+- обновлён docstring (список расширений, новые kind).
+
+**Python-путь не изменён** — регрессия E3 (2 итерации, 0.11 RUB)
+не затронута.
+
+**`tests/test_tools.py`** — +3 теста (C func, JS arrow, Go struct),
+переименован `test_read_symbol_rejects_non_py` →
+`test_read_symbol_rejects_unsupported_ext`.
+
+### Как создано
+
+**Агентом** (v4-pro, `--tool-loop`), **2 прогона**, **9.4 RUB**:
+
+- **Issue 1** — `create_file` `ai_coder/symbols.py` (5.92 RUB).
+  - Первый прогон — **провал:** `finish_reason=length`,
+    `completion=8000`, JSON обрезан. Виноват
+    `step_max_output_tokens=8000` (TODO 249-252).
+  - Второй прогон после `8000 → 24000` — ✅, 2 итерации.
+- **Issue 2** — `edit_file` `ai_coder/tools.py` (3.49 RUB).
+  - Агент применил **2 из 6 правок** (импорт, ветка path_arg),
+    остановлен precheck'ом на итерации 6 (3.49 + 1.15 > 4.00).
+  - **4 правки доделаны вручную**: вызов `find_symbol_other`,
+    валидация `kind`, `lang = None` в else, docstring.
+
+### Дополнительно
+
+- **`config/config.yaml`:** `step_max_output_tokens: 8000 → 24000`
+  (обход TODO 249-252, отдельный коммит `9b9f4c6`).
+- **`ai_coder/symbols.py`:** ручной фикс `end_line_exclusive` —
+  агент вернул 1-based (`j + 2`), а Python-путь использует
+  0-based (`j`). Привели к единому контракту (4 строки).
+
+### Побочный эффект
+
+**Precheck бюджета недооценивает output.** Третий случай за день:
+- E30: 5.92 RUB при лимите 5.00.
+- E31: 3.49 RUB при лимите 4.00 (остановка на полпути).
+- E26-a: три задачи по 0.47 / 0.85 / 0.68 при лимите 2.00 —
+  суммарно не превысили, сработало.
+
+Открыт **TODO 8.5** — отдельная задача (оценка стоимости
+следующей итерации через тип предстоящей операции).
+
+### Проверки
+
+- pytest — **480 passed** (477 + 3 новых).
+- ruff, mypy — clean.
+- E2E: `.c` → тело `calc_add` без `main`, `.py` → регрессия ок,
+  `.rs` → `unsupported file type`, `kind=func` → ок,
+  `kind=bogus` → ошибка валидации.
+
+### Ссылки
+
+- `docs/experiments.md` → **E30** (create_file), **E31** (интеграция).
+- Коммиты: `9b9f4c6` (config), `60cec3a` (feat).
+- TODO 8.5 (precheck бюджета), TODO 249-252 (step_max_output_tokens).
+
+---
+
+
 ## [2026-10-15] iteration 10.65 — split-file: agent.py → 9 модулей
 
 ### Что сделано
