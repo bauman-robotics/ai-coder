@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (10.62: проверка бюджета — E25 закрыт, E26 не баг; тесты бюджета 6 passed)
+**Дата обновления:** 2026-10-15 (10.62–10.63: проверка бюджета — E25 закрыт, E26 не баг; smoke-тесты GUI — omit gui/ убран, coverage 74%)
 **Ветка:** main
 **Последний коммит:** `7eb2c70` (10.61 — coverage: omit gui/)
-**Тесты:** 460 passed | CI: pytest x3 + ruff + mypy — зелёный
+**Тесты:** 477 passed (460 + 17 GUI smoke) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент, безопасность закрыта, автономность проверена (E9), цепочка `--split-goals` → `--chain --plan` работает, веб-панель A.0–A.8
 
 ---
@@ -224,7 +224,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - **10.60:** mypy — 9 ошибок в `gui/app.py` + `history.py` закрыты.
   `[tool.mypy] ignore_missing_imports = true`, `cast(float, ...)`
   в sort, `parts` без redefinition.
-- **10.61:** coverage — `omit gui/` в `[tool.coverage.run]` (CI падал
+- **10.61:** coverage — **omit gui/ убран** (10.63): TOTAL 74%, gui/app.py 80% (CI падал
   с 69% < 70% после добавления ~80 строк в `gui/app.py`).
 - `help.html`: 2 chain-примера.
 - Демо-README: `issues/demos/*` → `commands/demos/*` (chain
