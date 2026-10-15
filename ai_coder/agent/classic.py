@@ -817,7 +817,28 @@ def _prompt_review() -> str:
         print("Не понял. Ответь: y / n / a / s / d")
 
 
+def _select_step_only_paths(
+    *,
+    idx: int,
+    is_single_step: bool,
+    auto_targets: list[str],
+    auto_enabled: bool,
+) -> list[str] | None:
+    """
+    Возвращает only_paths для шага или None (полный контекст).
+
+    Одношаговый план: сужаем шаг 1 (idx == 0).
+    Многошаговый: шаг 1 — полный, шаги 2+ — сужены.
+    """
+    if not auto_enabled or not auto_targets:
+        return None
+    if idx > 0 or is_single_step:
+        return auto_targets
+    return None
+
+
 __all__ = [
+    "_select_step_only_paths",
     "_print_step_for_review",
     "_prompt_review",
     "_render_plan_summary",
