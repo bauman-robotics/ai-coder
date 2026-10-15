@@ -465,4 +465,4 @@ retry v4-pro — **+2-3 RUB**.
 ### Связь
 
 - **E36** (`docs/experiments.md`) — данные.
-- **TODO** — добавить пункт «Направление 12: subagents».
+- **TODO** — «Направление 12: subagents» (2-3 недели).
