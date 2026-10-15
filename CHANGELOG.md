@@ -4,6 +4,78 @@
 
 ---
 
+## [2026-10-15] iteration 10.64 — refactor: split run_tool_loop (491 → 94)
+
+### Что сделано
+
+**`run_tool_loop` (491 строка)** разбит на **ctx-dataclass** и **4 функции**.
+Цель — **читаемость**: агент **не справляется** с правкой **больших**
+функций своего же кода (E7, E11, E26-c).
+
+**Было:**
+
+    def run_tool_loop(...):  # 491 строка
+        # setup + цикл + finish + verify + commit + RC + report
+
+**Стало:**
+
+    @dataclass
+    class _ToolLoopCtx:  # 35 полей (вход + выход)
+        ...
+
+    def _tool_loop_one_iteration(ctx, iteration) -> str:  # 172
+        # одна итерация: LLM → tool → history
+        return "ok" | "continue" | "break"
+
+    def _handle_finish(ctx, action, iteration, llm_resp) -> None:  # 24
+        # success, warnings, сохранение шага
+
+    def _accumulate_cost_and_usage(ctx, iteration, ...) -> None:  # 38
+        # calculate_cost + append_usage
+
+    def _tool_loop_finalize(ctx) -> None:  # 108
+        # манифест, verify, откат, commit, RC, report
+
+    def run_tool_loop(...) -> ToolLoopResult:  # 94
+        # оркестратор: setup + цикл + finalize
+
+### Технические детали
+
+- **_ToolLoopCtx** — входные (не меняются) + выходные (мутируются).
+- **Возврат `"ok"/"continue"/"break"`** из `_tool_loop_one_iteration` —
+  `break`/`continue` **не работают** через границу функции.
+- **`resume`** — ранний `ToolLoopResult(stopped_reason="resume_error")`
+  **до** создания `LLMClient`.
+- **`client = LLMClient(cfg.api)`** — **после** resume-проверки.
+- **`accept_all_ref: list[bool]`** — mutable, для `_prompt_tool_review`.
+
+### Проверки
+
+- pytest — **477 passed** (460 + 17 GUI).
+- ruff — clean.
+- mypy — clean.
+- coverage — **74%** (не падает).
+
+### Что НЕ менялось
+
+- Сигнатура `run_tool_loop` — **та же** (21 параметр, keyword-only).
+- `ToolLoopResult`, `ToolAction`, `ToolResult`, `execute_tool` — **те же**.
+- Логика — **1-в-1**. Тесты **доказывают**.
+
+### Что даёт
+
+- **Агент сможет править `run_tool_loop`** — сейчас **не мог**.
+- **E2E-проверка автономности** — следующий шаг.
+- **Задел** для `split-file` (направление 5 плана dsh-inspired).
+
+### Ссылки
+
+- `docs/plan-dsh-inspired.md` → направление 5 (split).
+- `docs/experiments.md` → E7, E11, E26-c.
+
+---
+
+
 ## [2026-10-15] iteration 10.63 — smoke-тесты GUI + omit убран
 
 ### Что сделано
