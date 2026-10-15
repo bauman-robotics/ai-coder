@@ -415,10 +415,15 @@
       `pytest` (или `python -m pytest`) и `returncode == 5` —
       **пропускаем** (не ошибка). Покрыто тестами.
       См. `docs/experiments.md` → E20/E22.
-- [ ] **`--commit` ломает reverse-check.**
-      Diff берётся из `git diff HEAD`; после автокоммита агента
-      (`--commit`) — пусто, reverse-check пропускается
-      («diff пустой — пропуск»).
+- [ ] **`--commit` ломает reverse-check (не E26).**
+      В `tool_loop.py` при `--commit`: сначала `git commit` (строка ~662
+      в `_tool_loop_finalize`), потом `_collect_diff` (`git diff HEAD`) —
+      пусто → reverse-check пропускается.
+      **НЕ путать с E26-a** (untracked): это исправлено (коммит `00319df`).
+      **Фикс:** брать diff из последнего коммита агента (`git show HEAD`
+      или `git diff HEAD~1`) или делать `_collect_diff` **до** `--commit`.
+      **Файл:** `ai_coder/agent/tool_loop.py`, `_tool_loop_finalize`.
+      **Приоритет:** 🟡 низкий.
       **Фикс:** брать diff из истории tool loop
       (`write_file`/`edit_file` в `history`), а не из git.
       Файл: `ai_coder/agent/reverse.py`, `_collect_diff`.
@@ -429,6 +434,9 @@
 
 ### 24. Tool loop: флейки `missing 'path'` в edit_file — ✅ решено (10.14.26)
 
+- [x] **E26-a: reverse-check не видит untracked.** ЗАКРЫТО 2026-10-14:
+      `_collect_diff` включает untracked через `git status --porcelain`.
+      Коммит `00319df` (+ тесты `1480bce`, E26-b).
 - [x] **Проблема:** flash-модель 5× вернула `edit_file` с пустым args.
 - [x] **Фикс (промпт):** правило 12 — добавлен случай `missing 'path'`.
 - [x] **Фикс (код):** retry — при пустом args не считать итерацию
