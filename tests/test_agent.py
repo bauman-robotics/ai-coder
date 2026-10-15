@@ -181,12 +181,14 @@ def test_run_planner_returns_plan(sample_project: Path, minimal_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.return_value = _fake_llm_response(plan_json)
         with (
             patch("ai_coder.agent.planner.get_rate") as mock_rate,
             patch("ai_coder.agent.reverse.get_rate", mock_rate),
+            patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
             patch("ai_coder.agent._legacy.get_rate", mock_rate),
         ):
             from ai_coder.pricing import Rate
@@ -421,9 +423,11 @@ def test_run_tool_loop_finish_immediately(sample_project, minimal_cfg, prompts_c
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -458,9 +462,11 @@ def test_run_tool_loop_one_tool_then_finish(sample_project, minimal_cfg, prompts
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -488,9 +494,11 @@ def test_run_tool_loop_max_iterations(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -520,9 +528,11 @@ def test_run_tool_loop_parse_error_stops(sample_project, minimal_cfg, prompts_cf
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -548,9 +558,11 @@ def test_run_tool_loop_max_cost(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -582,9 +594,11 @@ def test_run_tool_loop_budget_precheck_no_call(sample_project, minimal_cfg, prom
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -618,9 +632,11 @@ def test_run_planner_decompose_budget_precheck(sample_project, minimal_cfg, prom
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -648,9 +664,11 @@ def test_run_tool_loop_finish_with_failure(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -687,9 +705,11 @@ def test_run_tool_loop_dry_run_skips_edit(sample_project, minimal_cfg, prompts_c
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -730,9 +750,11 @@ def test_run_tool_loop_dry_run_allows_read(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -768,12 +790,15 @@ def test_run_tool_loop_interactive_yes(sample_project, minimal_cfg, prompts_cfg)
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
+        patch("ai_coder.agent.tool_loop._prompt_tool_review", return_value="y"),
         patch("ai_coder.agent._legacy._prompt_tool_review", return_value="y"),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -802,12 +827,15 @@ def test_run_tool_loop_interactive_no_cancels(sample_project, minimal_cfg, promp
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
+        patch("ai_coder.agent.tool_loop._prompt_tool_review", return_value="n"),
         patch("ai_coder.agent._legacy._prompt_tool_review", return_value="n"),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -844,12 +872,15 @@ def test_run_tool_loop_interactive_skip(sample_project, minimal_cfg, prompts_cfg
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
+        patch("ai_coder.agent.tool_loop._prompt_tool_review", return_value="s"),
         patch("ai_coder.agent._legacy._prompt_tool_review", return_value="s"),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -887,9 +918,11 @@ def test_run_tool_loop_interactive_all(sample_project, minimal_cfg, prompts_cfg)
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -928,9 +961,11 @@ def test_run_tool_loop_backup_created(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -973,9 +1008,11 @@ def test_run_tool_loop_backup_not_overwritten(sample_project, minimal_cfg, promp
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1016,9 +1053,11 @@ def test_run_tool_loop_no_backup_in_dry_run(sample_project, minimal_cfg, prompts
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1057,9 +1096,11 @@ def test_run_tool_loop_auto_commit(git_repo, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1100,9 +1141,11 @@ def test_run_tool_loop_auto_commit_skipped_in_dry_run(git_repo, minimal_cfg, pro
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1139,9 +1182,11 @@ def test_run_tool_loop_saves_history_json(sample_project, minimal_cfg, prompts_c
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1180,9 +1225,11 @@ def test_run_tool_loop_resume_from_journal(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1209,9 +1256,11 @@ def test_run_tool_loop_resume_from_journal(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1267,9 +1316,11 @@ def test_run_planner_phase1_cache_hit(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -1310,9 +1361,11 @@ def test_run_planner_phase1_cache_refresh(sample_project, minimal_cfg, prompts_c
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -1349,9 +1402,11 @@ def test_run_planner_phase1_no_cache(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
@@ -1434,9 +1489,11 @@ def test_run_tool_loop_parse_error_retry(sample_project, minimal_cfg, prompts_cf
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1466,9 +1523,11 @@ def test_run_tool_loop_parse_error_exhausted(sample_project, minimal_cfg, prompt
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1500,9 +1559,11 @@ def test_run_planner_replan_skip(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1592,9 +1653,11 @@ def test_run_tool_loop_verify_success(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1626,9 +1689,11 @@ def test_run_tool_loop_verify_failed(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1670,9 +1735,11 @@ def test_run_tool_loop_rollback_on_verify_failed(sample_project, minimal_cfg, pr
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1728,12 +1795,15 @@ def test_run_auto_fix_loop_success(sample_project, minimal_cfg, prompts_cfg):
         return []
 
     with (
+        patch("ai_coder.agent.tool_loop.run_verify_commands", side_effect=fake_verify),
         patch("ai_coder.agent._legacy.run_verify_commands", side_effect=fake_verify),
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1771,7 +1841,9 @@ def test_run_auto_fix_max_cost(sample_project, minimal_cfg, prompts_cfg):
     )
 
     with (
+        patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent._legacy.run_verify_commands", return_value=["always fail"]),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
     ):
         result = run_auto_fix(
@@ -1795,12 +1867,15 @@ def test_run_auto_fix_max_attempts(sample_project, minimal_cfg, prompts_cfg):
     from ai_coder.pricing import Rate
 
     with (
+        patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent._legacy.run_verify_commands", return_value=["always fail"]),
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -1899,6 +1974,7 @@ def test_run_agent_decompose_replan_skip(sample_project, minimal_cfg, prompts_cf
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
@@ -1937,6 +2013,7 @@ def test_run_agent_decompose_replan_stop(sample_project, minimal_cfg, prompts_cf
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_fail_loop()),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
@@ -1986,6 +2063,7 @@ def test_run_agent_decompose_replan_modify(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
@@ -2036,6 +2114,7 @@ def test_run_agent_decompose_retry_cost_summation(sample_project, minimal_cfg, p
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.run_planner_replan", return_value=replan),
         patch("ai_coder.agent._legacy.run_planner_replan", return_value=replan),
@@ -2092,6 +2171,7 @@ def test_run_agent_decompose_max_cost(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2127,6 +2207,7 @@ def test_run_agent_decompose_max_cost_saves_report(sample_project, minimal_cfg, 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=expensive),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2185,9 +2266,11 @@ def test_run_tool_loop_retry_on_missing_args(sample_project, minimal_cfg, prompt
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2323,6 +2406,7 @@ def test_run_agent_decompose_accepts_plan(sample_project, minimal_cfg, prompts_c
         patch("ai_coder.agent.planner.run_planner_decompose") as mock_planner,
         patch("ai_coder.agent.planner.run_planner_decompose", mock_planner),
         patch("ai_coder.agent._legacy.run_planner_decompose", mock_planner),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2364,6 +2448,7 @@ def test_run_agent_decompose_passes_max_iterations(sample_project, minimal_cfg, 
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
         patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2403,6 +2488,7 @@ def test_run_agent_decompose_max_iterations_fallback(sample_project, minimal_cfg
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
         patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2476,8 +2562,10 @@ def test_run_split_goals_saves_files(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.tool_loop.scan_project_metadata", mock_scan),
         patch("ai_coder.agent._legacy.scan_project_metadata", mock_scan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2519,8 +2607,10 @@ def test_run_split_goals_nonempty_dir_uses_timestamp(sample_project, minimal_cfg
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.scan_project_metadata") as mock_scan,
+        patch("ai_coder.agent.tool_loop.scan_project_metadata", mock_scan),
         patch("ai_coder.agent._legacy.scan_project_metadata", mock_scan),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2556,6 +2646,7 @@ def test_run_agent_decompose_success_requires_applied_ops(sample_project, minima
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop_no_ops()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2587,6 +2678,7 @@ def test_run_agent_decompose_success_with_applied_ops(sample_project, minimal_cf
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent._legacy.run_tool_loop", return_value=_ok_loop()),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2621,6 +2713,7 @@ def test_run_agent_decompose_retry_zero_ops_not_success(sample_project, minimal_
     with (
         patch("ai_coder.agent.planner.run_planner_decompose", return_value=dec),
         patch("ai_coder.agent._legacy.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=side_effects),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -2652,13 +2745,16 @@ def test_run_tool_loop_verify_commands_explicit(sample_project, minimal_cfg, pro
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
-        patch("ai_coder.agent._legacy.run_verify_commands", return_value=[]) as mock_verify,
+        patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=[]) as mock_verify,
+        patch("ai_coder.agent._legacy.run_verify_commands", mock_verify),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockClient.return_value.chat.return_value = _make_llm_response(
@@ -2690,13 +2786,17 @@ def test_run_tool_loop_verify_commands_empty_disables(sample_project, minimal_cf
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
-        patch("ai_coder.agent._legacy.run_verify_commands") as mock_verify,
+        patch("ai_coder.agent.tool_loop.run_verify_commands") as mock_verify,
+        patch("ai_coder.agent.tool_loop.run_verify_commands", mock_verify),
+        patch("ai_coder.agent._legacy.run_verify_commands", mock_verify),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockClient.return_value.chat.return_value = _make_llm_response(
@@ -2728,13 +2828,16 @@ def test_run_tool_loop_verify_commands_none_falls_back_to_cfg(
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
-        patch("ai_coder.agent._legacy.run_verify_commands", return_value=["boom"]) as mock_verify,
+        patch("ai_coder.agent.tool_loop.run_verify_commands", return_value=["boom"]) as mock_verify,
+        patch("ai_coder.agent._legacy.run_verify_commands", mock_verify),
     ):
         mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
         MockClient.return_value.chat.return_value = _make_llm_response(
@@ -2777,6 +2880,7 @@ def test_run_agent_decompose_verify_commands_passthrough(sample_project, minimal
     with (
         patch("ai_coder.agent.planner.run_planner_decompose"),
         patch("ai_coder.agent._legacy.run_planner_decompose"),
+        patch("ai_coder.agent.tool_loop.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent._legacy.run_tool_loop", side_effect=fake_loop),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -3075,9 +3179,11 @@ def test_run_tool_loop_partial_warns(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -3130,9 +3236,11 @@ def test_run_tool_loop_no_partial_when_all_applied(sample_project, minimal_cfg, 
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
         patch("ai_coder.agent.planner.get_rate") as mock_rate,
         patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
         patch("ai_coder.agent._legacy.get_rate", mock_rate),
         patch("ai_coder.agent.planner.append_usage"),
         patch("ai_coder.agent._legacy.append_usage"),
@@ -3179,6 +3287,7 @@ def test_reverse_check_parses_ok(sample_project, minimal_cfg, prompts_cfg):
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.return_value = _make_llm_response(body)
@@ -3208,6 +3317,7 @@ def test_reverse_check_parses_problems(sample_project, minimal_cfg, prompts_cfg)
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.return_value = _make_llm_response(body)
@@ -3229,6 +3339,7 @@ def test_reverse_check_bad_json_returns_ok(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.return_value = _make_llm_response("not a json at all")
@@ -3251,6 +3362,7 @@ def test_reverse_check_strips_markdown_wrapper(sample_project, minimal_cfg, prom
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.return_value = _make_llm_response(body)
@@ -3274,6 +3386,7 @@ def test_reverse_check_truncates_long_diff(sample_project, minimal_cfg, prompts_
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         mock_chat = MockClient.return_value.chat
@@ -3299,6 +3412,7 @@ def test_reverse_check_llm_error_returns_ok(sample_project, minimal_cfg, prompts
     with (
         patch("ai_coder.agent.planner.LLMClient") as MockClient,
         patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
         patch("ai_coder.agent._legacy.LLMClient", MockClient),
     ):
         MockClient.return_value.chat.side_effect = RuntimeError("network down")
