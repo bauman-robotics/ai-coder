@@ -118,11 +118,15 @@
 
 По итогам D1 — идеи, которые можно реализовать в `ai-coder`:
 
-1. **Reasoning logging** — 💎
-   - dsh сохраняет `reasoning.text` в JSONL (thinking chunks).
-   - У нас — только tool calls в `step-N.md`.
-   - **Что:** логировать reasoning из LLM-ответа (если API отдаёт).
-   - **Проверить:** DeepSeek API — `reasoning_content` или похожее.
+1. **Reasoning logging** — 💎 (подтверждено API docs)
+   - **DeepSeek API** отдаёт `reasoning_content` (отдельное поле).
+   - **Thinking mode — default on** (effort `high`) — мы **не отключаем**.
+   - **Сейчас:** `LLMResponse.content` — только финальный ответ.
+     Reasoning **теряется** (но **оплачивается**).
+   - **Что:** `LLMResponse.reasoning_content` + `reasoning_tokens`
+     + логировать в `step-N.md`.
+   - **Дополнительно:** `reasoning_effort` (low/high/max) — управлять.
+   - См. `docs/thinking-mode.md`.
    - **Польза:** отладка, оценка качества, эксперименты.
 
 2. **Параллельные tool calls** — 💎

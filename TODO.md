@@ -558,6 +558,20 @@
 
 ### Модели
 
+- [ ] **Reasoning logging.** Читать `reasoning_content` из ответа LLM.
+      Добавить в `LLMResponse.reasoning_content: str = ""`.
+      Логировать в `step-N.md` (в `<details>`).
+      См. `docs/thinking-mode.md` -> «Что взять».
+- [ ] **`reasoning_tokens` — наблюдение.** Читать
+      `usage.completion_tokens_details.reasoning_tokens`, логировать
+      в `usage.jsonl`. В `ai-coder usage` — колонка «reasoning %».
+- [ ] **`reasoning_effort` — флаг.** Параметр в `LLMClient.chat` +
+      config (`agent.reasoning_effort`) + CLI (`--reasoning-effort
+      low|high|max`). Для простых задач (`greet`, `inventory`) — `low`.
+- [ ] **`--no-thinking` — toggle.** Флаг в CLI ->
+      `extra_body={"thinking": {"type": "disabled"}}`. Для простых
+      задач — не тратить output на reasoning.
+
 - [ ] Автоматический выбор модели по размеру задачи.
       Если prompt-токенов < 20K → `flash`, иначе → `v4-pro`.
       Или по типу действия: `write_readme` → `v4-pro`, `greet` → `flash`.
