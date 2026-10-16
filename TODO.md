@@ -4,6 +4,64 @@
 
 
 
+## Findings D5/D6 (сессия 2026-10-16, 10.75 + 10.76)
+
+Детали — `docs/findings-d5.md`; отчёты — `docs/dsh.md` → D5, D6.
+
+### ✅ Закрыто в 10.76
+
+- [x] **#1 verify не ловит mypy** — `agent.self_verify_commands`
+      применяются только для проекта-цели «сам ai-coder»
+      (`apply.is_self_hosted`). Коммит `1b2ee2f`.
+      Проверено: типовая ошибка → verify fail; чужой проект не затронут.
+- [x] **#3 модель не делегирует без подсказки** — правило «когда»
+      в `build_subagents_section`. Коммит `043aa96`.
+      Уточнение: на **малой** задаче не делегировать — **правильно**
+      (0/3 в обоих вариантах); проблема была на большой (0/3 → 3/3).
+
+### 🔴 #2 Validator в tool loop — следующая задача (D7)
+
+- [ ] `--reverse-check` **уже работает** в tool loop
+      (`ai_coder/cli.py:1332`, передаётся на `:1816`;
+      RC-блок — `ai_coder/agent/tool_loop.py:747`, `:766`).
+      Проблемы: **`default=False`**; RC **один раз в конце**
+      (после `finish`), а не per-iteration; в E2E-2 не поймал
+      неправильный фикс, т.к. goal формально соответствовал.
+      **Варианты:** A (1-2 ч) — включить default on;
+      B (4-6 ч) — RC per-iteration.
+      **Файлы:** `ai_coder/cli.py`, `ai_coder/agent/tool_loop.py`.
+      **Приоритет:** 🔴 высокий.
+
+### 🟡 #4 `iterations` ≠ числа LLM-вызовов
+
+- [ ] `iterations=len(ctx.history)`, а `_handle_finish` в `history`
+      не пишет → расхождение на 1 с `usage.jsonl` (в D6: 15 шагов
+      против 16 записей). **Файлы:** `ai_coder/agent/tool_loop.py`.
+      ~1 ч. **Приоритет:** 🟡.
+
+### 🟡 #5 пустой `summary` при `max_iterations`
+
+- [ ] Digest subagent'а приходит с `summary:` пустым — родитель
+      не знает, что упало (D5: test-runner; D6: все large-прогоны).
+      **Файлы:** `ai_coder/agent/tool_loop.py` (ветка `for/else`),
+      `ai_coder/agent/spawn.py` (`summarize_subagent_result`). ~1 ч.
+      **Приоритет:** 🟡.
+
+### 🟡 #6 перерасход `cap`
+
+- [ ] «≤ 1 итерации» уже задокументировано в `CHANGELOG.md`, но
+      **не** в `docs/tools.md` §6 → дописать. Опционально: precheck
+      по типу инструмента (E37). **Файлы:** `docs/tools.md`,
+      `ai_coder/agent/planner.py`. ~15 мин / ~2 ч. **Приоритет:** 🟡→🟢.
+
+### 🟢 #7 `.venv/bin/ai-coder` из worktree не существует
+
+- [ ] Не баг ai-coder: venv в main + editable install. Нужен рецепт
+      (абсолютный путь к venv, `PATH=.venv/bin`,
+      `PYTHONPATH=<worktree>`, `set -a; . .env; set +a`).
+      **Файлы:** `docs/tools.md` (раздел «Self-hosted E2E в worktree»).
+      ~30 мин. **Приоритет:** 🟢.
+
 ## Из Validator/GUI (сессия 2026-10-16, 10.71 + 10.72)
 
 ### CLI: валидация `--decompose-reverse-check`
@@ -1175,7 +1233,7 @@ Decompose **не решает** — связь между файлами сох�
 
 
 
-## Направление 12 — Subagents и оркестрация (10.70–10.75) — ✅ ЗАКРЫТО
+## Направление 12 — Subagents и оркестрация (10.70–10.76) — ✅ ЗАКРЫТО
 
 **Основание:** E36 (2026-10-15) — `--decompose` уже реализует
 базовую оркестрацию: разбиение, изоляция, retry, verify.
@@ -1197,6 +1255,11 @@ Decompose **не решает** — связь между файлами сох�
       дизайн — `docs/dsh/D4/answer.md`.
 
 ### Осталось (follow-up 10.75, найдено в E2E)
+
+> **Перенесено** в раздел «Findings D5/D6» выше (10.76):
+> depth 2, backup merge, `max_minutes`, `_handle_finish` для
+> explorer-родителя, `toolN` с 1, `iterations` с finish.
+> Там же — статус #1-#7.
 
 - [ ] **depth 2** — рекурсия subagent'ов (сейчас depth = 1, 3 барьера).
       ~1-2 дня.
