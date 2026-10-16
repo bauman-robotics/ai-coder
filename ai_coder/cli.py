@@ -11,7 +11,13 @@ from rich.table import Table
 
 from .actions import run_action, run_fix_action
 from .agent import run_agent
-from .apply import apply_plan, check_python_files, list_backups, run_verify_commands
+from .apply import (
+    apply_plan,
+    check_python_files,
+    list_backups,
+    resolve_verify_commands,
+    run_verify_commands,
+)
 from .apply import rollback as do_rollback
 from .config import WEB_ASSET_EXTENSIONS, load_config, load_prompts
 from .git import (
@@ -1428,13 +1434,18 @@ def agent_cmd(
     elif include_web:
         web_override = True
 
+    # verify-команды (D6, finding #1): --no-verify > --verify-commands >
+    # config.verify_commands + self_verify_commands (только для ai-coder).
+    explicit_cmds: list[str] | None = None
     if verify_commands is not None:
-        cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
-        cfg.agent.verify_commands = cmds
-
-    if not verify:
-        # --no-verify: отключить и py_compile, и verify_commands
-        cfg.agent.verify_commands = []
+        explicit_cmds = [c.strip() for c in verify_commands.split(";") if c.strip()]
+    cfg.agent.verify_commands = resolve_verify_commands(
+        project_root=path,
+        base_commands=cfg.agent.verify_commands,
+        self_commands=cfg.agent.self_verify_commands,
+        explicit=explicit_cmds,
+        disabled=not verify,  # --no-verify: и py_compile, и verify_commands
+    )
 
     if interactive and not apply and not tool_loop:
         console.print("[red]--interactive требует --apply (или --tool-loop)[/red]")

@@ -619,3 +619,48 @@ def run_verify_commands(
         errors.append(f"$ {cmd}\n  exit code: {proc.returncode}\n{output.rstrip()}")
 
     return errors
+
+
+# ---------- verify: выбор команд (D6, finding #1) ----------
+
+
+def is_self_hosted(project_root: Path) -> bool:
+    """True, если проект-цель — сам `ai-coder`.
+
+    Признак: в корне лежит пакет `ai_coder/` с `__init__.py`.
+    Нужен, чтобы включать self-специфичные проверки (`mypy ai_coder`)
+    только для своего репозитория и не ломать прогоны в чужих проектах.
+    """
+    return (project_root / "ai_coder" / "__init__.py").is_file()
+
+
+def resolve_verify_commands(
+    *,
+    project_root: Path,
+    base_commands: list[str],
+    self_commands: list[str] | None = None,
+    explicit: list[str] | None = None,
+    disabled: bool = False,
+) -> list[str]:
+    """Итоговый список verify-команд для проекта-цели.
+
+    Приоритет:
+      1. `disabled` (`--no-verify`) → `[]` — в т.ч. **без** self-проверок;
+      2. `explicit` (`--verify-commands`) → ровно он;
+      3. иначе `base_commands` + `self_commands`, если проект-цель —
+         сам ai-coder (`is_self_hosted`).
+
+    Явный `explicit=[]` (например, read-only subagent в spawn) даёт `[]`
+    и self-проверки НЕ добавляет — это важно: read-only subagent'у
+    дорогой pytest/mypy не нужен.
+    """
+    if disabled:
+        return []
+    if explicit is not None:
+        return list(explicit)
+    cmds = list(base_commands)
+    if self_commands and is_self_hosted(project_root):
+        for cmd in self_commands:
+            if cmd not in cmds:
+                cmds.append(cmd)
+    return cmds

@@ -1105,3 +1105,87 @@ def test_chain_report_path_in_stdout(tmp_path: Path, monkeypatch):
     assert "Отчёт:" in result.stdout, (
         f"в выводе должна быть строка «Отчёт:», а есть:\n{result.stdout[-1000:]}"
     )
+
+
+# ---------- D6 #1: self_verify_commands для проекта-цели ----------
+
+
+def _cli_env_with_verify(cli_env, verify, self_verify, *, self_hosted: bool):
+    import yaml
+
+    data = yaml.safe_load(cli_env["config"].read_text(encoding="utf-8"))
+    data["agent"]["verify_commands"] = verify
+    data["agent"]["self_verify_commands"] = self_verify
+    cli_env["config"].write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    if self_hosted:
+        pkg = cli_env["project"] / "ai_coder"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
+
+
+def _invoke_tool_loop(cli_env, extra: list[str] | None = None):
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured["cfg"] = kwargs["cfg"]
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(
+            success=True, summary="stub", iterations=1, total_cost_rub=0.01, applied_ops=1
+        )
+
+    with (
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--tool-loop",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                *(extra or []),
+            ],
+        )
+    return captured, result
+
+
+def test_self_verify_added_for_self_hosted_project(cli_env):
+    """D6 #1: проект-цель = ai-coder → добавляется mypy."""
+    _cli_env_with_verify(
+        cli_env, ["python -m pytest -q"], ["python -m mypy ai_coder"], self_hosted=True
+    )
+    captured, result = _invoke_tool_loop(cli_env)
+
+    assert "cfg" in captured, result.output[:2000]
+    assert captured["cfg"].agent.verify_commands == [
+        "python -m pytest -q",
+        "python -m mypy ai_coder",
+    ]
+
+
+def test_self_verify_skipped_for_foreign_project(cli_env):
+    """D6 #1: чужой проект → self-проверки НЕ добавляются."""
+    _cli_env_with_verify(
+        cli_env, ["python -m pytest -q"], ["python -m mypy ai_coder"], self_hosted=False
+    )
+    captured, result = _invoke_tool_loop(cli_env)
+
+    assert "cfg" in captured, result.output[:2000]
+    assert captured["cfg"].agent.verify_commands == ["python -m pytest -q"]
+
+
+def test_explicit_verify_commands_win_over_self(cli_env):
+    """D6 #1: --verify-commands переопределяет и self-проверки."""
+    _cli_env_with_verify(
+        cli_env, ["python -m pytest -q"], ["python -m mypy ai_coder"], self_hosted=True
+    )
+    captured, result = _invoke_tool_loop(cli_env, extra=["--verify-commands", "ruff check ."])
+
+    assert "cfg" in captured, result.output[:2000]
+    assert captured["cfg"].agent.verify_commands == ["ruff check ."]

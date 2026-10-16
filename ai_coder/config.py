@@ -237,6 +237,9 @@ class AgentConfig(BaseModel):
     max_steps: int = 10
     max_minutes: int = 30
     verify_commands: list[str] = Field(default_factory=list)
+    # Доп. проверки ТОЛЬКО когда проект-цель — сам ai-coder (D6, finding #1):
+    # `mypy ai_coder` в чужом проекте упал бы — там нет пакета ai_coder.
+    self_verify_commands: list[str] = Field(default_factory=list)
     verify_timeout_sec: int = 60
     verify_max_output_chars: int = 10_000
     stop_on_verify_failure: bool = True
