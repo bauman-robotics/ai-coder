@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from ai_coder.agent.spawn import run_spawn_subagent
 from ai_coder.agent.tool_loop import run_tool_loop
 from ai_coder.config import AppConfig, SubagentConfig, load_config, load_prompts
 from ai_coder.llm import LLMResponse
@@ -369,3 +371,376 @@ def test_allowlist_allows_listed_tool(minimal_cfg, prompts_cfg, sample_project):
         allowed_tools=["list_files"],
     )
     assert result.history[0][1].ok is True
+
+
+# ---------- C. Исполнение spawn ----------
+
+
+def _parent_ctx(cfg, prompts_cfg, project_root, **over):
+    """Собирает _ToolLoopCtx родителя для прямых тестов run_spawn_subagent."""
+    from ai_coder.agent.tool_loop import _ToolLoopCtx
+    from ai_coder.scanner import scan_project_metadata
+
+    ctx = _ToolLoopCtx(
+        goal=over.pop("goal", "большая задача родителя целиком"),
+        project_root=project_root,
+        cfg=cfg,
+        prompts_cfg=prompts_cfg,
+        client=None,
+        model=cfg.api.model,
+        depth="normal",
+        extra_exclude=None,
+        max_iterations=5,
+        max_cost_rub=over.pop("max_cost_rub", 10.0),
+        dry_run=over.pop("dry_run", False),
+        dry_read=over.pop("dry_read", False),
+        interactive=over.pop("interactive", False),
+        auto_commit=False,
+        allow_blacklist=False,
+        verify_commands=over.pop("verify_commands", None),
+        step_type=None,
+        reverse_check=False,
+        feedback_section="",
+        subagents_section="",
+        allowed_tools=frozenset(TOOL_REGISTRY),
+        subagents_by_name={s.name: s for s in cfg.agent.subagents},
+        spawn_depth=over.pop("spawn_depth", 0),
+        max_spawns=over.pop("max_spawns", 3),
+        usage_action_prefix="agent",
+        prompt_entry=prompts_cfg.get("agent_tool_json"),
+        tools_block="",
+        scan_meta=scan_project_metadata(project_root, cfg.scanning),
+    )
+    for k, v in over.items():
+        setattr(ctx, k, v)
+    return ctx
+
+
+def _child_result(**over):
+    from ai_coder.agent.models import ToolLoopResult
+
+    base = dict(
+        success=True,
+        summary="нашёл 3 вызова",
+        iterations=2,
+        total_cost_rub=0.4,
+        total_cost_cny=0.03,
+        total_cost_usd=0.004,
+        applied_ops=0,
+        read_ops=3,
+        stopped_reason="completed",
+    )
+    base.update(over)
+    return ToolLoopResult(**base)
+
+
+GOAL = "найди все вызовы _collect_diff в ai_coder/"
+
+
+def test_spawn_passes_props_to_child(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return _child_result()
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", fake):
+        r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is True
+    assert captured["allowed_tools"] == _EXPLORER["tools"]
+    assert captured["spawn_depth"] == 1
+    assert captured["usage_action_prefix"] == "agent:spawn:code-explorer"
+    assert captured["model"] == "test-model"
+    assert captured["max_iterations"] == 5
+    assert captured["max_cost_rub"] == 1.0  # spec.max_cost_rub
+    assert captured["verify_commands"] == []  # read-only → pytest не нужен
+    assert captured["dry_run"] is False
+    assert captured["dry_read"] is False
+    assert captured["allow_blacklist"] is False
+    assert captured["journal_subdir"] is None  # у родителя journal=False
+    assert captured["project_root"] == sample_project
+    assert "code-explorer" in r.output and "✅" in r.output
+
+
+def test_spawn_sums_cost_and_counters(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+    ctx.total_cost_rub = 0.1
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", lambda **kw: _child_result()):
+        run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert ctx.total_cost_rub == pytest.approx(0.5)
+    assert ctx.total_cost_cny == pytest.approx(0.03)
+    assert ctx.total_cost_usd == pytest.approx(0.004)
+    assert ctx.spawn_count == 1
+    assert ctx.spawn_cost_rub == pytest.approx(0.4)
+    # баг 1 (D4 §7): spawn засчитывается родителю как одно продуктивное
+    # действие (+1), иначе explorer-родитель не пройдёт _handle_finish.
+    assert ctx.read_ops == 1
+    assert ctx.applied_ops == 0
+
+
+def test_spawn_applied_ops_from_child(minimal_cfg, prompts_cfg, sample_project):
+    """Ребёнок писал файлы → родитель может finish (step_type=edit)."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+
+    res = _child_result(applied_ops=4, read_ops=0)
+    with patch("ai_coder.agent.spawn.run_tool_loop", lambda **kw: res):
+        run_spawn_subagent(ctx, {"name": "markdown-writer", "goal": "запиши README-раздел"})
+
+    assert ctx.applied_ops == 1
+    assert ctx.read_ops == 0
+
+
+def test_spawn_write_spec_inherits_verify(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, verify_commands=["pytest -q"])
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return _child_result()
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", fake):
+        run_spawn_subagent(ctx, {"name": "markdown-writer", "goal": "запиши README-раздел"})
+
+    assert captured["verify_commands"] == ["pytest -q"]
+
+
+def test_spawn_instructions_go_into_goal(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return _child_result()
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", fake):
+        run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert GOAL in captured["goal"]
+    assert "[ИНСТРУКЦИЯ]" in captured["goal"]
+    assert "Отвечай списком файл:строка." in captured["goal"]
+
+
+def test_spawn_journal_subdir_nested(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    parent_journal = sample_project / ".ai-out" / "tool-loop-parent"
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, journal_dir=parent_journal)
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return _child_result()
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", fake):
+        run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert captured["journal"] is True
+    assert captured["journal_subdir"] == parent_journal / "spawn-code-explorer"
+
+
+def test_spawn_unknown_name(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+
+    r = run_spawn_subagent(ctx, {"name": "nope", "goal": GOAL})
+
+    assert r.ok is False
+    assert "unknown subagent" in r.error
+    assert "code-explorer" in r.error
+    assert ctx.spawn_count == 0
+
+
+def test_spawn_depth_guard(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, spawn_depth=1)
+
+    r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "depth=1" in r.error
+
+
+def test_spawn_count_guard(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, max_spawns=2)
+    ctx.spawn_count = 2
+
+    r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "spawn-лимит исчерпан (2/2)" in r.error
+
+
+def test_spawn_interactive_guard(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, interactive=True)
+
+    r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "interactive" in r.error
+
+
+def test_spawn_budget_fail_closed(minimal_cfg, prompts_cfg, sample_project):
+    """cap <= 0 → отказ, run_tool_loop НЕ вызывается."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, max_cost_rub=0.05)
+    ctx.total_cost_rub = 0.10  # уже перерасход
+
+    with patch("ai_coder.agent.spawn.run_tool_loop") as mock:
+        r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "бюджет исчерпан" in r.error
+    mock.assert_not_called()
+
+
+def test_spawn_cap_limits_total_spawn_budget(minimal_cfg, prompts_cfg, sample_project):
+    """cap учитывает subagent_max_total_cost_rub - spawn_cost_rub."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    cfg.agent.subagent_max_total_cost_rub = 1.0
+    cfg.agent.subagent_default_max_cost_rub = 5.0
+    spec_no_cap = dict(_EXPLORER)
+    spec_no_cap.pop("max_cost_rub")
+    cfg = _cfg_with_subagents(cfg, [spec_no_cap])  # type: ignore[arg-type]
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+    ctx.spawn_cost_rub = 0.75
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return _child_result()
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", fake):
+        run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert captured["max_cost_rub"] == pytest.approx(0.25)  # 1.0 - 0.75
+
+
+def test_spawn_short_goal_rejected(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+
+    r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": "коротко"})
+
+    assert r.ok is False
+    assert "короткий" in r.error
+
+
+def test_spawn_parent_goal_rejected(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project, goal="сделай всю работу целиком")
+
+    r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": "  Сделай  всю работу целиком "})
+
+    assert r.ok is False
+    assert "совпадает с задачей родителя" in r.error
+
+
+def test_spawn_child_failure_is_ok_false_with_digest(minimal_cfg, prompts_cfg, sample_project):
+    """Провал ребёнка не роняет родителя, но digest явно провальный."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+    failed = _child_result(success=False, stopped_reason="max_iterations", summary="не успел")
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", lambda **kw: failed):
+        r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "❌" in r.error
+    assert "max_iterations" in r.error
+    # стоимость всё равно учтена
+    assert ctx.spawn_cost_rub == pytest.approx(0.4)
+
+
+def test_spawn_crash_does_not_raise(minimal_cfg, prompts_cfg, sample_project):
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    ctx = _parent_ctx(cfg, prompts_cfg, sample_project)
+
+    def boom(**kwargs):
+        raise RuntimeError("child exploded")
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", boom):
+        r = run_spawn_subagent(ctx, {"name": "code-explorer", "goal": GOAL})
+
+    assert r.ok is False
+    assert "spawn crashed" in r.error
+    assert "child exploded" in r.error
+
+
+def test_spawn_e2e_via_parent_tool_loop(minimal_cfg, prompts_cfg, sample_project):
+    """E2E: родитель вызывает spawn_subagent, получает digest и finish."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    responses = [
+        json.dumps(
+            {
+                "tool": "spawn_subagent",
+                "args": {"name": "code-explorer", "goal": GOAL},
+                "reason": "нужна разведка",
+            }
+        ),
+        '{"finish": true, "summary": "готово", "success": true}',
+    ]
+
+    with patch("ai_coder.agent.spawn.run_tool_loop", lambda **kw: _child_result()):
+        result, user_prompt = _run_loop(cfg, prompts_cfg, sample_project, responses)
+
+    assert result.success is True
+    spawn_action, spawn_result = result.history[0]
+    assert spawn_action.tool == "spawn_subagent"
+    assert spawn_result.ok is True
+    assert "code-explorer" in spawn_result.output
+    # стоимость ребёнка попала в итог родителя
+    assert result.total_cost_rub >= 0.4
+
+
+def test_spawn_dry_run_does_not_write_files(minimal_cfg, prompts_cfg, sample_project):
+    """dry_run пробрасывается в ребёнка: файлы НЕ создаются."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+    responses = [
+        json.dumps(
+            {
+                "tool": "spawn_subagent",
+                "args": {"name": "markdown-writer", "goal": "создай файл spawn_out.txt"},
+                "reason": "делегирую",
+            }
+        ),
+        '{"tool": "write_file", "args": {"path": "spawn_out.txt", "content": "hello"}}',
+        '{"finish": true, "summary": "записал", "success": true}',
+        '{"finish": true, "summary": "готово", "success": true}',
+    ]
+
+    result, _ = _run_loop(cfg, prompts_cfg, sample_project, responses, dry_run=True)
+
+    assert result.history[0][1].ok is True
+    assert not (sample_project / "spawn_out.txt").exists()
+
+
+def test_spawn_real_child_writes_when_not_dry_run(minimal_cfg, prompts_cfg, sample_project):
+    """Контроль: без dry_run реальный ребёнок пишет файл."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+    responses = [
+        json.dumps(
+            {
+                "tool": "spawn_subagent",
+                "args": {"name": "markdown-writer", "goal": "создай файл spawn_out.txt"},
+                "reason": "делегирую",
+            }
+        ),
+        '{"tool": "write_file", "args": {"path": "spawn_out.txt", "content": "hello"}}',
+        '{"finish": true, "summary": "записал", "success": true}',
+        '{"finish": true, "summary": "готово", "success": true}',
+    ]
+
+    result, _ = _run_loop(cfg, prompts_cfg, sample_project, responses)
+
+    assert result.history[0][1].ok is True
+    assert (sample_project / "spawn_out.txt").read_text(encoding="utf-8") == "hello"

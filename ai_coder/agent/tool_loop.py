@@ -638,15 +638,23 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
         )
 
     # --- исполнение ---
-    tool_result = execute_tool(
-        action.tool,
-        action.args,
-        project_root,
-        dry_run=dry_run,
-        dry_read=dry_read,
-        write_cfg=cfg.write,
-        allow_blacklist=allow_blacklist,
-    )
+    if action.tool == "spawn_subagent":
+        # Ленивый импорт: spawn.py импортирует run_tool_loop из этого модуля.
+        # spawn_subagent — второй оркестратор, а не обычный tool:
+        # execute_tool не видит cfg/ctx/бюджет.
+        from .spawn import run_spawn_subagent
+
+        tool_result = run_spawn_subagent(ctx, action.args)
+    else:
+        tool_result = execute_tool(
+            action.tool,
+            action.args,
+            project_root,
+            dry_run=dry_run,
+            dry_read=dry_read,
+            write_cfg=cfg.write,
+            allow_blacklist=allow_blacklist,
+        )
     ctx.history.append((action, tool_result))
     if action.tool in ("write_file", "edit_file") and tool_result.ok:
         ctx.applied_ops += 1
