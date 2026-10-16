@@ -1175,36 +1175,54 @@ Decompose **не решает** — связь между файлами сох�
 
 
 
-## Направление 12 — Subagents и оркестрация (10.70+, 2-3 недели)
+## Направление 12 — Subagents и оркестрация (10.70–10.75) — ✅ ЗАКРЫТО
 
 **Основание:** E36 (2026-10-15) — `--decompose` уже реализует
 базовую оркестрацию: разбиение, изоляция, retry, verify.
 
 **Не строить с нуля — доработать.**
 
-### Что есть
-
-- Разбиение (v4-pro планирует).
-- Изоляция контекстов (свой ctx per subtask).
-- Retry (flash → v4-pro при `max_iterations`).
-- Verify (pytest после каждой).
-- Rollback (при verify_failed).
-
-### Что добавить
+### Сделано
 
 - [x] **Router** — модель по сложности (explore/edit-simple/edit-complex/verify). ✅ 10.70 (2026-10-15).
-  Router по-прежнему хардкодит типы в `decomposer.py`; секция
-  `agent.subagents` (10.75) — отдельный механизм для `spawn_subagent`.
-  ~3-4 дня.
+      Router по-прежнему хардкодит типы в `decomposer.py`; секция
+      `agent.subagents` (10.75) — отдельный механизм для `spawn_subagent`.
 - [x] **Validator** — семантическая проверка результата подзадачи
   (адаптация `--reverse-check`). ✅ 10.71 (2026-10-16).
 - [x] **Feedback loop** — summary подзадачи N в подзадачу N+1
   и в планировщик. ✅ 10.74 (2026-10-16).
-- [ ] **Retry-политика** — расширить (parse_error, verify_failed). ~1-2 дня.
 - [x] **Инструмент `spawn_subagent`** — ✅ 10.75 (2026-10-16).
-  Осталось (отложено): рекурсия (depth 2), мёрж backup-манифестов
-  subagent'а в родителя, time-лимит на subagent'а
-  (`max_minutes` в tool loop не проверяется).
+      Коммиты `d679409`, `00c6700`, `1546ad0`, `9d5d840`. E2E:
+      `/tmp/spawn-e2e`, 0.1139 RUB. Реализовано dsh (D4),
+      дизайн — `docs/dsh/D4/answer.md`.
+
+### Осталось (follow-up 10.75, найдено в E2E)
+
+- [ ] **depth 2** — рекурсия subagent'ов (сейчас depth = 1, 3 барьера).
+      ~1-2 дня.
+- [ ] **backup merge** — манифест backup'ов subagent'а в родителя,
+      чтобы родительский `rollback` откатывал и правки ребёнка
+      (сейчас у ребёнка свой `backup_dir`). ~4 ч.
+- [ ] **`max_minutes` в tool loop** — сейчас не проверяется вообще,
+      subagent'а ограничивает только бюджет (`cap`). ~2 ч.
+- [ ] **`_handle_finish` для explorer-родителя** — `step_type="edit"`
+      требует `applied_ops > 0`, поэтому родитель, который только
+      делегировал read-only разведку, завершиться не может
+      (`read_ops` не подходит). ~2 ч.
+- [ ] **`toolN` с 1** — pre-existing: `start_iteration = 0`, первый
+      запрос `agent:tool0`. ~30 мин.
+- [ ] **`iterations` включая finish** — `iterations=len(ctx.history)`,
+      а `_handle_finish` в history не пишет (расхождение с
+      `usage.jsonl` на 1). ~30 мин.
+- [ ] **Retry-политика** — расширить (parse_error, verify_failed).
+      ~1-2 дня.
+
+### Связанные находки (см. «Из Validator/GUI», выше)
+
+- `usage --by-action` не существует (🟢 низкий).
+- `usage.jsonl`: пути CWD vs `project_root` (🟡 средний).
+- E2E feedback: планировщик создаёт verify-подзадачи (🔴 высокий) —
+  тот же класс проблемы, что «`_handle_finish` для explorer-родителя».
 
 ### Концепция
 
@@ -1212,9 +1230,8 @@ Decompose **не решает** — связь между файлами сох�
 
 ### Приоритет
 
-🟡 средний — после закрытия текущих TODO (8.7B, GUI, ветки).
-Но **выше** MCP и `_legacy.py` — потому что решает
-E19/E25/E30-E36 системно.
+✅ направление закрыто (10.75). Follow-up — по списку выше;
+сначала 🔴 verify-подзадачи, затем 🟡 пути `usage.jsonl`.
 
 ## GUI — сделано
 

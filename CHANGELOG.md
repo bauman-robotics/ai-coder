@@ -76,16 +76,28 @@
 - `step_type` ребёнку не передаётся: с `step_type="edit"` read-only
   subagent (explorer) всегда получал бы `success=False`.
 
-### Тесты
+### Тесты, коммиты, E2E
 
-- `tests/test_spawn.py` (новый): 49 тестов — конфиг/валидаторы,
+- `tests/test_spawn.py` (новый): **51 тест** — конфиг/валидаторы,
   allowlist, промпт (включая реальный `prompts.yaml` без `KeyError`),
   props ребёнка, бюджет, guards, fail-open, dry_run E2E, атрибуция
   `usage.jsonl`, вложенный журнал.
 - `tests/test_tools.py`: `test_registry_has_six_tools` →
   `test_registry_has_expected_tools` (точный набор из 7), `len(specs)
   == len(TOOL_REGISTRY)` — счётчик 6→7 неизбежен.
-- **540 passed** (491 + 49), ruff/mypy clean, pre-commit зелёный.
+- **542 passed** (491 + 51), ruff/mypy clean, pre-commit зелёный.
+- **Коммиты:** `d679409..9d5d840` (4 коммита: A — конфиг,
+  B — ToolSpec + allowlist + промпт, C — исполнение, D — usage + docs).
+- **E2E:** `/tmp/spawn-e2e` — **0.1139 RUB**.
+- Реализовано **dsh** (D4); дизайн — `docs/dsh/D4/answer.md`.
+
+### Известные ограничения (v1)
+
+depth 2 не реализовано; backup merge subagent'а в родителя нет;
+`max_minutes` в tool loop не проверяется; `_handle_finish` +
+`step_type="edit"` не даёт завершиться explorer-родителю; `toolN`
+начинается с 0 (pre-existing); `iterations` не считает finish-итерацию.
+Подробнее — `docs/state.md` → «Известные проблемы».
 
 ---
 
