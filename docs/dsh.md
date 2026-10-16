@@ -13,6 +13,120 @@
 
 ---
 
+## 2026-10-16 — D5: verify-подзадача + 3 subagents (E2E) (⚠️ смешанный)
+
+**Задача:** проверить `spawn_subagent` (10.75) на **реальной** задаче —
+починить verify-подзадачу в `decompose`
+(`issues/2026-10-16/12-verify-subtask.md`), с **3 ролями** в конфиге.
+
+**Где:** отдельный worktree `.worktrees/verify` (ветка
+`test-verify-spawn`), `--tool-loop --apply --model deepseek-v4-pro
+--max-cost-rub 15`. `PYTHONPATH` = worktree (self-hosted),
+`PATH` = `.venv/bin` (иначе `run_shell` не находит `python`/`pytest`).
+
+### Config (10.75.1)
+
+3 subagents раскомментированы в `config/config.yaml`:
+`code-explorer` (read-only, flash, 5 ит, cap 1.0),
+`test-runner` (`run_shell`, flash, 3 ит, cap 0.5),
+`markdown-writer` (`read_file`+`write_file`, v4-pro, 8 ит, cap 2.0).
+Коммит `1775bc1`, **542 passed**.
+
+### E2E-1 (с подсказкой — все 3 роли): ✅ 11.1805 RUB
+
+Goal **явно называл** роли. **Все 3 роли вызваны** (3 × `spawn_subagent`):
+
+| # | Роль | Итог | Стоимость | Итер |
+|---|---|---|---|---|
+| 1 | code-explorer | ✅ completed | 0.1999 RUB | 3 |
+| 2 | test-runner | ❌ max_iterations | 0.1599 RUB | 3 |
+| 3 | markdown-writer | ❌ max_cost | 2.4496 RUB | 3 |
+
+- Итог: **15 шагов, 11.1805 RUB** (из них **2.8094 — subagents**),
+  причина `completed`, `success`.
+- Digest'ы (журнал `history.json`):
+  - **code-explorer**: «step_type в `decomposer.py` присваивается в
+    двух местах: `:367` и `:420`» — **точная** разведка.
+  - **test-runner**: `summary:` **пустой** (max_iterations).
+  - **markdown-writer**: `budget exceeded: 2.4496 RUB >= 2.0000 RUB`.
+- Родитель сделал правки **сам**: 3 × `edit_file` в `decomposer.py`
+  + `edit_file` в `docs/state.md`.
+- **Фикс семантически верный:** `explore→read`, `verify→None`, иначе
+  `edit`; оба вызова — `step_type=step_type`.
+- **НО ломает mypy:** `decomposer.py:353: Incompatible types in
+  assignment (expression has type "None", variable has type "str")` —
+  нужно `step_type: str | None = "edit"`. Тесты/ruff — зелёные.
+- **Журналы детей вложены** в родительский (проверено):
+  `tool-loop-<ts>/spawn-<name>/tool-loop-<ts>/`.
+
+### E2E-2 (без подсказки): ❌ 10.5242 RUB
+
+Тот же goal, но **без имён ролей**.
+
+- **`spawn_subagent` не вызван ни разу** (0 из 20 шагов), хотя
+  инструмент был в промпте, а 3 роли — в конфиге.
+- Модель сделала всё сама: 8 `run_shell`, 8 `read_file`,
+  3 `edit_file`, 1 `read_symbol`.
+- Итог: **20 шагов, 10.5242 RUB**, `max_iterations`, `summary` пустой.
+- **Фикс неверный:** `step_type=st.type` — сырые значения (`explore`,
+  `edit-simple`, `verify`), а `_handle_finish` понимает только
+  `None` / `"read"` / «всё остальное = edit».
+- **При этом pytest 542 ✅, ruff ✅, mypy ✅** — все проверки зелёные
+  при **неработающем** фиксе.
+
+### Почему фикс E2E-2 не лечит (демонстрация)
+
+`_handle_finish` при `applied_ops=0, read_ops=0`:
+
+    step_type      success
+    None           True     OK
+    read           False    (нужен read_ops > 0)
+    edit           False
+    explore        False    <-- баг НЕ исправлен
+    edit-simple    False
+    verify         False    <-- баг НЕ исправлен
+
+### Находки
+
+1. **`iterations` ≠ число LLM-вызовов.** Explorer: digest «3 итер»,
+   а в `usage.jsonl` — **4** записи (`:tool0..:tool3`). Причина:
+   `iterations=len(ctx.history)`, а `_handle_finish` в history не
+   пишет. Подтверждено дважды (E2E-1: 15 шагов / 16 записей).
+2. **Атрибуция расходов работает и точна:** сумма
+   `agent:spawn:code-explorer:*` = 0.2000 RUB = digest 0.1999 RUB.
+   Без 10.75 эти **2.81 RUB** были бы неотличимы от родительских.
+3. **Verify не ловит mypy.** `verify_commands` = `python -m pytest -q`
+   → фикс E2E-1 прошёл verify, хотя mypy падает. Нужен mypy в verify
+   (или RC).
+4. **Зелёные проверки ≠ правильный фикс** (E2E-2: pytest+ruff+mypy ✅,
+   баг остался) — ровно тот случай, для которого делали Validator
+   (`--decompose-reverse-check`), а в tool loop он не применяется.
+5. **Модель не делегирует без прямого указания** — даже с 3 ролями в
+   промпте и правилом 19.
+6. **test-runner вернул пустой summary** при `max_iterations` — родитель
+   не понимает, что именно упало.
+7. **markdown-writer превысил cap** (2.4496 > 2.0) — подтверждает
+   задокументированный перерасход «≤ 1 итерации» (последняя итерация
+   v4-pro — 1.6470 RUB).
+8. **Вложенные журналы и allowlist** — работают.
+
+### Итог
+
+- `spawn_subagent` **технически работает**: роли вызваны, digest'ы
+  приходят, стоимость атрибутируется, журналы вложены, depth=1 и
+  allowlist соблюдены.
+- **Практическая ценность под вопросом:** 2 из 3 ролей упали, родитель
+  всё равно сделал работу сам; без подсказки модель **не делегирует**.
+- **Worktree `test-verify-spawn`** оставлен пользователю (чистый, на
+  `1775bc1`). Артефакты в `.ai-out/dsh-d5/` (gitignored):
+  `e2e1-changes.patch`, `e2e2-changes.patch`, журналы, `.e2e1.log`,
+  `.e2e2.log`.
+
+**Ссылки:** `docs/autonomy.md` §9, `issues/2026-10-16/12-verify-subtask.md`,
+коммиты 10.75 (`d679409..9d5d840`) + `1775bc1`.
+
+---
+
 ## 2026-10-16 — D3: dsh реализовал Feedback loop (✅ успех)
 
 **Задача:** Feedback loop — подзадача N **видит** результат
