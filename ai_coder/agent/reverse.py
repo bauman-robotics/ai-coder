@@ -89,6 +89,88 @@ def _collect_diff(project_root: Path) -> str:
     return diff + extra
 
 
+def _collect_subtask_diff(
+    project_root: Path,
+    baseline_sha: str | None,
+    untracked_before: set[str],
+) -> str:
+    """
+    Собирает diff подзадачи после tool loop.
+
+    - baseline_sha — SHA от `git stash create` до подзадачи (или None).
+    - untracked_before — set untracked-путей до подзадачи.
+    Логика: `git diff <baseline_sha|HEAD>` + новые untracked
+    (дельта untracked_now - untracked_before).
+    """
+
+    if not is_git_repo(project_root):
+        return ""
+
+    ref = baseline_sha if baseline_sha else "HEAD"
+    try:
+        result = subprocess.run(
+            ["git", "diff", ref],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+    diff = result.stdout
+
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return diff
+
+    untracked_now = set()
+    for line in status.stdout.splitlines():
+        if line.startswith("?? "):
+            rel_path = line[3:].strip()
+            # git экранирует пути с не-ASCII в кавычки: "?? \"path\"".
+            if len(rel_path) >= 2 and rel_path[0] == '"' and rel_path[-1] == '"':
+                rel_path = rel_path[1:-1]
+            untracked_now.add(rel_path)
+
+    new_untracked = sorted(untracked_now - untracked_before)
+    if not new_untracked:
+        return diff
+
+    extra = ""
+    for rel_path in new_untracked:
+        if not rel_path:
+            continue
+        try:
+            content = (project_root / rel_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        section = (
+            f"diff --git a/{rel_path} b/{rel_path}\n"
+            "new file mode 100644\n"
+            "--- /dev/null\n"
+            f"+++ b/{rel_path}\n"
+        )
+        if content:
+            section += "\n".join("+" + line for line in content.splitlines())
+            section += "\n"
+        extra += section
+
+    budget = _MAX_DIFF_CHARS - len(diff)
+    if budget <= 0:
+        return diff
+    if len(extra) > budget:
+        extra = extra[:budget]
+    return diff + extra
+
+
 def run_reverse_check(
     *,
     goal: str,
@@ -180,5 +262,6 @@ def run_reverse_check(
 __all__ = [
     "_MAX_DIFF_CHARS",
     "_collect_diff",
+    "_collect_subtask_diff",
     "run_reverse_check",
 ]
