@@ -119,9 +119,34 @@ _SUBAGENT_ITERS = {
 }
 
 
-def _resolve_subagent(st: Subtask) -> tuple[str, int]:
+def _resolve_subagent(st: Subtask, cfg: AppConfig) -> tuple[str, int]:
+    """Модель и лимит итераций для подзадачи по её `type` (Router, 10.70).
+
+    **Fallback (D10, баг A).** Модели Router захардкожены
+    (`deepseek-flash` / `deepseek-v4-pro`), и раньше их отсутствие в
+    `cfg.api.pricing` приводило к `KeyError` **в середине прогона**
+    (в `_estimate_next_cost_rub` и `calculate_cost`) — то есть уже
+    после потраченных денег.
+
+    Почему fallback, а не валидация на старте (как у `SubagentConfig`):
+    модели subagent'ов задаёт **пользователь** — их логично проверять
+    при загрузке конфига. Модели Router — **встроенная** деталь
+    реализации: требовать цены на `deepseek-v4-pro` от конфига с другим
+    провайдером/именованием нельзя, это сломало бы на старте то, что
+    раньше работало (когда `edit-complex` не встречался). Поэтому
+    деградируем на базовую модель `cfg.api.model` с предупреждением.
+    """
     t = st.type if st.type in _SUBAGENT_MODEL else "edit-simple"
-    return _SUBAGENT_MODEL[t], _SUBAGENT_ITERS[t]
+    model = _SUBAGENT_MODEL[t]
+
+    if model not in cfg.api.pricing:
+        _console.print(
+            f"[yellow]Router: нет цен для модели '{model}' "
+            f"(type={t}) — использую базовую '{cfg.api.model}'[/yellow]"
+        )
+        model = cfg.api.model
+
+    return model, _SUBAGENT_ITERS[t]
 
 
 def _step_type_for(st: Subtask) -> str | None:
@@ -368,7 +393,7 @@ def run_agent_decompose(
         remaining = (
             max(0.0, max_cost_rub - dec_result.cost_rub) if max_cost_rub is not None else None
         )
-        subtask_model, subtask_iters = _resolve_subagent(st)
+        subtask_model, subtask_iters = _resolve_subagent(st, cfg)
         step_type = _step_type_for(st)  # D8: explore→read, verify→None, edit→edit
         final_iters = max_iterations if max_iterations is not None else subtask_iters
         loop_result = run_tool_loop(
