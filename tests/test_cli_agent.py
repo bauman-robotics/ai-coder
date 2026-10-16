@@ -1189,3 +1189,90 @@ def test_explicit_verify_commands_win_over_self(cli_env):
 
     assert "cfg" in captured, result.output[:2000]
     assert captured["cfg"].agent.verify_commands == ["ruff check ."]
+
+
+# ---------- D7 #2: reverse-check по умолчанию в tool loop ----------
+
+
+def _invoke_tool_loop_kwargs(cli_env, extra: list[str] | None = None):
+    """Как _invoke_tool_loop, но перехватывает ВСЕ kwargs run_tool_loop."""
+    captured: dict = {}
+
+    def fake_loop(**kwargs):
+        captured.update(kwargs)
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(
+            success=True, summary="stub", iterations=1, total_cost_rub=0.01, applied_ops=1
+        )
+
+    with (
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--tool-loop",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                *(extra or []),
+            ],
+        )
+    return captured, result
+
+
+def test_reverse_check_on_by_default_in_tool_loop(cli_env):
+    """D7 #2: без флага RC включён (tri-state None → авто)."""
+    captured, result = _invoke_tool_loop_kwargs(cli_env)
+
+    assert "reverse_check" in captured, result.output[:1500]
+    assert captured["reverse_check"] is True
+
+
+def test_no_reverse_check_disables(cli_env):
+    """D7 #2: --no-reverse-check явно выключает."""
+    captured, result = _invoke_tool_loop_kwargs(cli_env, ["--no-reverse-check"])
+
+    assert captured.get("reverse_check") is False, result.output[:1500]
+
+
+def test_explicit_reverse_check_without_tool_loop_errors(tmp_path, cli_env):
+    """D7 #2: явный --reverse-check без --tool-loop по-прежнему ошибка."""
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(cli_env["project"]),
+            "--reverse-check",
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "требует --tool-loop" in result.output
+
+
+def test_default_reverse_check_without_tool_loop_not_an_error(cli_env):
+    """D7 #2: дефолт (None) без --tool-loop НЕ должен давать ошибку RC."""
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "test goal",
+            str(cli_env["project"]),
+            "--config",
+            str(cli_env["config"]),
+            "--prompts",
+            str(cli_env["prompts"]),
+        ],
+    )
+    assert "reverse-check требует" not in result.output

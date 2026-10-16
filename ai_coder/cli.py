@@ -1333,12 +1333,15 @@ def agent_cmd(
             "pytest-тесты для изменённых файлов. Требует --tool-loop."
         ),
     ),
-    reverse_check: bool = typer.Option(
-        False,
-        "--reverse-check",
+    reverse_check: bool | None = typer.Option(
+        None,
+        "--reverse-check/--no-reverse-check",
         help=(
             "После finish(success) проверить diff на соответствие goal "
-            "(вторая LLM-проверка). Требует --tool-loop."
+            "(вторая LLM-проверка, +1 запрос). Требует --tool-loop. "
+            "По умолчанию ВКЛЮЧЕНО в tool loop (D7), "
+            "--no-reverse-check отключает. Ловит несоответствие diff и goal, "
+            "но НЕ ловит фикс, формально удовлетворяющий размытому goal."
         ),
     ),
     decompose_reverse_check: bool = typer.Option(
@@ -1462,6 +1465,11 @@ def agent_cmd(
     if reverse_check and not tool_loop:
         console.print("[red]--reverse-check требует --tool-loop[/red]")
         raise typer.Exit(1)
+
+    # D7: reverse-check включён по умолчанию в tool loop.
+    # None = «не указывали» → авто; True/False — явный выбор пользователя.
+    # Если файлы не менялись, diff пустой и RC пропускается сам.
+    rc_enabled = tool_loop if reverse_check is None else reverse_check
 
     if interactive and not sys.stdin.isatty():
         console.print("[red]--interactive требует TTY (интерактивный терминал)[/red]")
@@ -1824,7 +1832,7 @@ def agent_cmd(
                     auto_commit=commit,
                     resume_from=resume,  # NEW
                     allow_blacklist=allow_blacklist,
-                    reverse_check=reverse_check,  # NEW
+                    reverse_check=rc_enabled,  # NEW (D7: по умолчанию в tool loop)
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
