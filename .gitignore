@@ -17,6 +17,9 @@ dist/
 # результаты ai-coder
 .ai-out/
 
+# git worktrees
+.worktrees/
+
 # ide
 .idea/
 .vscode/

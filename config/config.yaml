@@ -138,32 +138,29 @@ agent:
   # --- Subagents (10.75, Направление 12) ---
   # Пусто/отсутствует → spawn_subagent НЕ попадает в промпт.
   # Подробнее: docs/tools.md → раздел 6.
-  subagents: []
+  subagents:
+    - name: code-explorer
+      description: "Ищет определения символов и вызовы. Read-only."
+      tools: [read_file, read_symbol, list_files, run_shell]
+      model: deepseek-flash
+      max_iterations: 5
+      instructions: "Отвечай списком файл:строка."
+      max_cost_rub: 1.0
+    - name: test-runner
+      description: "Запускает pytest и возвращает только упавшие тесты."
+      tools: [run_shell]
+      model: deepseek-flash
+      max_iterations: 3
+      max_cost_rub: 0.5
+    - name: markdown-writer
+      description: "Пишет и правит markdown-документы."
+      tools: [read_file, write_file]
+      model: deepseek-v4-pro
+      max_iterations: 8
+      max_cost_rub: 2.0
   subagent_max_per_task: 3            # максимум spawn на один tool loop
   subagent_max_total_cost_rub: 3.0    # суммарный лимит на все spawn
   subagent_default_max_cost_rub: 1.5  # лимит одного spawn (если нет своего)
-  #
-  # Пример:
-  # subagents:
-  #   - name: code-explorer
-  #     description: "Ищет определения символов и вызовы. Read-only."
-  #     tools: [read_file, read_symbol, list_files, run_shell]
-  #     model: deepseek-flash
-  #     max_iterations: 5
-  #     instructions: "Отвечай списком файл:строка."
-  #     max_cost_rub: 1.0
-  #   - name: test-runner
-  #     description: "Запускает pytest и возвращает только упавшие тесты."
-  #     tools: [run_shell]
-  #     model: deepseek-flash
-  #     max_iterations: 3
-  #     max_cost_rub: 0.5
-  #   - name: markdown-writer
-  #     description: "Пишет и правит markdown-документы."
-  #     tools: [read_file, write_file]
-  #     model: deepseek-v4-pro
-  #     max_iterations: 8
-  #     max_cost_rub: 2.0
 
 output:
   dir: .ai-out
