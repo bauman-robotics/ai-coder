@@ -907,3 +907,78 @@ tool-loop-2026-10-08T16-24-05/
 
 **Дорого** — `--decompose` использует v4-pro + flash. Для маленьких
 задач — не нужен.
+
+## Self-hosted E2E в worktree
+
+Проверка изменений `ai-coder` **на самом ai-coder** (E2E) делается в
+отдельном git-worktree. Есть четыре грабли, каждая даёт «непонятную»
+ошибку, если её не учесть.
+
+### 1. `.venv` живёт в основном репозитории
+
+В worktree **нет** `.venv` и нет `.venv/bin/ai-coder` — venv создан в
+основном репозитории, а пакет поставлен туда как editable. Поэтому
+console script берётся по **абсолютному** пути к venv основного
+репозитория, а не относительно worktree.
+
+### 2. `PYTHONPATH` — иначе запустится код main
+
+Editable-install указывает на **основной** репозиторий. Без
+`PYTHONPATH` console script импортирует код из `main`, а не из
+worktree, и вы тестируете не то, что правили.
+
+### 3. `PATH` — иначе `run_shell` не найдёт `python` и `pytest`
+
+`run_shell` внутри агента наследует окружение процесса. Если в `PATH`
+нет каталога venv, шаги вида `pytest -q` падают с
+`command not found` — при том, что сам агент работает.
+
+### 4. Ключ API
+
+`DEEPSEEK_API_KEY` лежит в `<main>/.env` (в git не попадает). Его надо
+подгрузить в окружение запуска.
+
+### Рецепт
+
+```bash
+MAIN=/path/to/ai-coder          # основной репозиторий (там .venv и .env)
+WT=$MAIN/.worktrees/my-task     # worktree с правками
+
+# 1) ключ
+set -a; . "$MAIN/.env"; set +a
+
+# 2) PATH — venv из main; PYTHONPATH — код из worktree
+export PATH="$MAIN/.venv/bin:$PATH"
+export PYTHONPATH="$WT"
+
+# 3) песочница вне репозитория, чтобы pytest не подхватил
+#    pyproject основного проекта
+T=/tmp/my-e2e && rm -rf "$T" && mkdir -p "$T"
+printf '[pytest]\n' > "$T/pytest.ini"
+
+# 4) запуск: конфиг и промпты — из WORKTREE
+cd "$T"
+"$MAIN/.venv/bin/ai-coder" agent "цель" . \
+  --tool-loop --decompose --apply --max-cost-rub 10 \
+  --config "$WT/config/config.yaml" \
+  --prompts "$WT/config/prompts.yaml"
+```
+
+### Почему песочница именно в `/tmp`
+
+Если запустить E2E внутри репозитория, `python -m pytest` найдёт
+`pyproject.toml` основного проекта и прогонит **его** тесты вместо
+тестов песочницы — verify будет врать. Песочница должна лежать вне
+дерева проекта.
+
+Учтите: `/tmp` в этом окружении **не сохраняется между вызовами
+оболочки** — создавайте песочницу и запускайте агента в одном вызове.
+
+### Проверка, что взят нужный код
+
+```bash
+PYTHONPATH="$WT" "$MAIN/.venv/bin/python" -P -c \
+  "import ai_coder; print(ai_coder.__file__)"
+```
+
+Путь должен указывать на **worktree**, иначе вы тестируете `main`.
