@@ -4,6 +4,115 @@
 
 ---
 
+## [2026-10-16] iteration 10.74 — Feedback loop (D3)
+
+### Что сделано
+
+**`ai_coder/agent/decomposer.py`:**
+- `_build_feedback(subtask_results, max_items=7) -> str` — собирает
+  краткий Markdown-summary предыдущих подзадач (n, goal, files,
+  `Результат: stopped_reason` или `cost_rub`).
+- `_FEEDBACK_GOAL_MAX_CHARS = 200` — обрезка длинных goal с `…`.
+- Нормализация goal (переносы/пробелы → один пробел).
+- `run_agent_decompose`: feedback считается **один раз** на итерацию
+  (до первого `run_tool_loop`), передаётся в **оба** вызова
+  `run_tool_loop` (обычный и retry).
+- Контроль через `cfg.agent.feedback_enabled`.
+
+**`ai_coder/agent/tool_loop.py`:**
+- `feedback_section: str = ""` — параметр в `run_tool_loop`.
+- Поле `feedback_section: str` в `_ToolLoopCtx`.
+- Передача в `render_prompt(extra=...)`.
+
+**`ai_coder/config.py` → `AgentConfig`:**
+- `feedback_enabled: bool = True`
+- `feedback_max_subtasks: int = 7`
+
+**`config/prompts.yaml` → `agent_tool_json`:**
+- `{{feedback_section}}` после `ЦЕЛЬ:`.
+
+### Как сделано
+
+**Реализовано `dsh`** (DeepSeek Harness) — эксперимент D3
+(см. `docs/dsh.md`). **1 turn, 27 steps**, ~0.25 RUB.
+
+- dsh **осознанно отступил** от ТЗ: feedback считается один раз
+  на итерацию (не «перед каждым `run_tool_loop`») — иначе retry
+  видел бы свою неудачную попытку в «Предыдущих подзадачах».
+- **Проверил** 9 кейсов временным тестом, включая:
+  - `render_prompt` **бросает** `KeyError` на неизвестную переменную
+    → интеграционный тест на **реальном** `prompts.yaml` критичен.
+  - `feedback_enabled=False` → `""`.
+  - `feedback_max_subtasks=1` → только последняя.
+  - неуспешная подзадача → `❌`.
+
+### Проверки
+
+- pytest — **491 passed**.
+- ruff, mypy — clean.
+- E2E: 3 подзадачи, prompt-tokens растут **3067 → 3114 → 3159**
+  (+45-50 на feedback). Подзадача 3 (verify) — провал
+  (см. TODO — планировщик создаёт verify-шаги).
+
+### Ссылки
+
+- `docs/dsh.md` → D3.
+- `docs/autonomy.md` → раздел 9 (Feedback ✅).
+- TODO → «Планировщик создаёт verify-подзадачи».
+
+---
+
+## [2026-10-16] iteration 10.73 — dsh: RC в usage + тесты (D2)
+
+### Что сделано
+
+**`ai_coder/agent/reverse.py`:**
+- `run_reverse_check` теперь вызывает `append_usage` после успешного
+  `chat`-вызова (до парсинга JSON).
+- `action="agent:reverse_check"`, `parent_action="agent"`.
+- Поля `is_peak/peak_window/cost_*/rates` берутся из `cost: CostBreakdown`.
+- При LLM-ошибке — ранний return, логирования нет.
+
+**`tests/test_agent.py`:**
+- `test_run_reverse_check_logs_usage` — успех: запись в `usage.jsonl`,
+  проверка всех полей (model, tokens, cost).
+- `test_run_reverse_check_no_usage_on_llm_error` — при ошибке LLM
+  `append_usage` НЕ вызван.
+- Helper `_read_usage_records` — чтение JSONL в тестах.
+
+### Как сделано
+
+**Реализовано `dsh`** (DeepSeek Harness) — эксперимент D2
+(см. `docs/dsh.md`). **1 turn, 38 steps, ~0.25 RUB** (cache hit 98%).
+
+- dsh **проверил** факт (grep — нет `append_usage`).
+- **Нашёл** образец: `_accumulate_cost_and_usage` в `tool_loop.py`.
+- **Заметил** расхождение в ТЗ (список полей ≠ сигнатура
+  `append_usage` — большинство в `CostBreakdown`).
+- **Написал** временный E2E-смоук (мок LLM + реальный `usage.jsonl`
+  + реальный CLI), **прогнал**, **удалил**.
+- **Нашёл** pre-existing баг путей (`usage` CWD vs `project_root`)
+  — не связан с изменением.
+- **Нашёл**, что `usage --by-action` не существует (наш ТЗ неверен).
+
+**Tests (Задача 3):**
+- dsh **сам** добавил тесты (78 строк, чисто аддитивно).
+- **Mutation-check:** временно вырезал `append_usage` — тест упал,
+  восстановил — прошёл. **Доказал**, что тест ловит регрессии.
+
+### Проверки
+
+- pytest — **491 passed** (+2).
+- ruff, mypy — clean.
+- Merge в main: `9cdff16`.
+
+### Ссылки
+
+- `docs/dsh.md` → D2.
+- TODO → «usage: --by-action не существует», «usage: пути».
+
+---
+
 ## [2026-10-16] iteration 10.72 — GUI: чекбокс `--decompose-reverse-check`
 
 ### Что сделано

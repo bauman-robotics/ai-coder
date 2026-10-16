@@ -51,6 +51,44 @@
 
 ---
 
+### usage: `--by-action` не существует
+
+- [ ] **Наш ТЗ упоминал `usage --by-action`, но такого флага нет.**
+      У команды `usage` есть только `--action` (для фильтра).
+      **Найдено** dsh при задаче D2.
+      **Решение:** или добавить `--by-action` (алиас/таблица),
+      или исправить доку (в `docs/cli/usage.md`).
+      **Приоритет:** 🟢 низкий.
+
+### usage: пути (CWD vs project_root)
+
+- [ ] **Pre-existing баг:** `usage` читает `Path(cfg.usage.jsonl)`
+      **относительно CWD**, а `append_usage` пишет **относительно
+      `project_root`**. При `--config` и CWD ≠ корень проекта —
+      статистика расходится.
+      **Найдено** dsh при задаче D2.
+      **Решение:** читать `usage.jsonl` относительно `--path` (target),
+      не CWD.
+      **Файл:** `ai_coder/cli.py` (функция `usage_show`).
+      **Приоритет:** 🟡 средний (баг наблюдаемости).
+
+### decompose: планировщик создаёт verify-подзадачи
+
+- [ ] **E2E feedback loop:** v4-pro планировщик создал 3-ю
+      подзадачу «Запустить тесты и убедиться, что test_sub проходит»
+      (verify по сути). `run_tool_loop(step_type="edit")` требует
+      `applied_ops > 0` — verify **ничего не правит** →
+      `success=False` → retry v4-pro → тоже fail.
+      **Фикс (варианты):**
+      - в промпте `agent_decompose_json` — **запретить** verify-шаги;
+      - `run_tool_loop` — поддержать `step_type="verify"` (только
+        `run_shell`, `applied_ops` не требуется);
+      - `_resolve_subagent` — для `type="verify"` использовать
+        flash + step_type="verify".
+      **Файлы:** `config/prompts.yaml` (промпт),
+      `ai_coder/agent/decomposer.py`, `ai_coder/agent/tool_loop.py`.
+      **Приоритет:** 🔴 высокий (ломает decompose при verify-шагах).
+
 ## Из GUI A.0/A.1 (сессия 2026-10-13)
 
 - [x] **Агент пишет под устаревший API библиотек.** ЗАКРЫТО 10.39:

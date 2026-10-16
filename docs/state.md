@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.71 — Validator: семантическая проверка подзадач)
+**Дата обновления:** 2026-10-16 (10.74 — Feedback loop + D2/D3 через dsh)
 **Ветка:** main
-**Последний коммит:** `23d785c` (merge: Validator — семантическая проверка подзадач)
-**Тесты:** 489 passed (+2 для Validator) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `254f41e` (feat(decompose): feedback loop)
+**Тесты:** 491 passed (+2 для Validator + 2 для RC-usage) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -266,6 +266,20 @@ Python-проектов через DeepSeek API. Работает с git-про�
 `next-chat/in-progress.md`.
 
 ### Agent
+
+**Feedback loop (10.74, D3):**
+- `_build_feedback(subtask_results, max_items=7)` в `decomposer.py`.
+- `feedback_section: str = ""` — параметр в `run_tool_loop`.
+- Поле `feedback_section` в `_ToolLoopCtx`, передаётся в `render_prompt`.
+- Конфиг: `feedback_enabled=True`, `feedback_max_subtasks=7`.
+- `{{feedback_section}}` в `agent_tool_json` (после `ЦЕЛЬ:`).
+- Feedback считается один раз на итерацию (до первого `run_tool_loop`).
+- Реализовано **dsh** (D3). E2E: prompt-tokens 3067 → 3114 → 3159.
+- Обнаружено: планировщик создаёт verify-подзадачи (TODO — 🔴).
+
+**RC в usage (10.73, D2):**
+- `run_reverse_check` вызывает `append_usage` (action="agent:reverse_check").
+- Реализовано **dsh** (D2). 2 теста (491 passed).
 
 **Validator (10.71, Направление 12):**
 - `decompose_reverse_check: bool = False` в `AgentConfig`.
