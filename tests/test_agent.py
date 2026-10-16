@@ -3608,6 +3608,84 @@ def test_reverse_check_llm_error_returns_ok(sample_project, minimal_cfg, prompts
     assert "LLM error" in result.parse_error
 
 
+def _read_usage_records(project_root: Path, minimal_cfg) -> list[dict]:
+    """Читает записи глобального usage.jsonl проекта."""
+    jsonl_path = project_root / minimal_cfg.usage.jsonl
+    if not jsonl_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def test_run_reverse_check_logs_usage(sample_project, minimal_cfg, prompts_cfg):
+    """Успешный RC пишет запись action=agent:reverse_check в usage.jsonl."""
+    body = json.dumps({"ok": True, "problems": [], "suggestion": None})
+
+    with patch("ai_coder.agent.reverse.LLMClient") as MockClient:
+        MockClient.return_value.chat.return_value = _make_llm_response(body)
+        result = run_reverse_check(
+            goal="test goal",
+            diff="diff --git a/x b/x\n+new line",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    assert result.ok is True
+    assert result.parse_error is None
+
+    records = _read_usage_records(sample_project, minimal_cfg)
+    assert len(records) == 1, records
+
+    rec = records[0]
+    assert rec["action"] == "agent:reverse_check"
+    # model не задан в конфиге → fallback на cfg.api.model
+    assert rec["model"] == "test-model"
+    assert rec["prompt_tokens"] == 100
+    assert rec["prompt_cache_hit_tokens"] == 0
+    assert rec["prompt_cache_miss_tokens"] == 100
+    assert rec["completion_tokens"] == 50
+    assert rec["total_tokens"] == 150
+    assert rec["depth"] == "normal"
+    assert rec["status"] == "ok"
+    assert rec["iteration"] == 0
+    assert rec["parent_action"] == "agent"
+    assert rec["project_name"] == sample_project.name
+    assert rec["duration_ms"] == 1000
+    # стоимость посчитана и положительна, совпадает с результатом RC
+    assert rec["cost_rub"] > 0
+    assert abs(rec["cost_rub"] - result.cost_rub) < 1e-6
+
+
+def test_run_reverse_check_no_usage_on_llm_error(sample_project, minimal_cfg, prompts_cfg):
+    """Ошибка LLM → append_usage не вызван, usage.jsonl не создан."""
+    with (
+        patch("ai_coder.agent.reverse.LLMClient") as MockClient,
+        patch("ai_coder.agent.reverse.append_usage") as mock_append,
+    ):
+        MockClient.return_value.chat.side_effect = RuntimeError("network down")
+        result = run_reverse_check(
+            goal="test",
+            diff="x",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+        )
+
+    # fail-safe: ошибка LLM не ломает пайплайн
+    assert result.ok is True
+    assert result.parse_error is not None
+    assert "LLM error" in result.parse_error
+
+    mock_append.assert_not_called()
+    assert _read_usage_records(sample_project, minimal_cfg) == []
+    proj_jsonl = sample_project / minimal_cfg.output.dir / sample_project.name / "usage.jsonl"
+    assert not proj_jsonl.exists()
+
+
 def test_collect_diff_non_git_returns_empty(tmp_path):
     """Не-git каталог → _collect_diff возвращает ''."""
     assert _collect_diff(tmp_path) == ""
