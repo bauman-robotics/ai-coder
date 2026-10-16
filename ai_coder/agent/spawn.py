@@ -93,10 +93,26 @@ def summarize_subagent_result(
     решит, что делегирование удалось.
     """
     mark = "✅" if res.success else "❌"
+
+    summary_text = (res.summary or "").strip()
+    if not summary_text:
+        # D11 (#5): при обрыве до finish (max_iterations, max_cost, error)
+        # ctx.summary остаётся пустым, и родитель получал «summary: » —
+        # непонятно, что вообще произошло. Собираем выжимку из того, что
+        # есть: причина остановки + последний шаг ребёнка.
+        bits = [f"остановлено: {res.stopped_reason}"]
+        if res.history:
+            last_action, last_result = res.history[-1]
+            status = "ok" if last_result.ok else (last_result.error or "fail")
+            bits.append(f"последний шаг: {last_action.tool} ({status})")
+        if res.verify_errors:
+            bits.append(f"ошибок проверки: {len(res.verify_errors)}")
+        summary_text = "; ".join(bits)
+
     parts = [
         f"[subagent {spec.name}] {mark} {res.stopped_reason}, "
         f"{res.iterations} итер, {res.total_cost_rub:.4f} RUB",
-        f"summary: {res.summary[:300]}",
+        f"summary: {summary_text[:300]}",
     ]
     if res.applied_ops:
         parts.append(f"изменений: {res.applied_ops}")

@@ -861,3 +861,85 @@ def test_build_subagents_section_empty_without_subagents():
     from ai_coder.agent.spawn import build_subagents_section
 
     assert build_subagents_section([]) == ""
+
+
+# ---------- D11 (#5): непустой digest при обрыве до finish ----------
+
+
+def _spec():
+    return SubagentConfig(name="test-runner", description="тесты", tools=["run_shell"])
+
+
+def test_digest_not_empty_when_max_iterations():
+    """#5: при max_iterations summary ребёнка пуст — родитель не знал, что упало.
+
+    Выжимка должна объяснять причину остановки сама.
+    """
+    from ai_coder.agent.models import ToolLoopResult
+    from ai_coder.agent.spawn import summarize_subagent_result
+    from ai_coder.tools import ToolAction, ToolResult
+
+    res = ToolLoopResult(
+        success=False,
+        summary="",  # именно так приходит обрыв до finish
+        iterations=3,
+        stopped_reason="max_iterations",
+        total_cost_rub=0.5,
+        history=[
+            (
+                ToolAction(tool="run_shell", args={"command": "pytest -q"}, reason="r"),
+                ToolResult(ok=True, output="1 passed"),
+            )
+        ],
+    )
+
+    digest = summarize_subagent_result(_spec(), res)
+
+    assert "summary: остановлено: max_iterations" in digest
+    assert "max_iterations" in digest
+    assert "run_shell" in digest  # последний шаг
+    assert "остановлено:" in digest
+
+
+def test_digest_reports_last_step_failure():
+    """Если последний шаг ребёнка упал — это видно в выжимке."""
+    from ai_coder.agent.models import ToolLoopResult
+    from ai_coder.agent.spawn import summarize_subagent_result
+    from ai_coder.tools import ToolAction, ToolResult
+
+    res = ToolLoopResult(
+        success=False,
+        summary="",
+        iterations=1,
+        stopped_reason="error",
+        total_cost_rub=0.01,
+        history=[
+            (
+                ToolAction(tool="run_shell", args={"command": "pytest -q"}, reason="r"),
+                ToolResult(ok=False, error="command not found: pytest"),
+            )
+        ],
+    )
+
+    digest = summarize_subagent_result(_spec(), res)
+
+    assert "command not found: pytest" in digest
+
+
+def test_digest_keeps_existing_summary():
+    """Нормальный finish не переписывается — выжимка как была."""
+    from ai_coder.agent.models import ToolLoopResult
+    from ai_coder.agent.spawn import summarize_subagent_result
+
+    res = ToolLoopResult(
+        success=True,
+        summary="всё сделано",
+        iterations=2,
+        stopped_reason="completed",
+        total_cost_rub=0.02,
+    )
+
+    digest = summarize_subagent_result(_spec(), res)
+
+    assert "summary: всё сделано" in digest
+    assert "остановлено:" not in digest
