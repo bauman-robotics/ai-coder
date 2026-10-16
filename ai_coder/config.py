@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------- api ----------
 
@@ -188,6 +189,50 @@ class ActionConfig(BaseModel):
     exclude_web_assets: bool = False
 
 
+# ---------- subagents (Направление 12, D4) ----------
+
+# Имя subagent'а: нижний регистр, цифры, дефис. Нижний регистр — чтобы
+# LLM не путал регистр в args.name.
+_SUBAGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+
+
+class SubagentConfig(BaseModel):
+    """Описание subagent'а, которого родитель может вызвать (spawn_subagent)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    description: str
+    tools: list[str]
+    model: str | None = None  # None → cfg.api.model
+    max_iterations: int = Field(5, ge=1, le=30)
+    instructions: str | None = None  # доп. инструкция в user-промпт (НЕ system)
+    max_cost_rub: float | None = Field(None, gt=0)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not _SUBAGENT_NAME_RE.match(v):
+            raise ValueError(f"subagent.name {v!r} не соответствует ^[a-z][a-z0-9-]{{1,30}}$")
+        return v
+
+    @field_validator("tools")
+    @classmethod
+    def _validate_tools(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("subagent.tools не может быть пустым")
+        # depth = 1: subagent НЕ может вызывать subagent'ов.
+        if "spawn_subagent" in v:
+            raise ValueError("spawn_subagent нельзя включать в tools subagent'а (depth=1)")
+        # Ленивый импорт: config → tools → scanner → config был бы циклом.
+        from .tools import TOOL_REGISTRY
+
+        unknown = sorted(t for t in v if t not in TOOL_REGISTRY)
+        if unknown:
+            raise ValueError(f"неизвестные инструменты в subagent.tools: {unknown}")
+        return v
+
+
 class AgentConfig(BaseModel):
     max_steps: int = 10
     max_minutes: int = 30
@@ -211,6 +256,18 @@ class AgentConfig(BaseModel):
     decompose_reverse_check: bool = False
     feedback_enabled: bool = True  # NEW: feedback-loop между подзадачами
     feedback_max_subtasks: int = 7  # NEW: сколько предыдущих подзадач включать
+    subagents: list[SubagentConfig] = Field(default_factory=list)  # NEW (D4)
+    subagent_max_per_task: int = Field(3, ge=1)  # NEW: spawn на один tool loop
+    subagent_max_total_cost_rub: float = Field(3.0, gt=0)  # NEW: на все spawn
+    subagent_default_max_cost_rub: float = Field(1.5, gt=0)  # NEW: один spawn
+
+    @model_validator(mode="after")
+    def _validate_subagents(self) -> AgentConfig:
+        names = [s.name for s in self.subagents]
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        if dupes:
+            raise ValueError(f"дубликаты имён subagents: {dupes}")
+        return self
 
 
 # ---------- root ----------
@@ -232,6 +289,15 @@ class AppConfig(BaseModel):
 
     def enabled_actions(self) -> dict[str, ActionConfig]:
         return {k: v for k, v in self.actions.items() if v.enabled}
+
+    @model_validator(mode="after")
+    def _validate_subagent_models(self) -> AppConfig:
+        # Цены живут в api, а subagents — в agent: проверять можно только тут.
+        # pricing_for() бросает KeyError в рантайме — ловим на старте.
+        for s in self.agent.subagents:
+            if s.model and s.model not in self.api.pricing:
+                raise ValueError(f"subagent '{s.name}': нет цен для модели '{s.model}'")
+        return self
 
 
 # ---------- prompts ----------
