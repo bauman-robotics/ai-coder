@@ -1276,3 +1276,111 @@ def test_default_reverse_check_without_tool_loop_not_an_error(cli_env):
         ],
     )
     assert "reverse-check требует" not in result.output
+
+
+# ---------- D10 (баг B): --max-iterations и лимиты Router ----------
+
+
+def test_decompose_max_iterations_none_by_default(cli_env):
+    """Без --max-iterations в run_agent_decompose уходит None → лимиты Router."""
+    captured: dict = {}
+
+    def fake_decompose(**kw):
+        captured.update(kw)
+        from ai_coder.agent import DecomposeResult, Subtask
+
+        return DecomposeResult(subtasks=[Subtask(n=1, goal="g", type="verify")])
+
+    with patch("ai_coder.agent.run_agent_decompose", side_effect=fake_decompose):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--decompose",
+                "--tool-loop",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
+
+    assert "max_iterations" in captured, result.output[:2000]
+    assert captured["max_iterations"] is None
+
+
+def test_decompose_explicit_max_iterations_passed(cli_env):
+    """Явный --max-iterations N доходит до run_agent_decompose как N."""
+    captured: dict = {}
+
+    def fake_decompose(**kw):
+        captured.update(kw)
+        from ai_coder.agent import DecomposeResult, Subtask
+
+        return DecomposeResult(subtasks=[Subtask(n=1, goal="g", type="verify")])
+
+    with patch("ai_coder.agent.run_agent_decompose", side_effect=fake_decompose):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--decompose",
+                "--tool-loop",
+                "--max-iterations",
+                "7",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+            ],
+        )
+
+    assert captured.get("max_iterations") == 7, result.output[:2000]
+
+
+def _tool_loop_iters(cli_env, extra: list[str] | None = None) -> dict:
+    captured: dict = {}
+
+    def fake_loop(**kw):
+        captured.update(kw)
+        from ai_coder.agent import ToolLoopResult
+
+        return ToolLoopResult(
+            success=True, summary="stub", iterations=1, total_cost_rub=0.01, applied_ops=1
+        )
+
+    with (
+        patch("ai_coder.agent.run_tool_loop", side_effect=fake_loop),
+        patch("ai_coder.agent.append_usage"),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "test goal",
+                str(cli_env["project"]),
+                "--tool-loop",
+                "--config",
+                str(cli_env["config"]),
+                "--prompts",
+                str(cli_env["prompts"]),
+                *(extra or []),
+            ],
+        )
+    captured["_output"] = result.output
+    return captured
+
+
+def test_tool_loop_default_iterations_still_20(cli_env):
+    """Без --max-iterations обычный tool loop по-прежнему получает 20."""
+    captured = _tool_loop_iters(cli_env)
+    assert captured.get("max_iterations") == 20, captured["_output"][:2000]
+
+
+def test_tool_loop_explicit_iterations_passed(cli_env):
+    captured = _tool_loop_iters(cli_env, ["--max-iterations", "5"])
+    assert captured.get("max_iterations") == 5, captured["_output"][:2000]

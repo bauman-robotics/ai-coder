@@ -76,43 +76,51 @@
       планировщик и retry-fallback. Журнал D8 это подтверждает
       (подзадачи 1/4 — flash, 2/3 — v4-pro).
 
-### 🐞 Баг A: у Router нет fallback, если модели нет в `pricing`
+### ✅ Баг A: у Router нет fallback, если модели нет в `pricing` — закрыто (D10)
 
-- [ ] **Симптом:** `_resolve_subagent` возвращает захардкоженные
-      `deepseek-flash` / `deepseek-v4-pro` и **не проверяет** их наличие
-      в конфиге. Если цен для модели нет:
-      `_estimate_next_cost_rub(cfg, "deepseek-v4-pro", ...)` →
-      `KeyError: "Нет цен для модели 'deepseek-v4-pro' в конфиге"`.
-      Падение — **в середине прогона** (precheck + `calculate_cost`),
-      то есть уже после потраченных денег.
-      Непоследовательно: `SubagentConfig.model` (D6) валидируется
-      **на старте**, а модели Router — нет.
-      **Решение:** либо валидировать модели Router на старте
-      (`AppConfig.model_validator`), либо фолбэк на `cfg.api.model`
-      с предупреждением.
-      **Файлы:** `ai_coder/agent/decomposer.py` (`_resolve_subagent`),
-      `ai_coder/config.py`.
-      **Оценка:** ~2 ч. **Приоритет:** 🟡.
+- [x] **Исправлено (`5966d52`):** `_resolve_subagent(st, cfg)` теперь
+      проверяет `cfg.api.pricing` и при отсутствии модели
+      **откатывается на `cfg.api.model`** с предупреждением, а не падает
+      `KeyError` в середине прогона.
+      Выбран fallback, а не валидация на старте: модели Router —
+      встроенная деталь реализации, и требовать цены на
+      `deepseek-v4-pro` от конфига с другим провайдером нельзя
+      (это сломало бы на старте то, что раньше работало). Модели
+      subagent'ов — пользовательские, они и дальше валидируются в D6.
+      **Тесты:** fallback, отсутствие `KeyError` в предпроверке бюджета,
+      предупреждение.
 
-### 🐞 Баг B: `--max-iterations` перекрывает лимиты Router
+### ✅ Баг B: `--max-iterations` перекрывал лимиты Router — закрыто (D10)
 
-- [ ] **Симптом:** `agent_cmd` объявляет `--max-iterations` со
-      значением по умолчанию **20** (не `None`) и всегда передаёт его
-      в `run_agent_decompose`, где
-      `final_iters = max_iterations if max_iterations is not None
-      else subtask_iters` → всегда 20. Значит **лимиты Router
-      (explore 5 / edit-simple 10 / edit-complex 15 / verify 3) при
-      запуске через CLI не применяются**.
-      **Доказательство (D9):** подзадача `verify` отработала 5 шагов
-      (`step-0..step-4`) при лимите Router 3.
-      Модели выбираются правильно (за это отвечает `subtask_model`),
-      поэтому баг незаметен.
-      **Решение:** сделать default `None` (тогда Router-лимиты
-      заработают) либо явно переопределять per-type, если пользователь
-      не задал флаг.
-      **Файлы:** `ai_coder/cli.py` (опция `--max-iterations`),
-      `ai_coder/agent/decomposer.py` (`final_iters`).
-      **Оценка:** ~1 ч. **Приоритет:** 🟡.
+- [x] **Исправлено (`5966d52`):** default `--max-iterations` → `None`
+      (+ хелпер `_iters_or_default()` = 20 для не-decompose путей).
+      `run_agent_decompose` получает **сырое** значение: `None` →
+      лимиты Router; обычный tool loop, `--with-tests` и chain —
+      прежние 20. Явный `--max-iterations N` работает как раньше.
+      **Тесты:** `[5, 10, 15, 3]` при `None`; явный `N` перекрывает;
+      CLI-проброс в обоих режимах.
+
+### 🐞 Баг C: `verify: 3` мало — verify падает по `max_iterations` (D10)
+
+- [ ] **Симптом (E2E D10, повтор сценария D9):** после включения
+      Router-лимитов verify-подзадача («Запустить pytest и
+      убедиться») **упала**: `max_iterations` при 3 итерациях, и
+      retry (v4-pro) тоже получил 3 → `subtask 7 failed`, EXIT=1.
+      В D9 (лимит фактически 20) та же задача проходила, EXIT=0.
+      **Разбор:** модель потратила **все 3 итерации на `run_shell`**
+      (`step-0..step-2`) и не успела вернуть `finish`:
+      `for iteration in range(max_iterations)` исчерпался.
+      То есть на подзадачу нужно `K` вызовов инструментов **плюс ещё
+      одна итерация на `finish`** — лимит по типу задан без этого.
+      **Решение (варианты):**
+      - поднять значения в `_SUBAGENT_ITERS` (например, verify 3 → 5);
+      - трактовать `max_iterations` как лимит **вызовов инструментов**
+        и разрешать одну дополнительную итерацию на `finish`
+        (правка в `run_tool_loop`).
+      **Файлы:** `ai_coder/agent/decomposer.py` (`_SUBAGENT_ITERS`),
+      `ai_coder/agent/tool_loop.py` (цикл).
+      **Оценка:** ~1-2 ч. **Приоритет:** 🟡 (но регрессия end-to-end:
+      `--decompose` на задаче с verify теперь падает).
 
 ## Из Validator/GUI (сессия 2026-10-16, 10.71 + 10.72)
 

@@ -38,6 +38,17 @@ app = typer.Typer(
 )
 console = Console()
 
+# D10 (баг B): лимит итераций tool loop по умолчанию, когда
+# --max-iterations не задан. В --decompose None означает «взять лимит
+# Router по типу подзадачи» (explore 5 / edit-simple 10 /
+# edit-complex 15 / verify 3) — см. decomposer._resolve_subagent.
+_DEFAULT_TOOL_ITERATIONS = 20
+
+
+def _iters_or_default(n: int | None) -> int:
+    """Явный --max-iterations N или дефолт 20 (для не-decompose путей)."""
+    return _DEFAULT_TOOL_ITERATIONS if n is None else n
+
 
 DEFAULT_CONFIG = Path("config/config.yaml")
 DEFAULT_PROMPTS = Path("config/prompts.yaml")
@@ -865,7 +876,7 @@ def _run_chain(
     rollback_on_fail: bool,
     max_cost_rub: float | None,
     decompose_max_cost_rub: float | None,
-    max_iterations: int,
+    max_iterations: int | None,
     continue_on_fail: bool,
     allow_blacklist: bool,
     auto_commit: bool,
@@ -1024,7 +1035,7 @@ def _run_chain(
                     model=model,
                     depth=depth,
                     extra_exclude=extra_exclude,
-                    max_iterations=max_iterations,
+                    max_iterations=_iters_or_default(max_iterations),
                     max_cost_rub=max_cost_rub,
                     journal=journal,
                     dry_run=dry_run,
@@ -1240,10 +1251,14 @@ def agent_cmd(
         "--tool-loop",
         help="Использовать tool loop (модель сама вызывает инструменты).",
     ),
-    max_iterations: int = typer.Option(
-        20,
+    max_iterations: int | None = typer.Option(
+        None,
         "--max-iterations",
-        help="Лимит итераций tool loop.",
+        help=(
+            "Лимит итераций tool loop. По умолчанию: в --decompose — "
+            "лимит по типу подзадачи от Router (5/10/15/3), "
+            "в остальных режимах — 20."
+        ),
     ),
     dry_run: bool = typer.Option(
         False,
@@ -1696,7 +1711,8 @@ def agent_cmd(
                 f"[bold]Режим:[/bold] "
                 + ("plan → подтверждение → decompose" if plan else "decompose")
                 + " + tool loop\n"
-                f"[bold]Max итераций на подзадачу:[/bold] {max_iterations}",
+                f"[bold]Max итераций на подзадачу:[/bold] "
+                f"{max_iterations if max_iterations is not None else 'по типу (Router: 5/10/15/3)'}",
                 title="ai-coder agent --plan" if plan else "ai-coder agent --decompose",
             )
         )
@@ -1800,7 +1816,7 @@ def agent_cmd(
                 f"[bold]Проект:[/bold] {project_root}\n"
                 f"[bold]Модель:[/bold] {model or cfg.api.model}\n"
                 f"[bold]Режим:[/bold] tool loop\n"
-                f"[bold]Max итераций:[/bold] {max_iterations}",
+                f"[bold]Max итераций:[/bold] {_iters_or_default(max_iterations)}",
                 title="ai-coder agent --tool-loop",
             )
         )
@@ -1823,7 +1839,7 @@ def agent_cmd(
                     model=model,
                     depth=depth,
                     extra_exclude=list(exclude) or None,
-                    max_iterations=max_iterations,
+                    max_iterations=_iters_or_default(max_iterations),
                     max_cost_rub=max_cost_rub,
                     journal=journal,
                     dry_run=dry_run,
@@ -1922,7 +1938,7 @@ def agent_cmd(
                         model=model,
                         depth=depth,
                         extra_exclude=list(exclude) or None,
-                        max_iterations=max_iterations,
+                        max_iterations=_iters_or_default(max_iterations),
                         max_cost_rub=tests_budget,
                         journal=journal,
                         dry_run=dry_run,
