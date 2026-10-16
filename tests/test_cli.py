@@ -403,3 +403,105 @@ def test_rollback_success(tmp_path: Path):
     assert "Изменено путей" in result.stdout
     # файл восстановлен
     assert (project / "file.py").read_text(encoding="utf-8") == "original\n"
+
+
+# ---------- D12 (#D2.2): путь к usage.jsonl ----------
+
+
+def _usage_records() -> list[dict]:
+    return [
+        {
+            "ts_utc": "2026-10-07T10:00:00+00:00",
+            "action": "greet",
+            "project_name": "proj",
+            "model": "test-model",
+            "total_tokens": 150,
+            "cost_rub": 0.12,
+            "iteration": 0,
+        },
+        {
+            "ts_utc": "2026-10-07T11:00:00+00:00",
+            "action": "write_readme",
+            "project_name": "proj",
+            "model": "test-model",
+            "total_tokens": 300,
+            "cost_rub": 0.25,
+            "iteration": 0,
+        },
+    ]
+
+
+def _write_journal(root: Path, records: list[dict]) -> Path:
+    """Кладёт журнал туда, куда его пишет append_usage: <root>/.ai-out/usage.jsonl."""
+    p = root / ".ai-out" / "usage.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+        encoding="utf-8",
+    )
+    return p
+
+
+def _cfg_with_relative_jsonl(config_path: Path, minimal_cfg) -> None:
+    import yaml
+
+    minimal_cfg.usage.jsonl = ".ai-out/usage.jsonl"  # как в дефолтном конфиге
+    config_path.write_text(
+        yaml.safe_dump(minimal_cfg.model_dump(), allow_unicode=True), encoding="utf-8"
+    )
+
+
+def test_usage_path_reads_target_journal(cli_files, tmp_path: Path, minimal_cfg, monkeypatch):
+    """#D2.2: журнал ищется относительно --path, а не CWD.
+
+    append_usage пишет в <project_root>/.ai-out/usage.jsonl, поэтому при
+    запуске из другого каталога команда раньше «не видела» свежих записей.
+    """
+    config_path, _ = cli_files
+    _cfg_with_relative_jsonl(config_path, minimal_cfg)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write_journal(proj, _usage_records())
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    result = runner.invoke(app, ["usage", "--config", str(config_path), "--path", str(proj)])
+
+    assert result.exit_code == 0, result.output
+    assert "greet" in result.stdout
+    assert "write_readme" in result.stdout
+    assert "Журнал пуст" not in result.stdout
+
+
+def test_usage_without_path_keeps_cwd(cli_files, tmp_path: Path, minimal_cfg, monkeypatch):
+    """Без --path поведение прежнее: журнал относительно текущего каталога."""
+    config_path, _ = cli_files
+    _cfg_with_relative_jsonl(config_path, minimal_cfg)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _write_journal(proj, _usage_records())
+    monkeypatch.chdir(proj)
+
+    result = runner.invoke(app, ["usage", "--config", str(config_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "greet" in result.stdout
+
+
+def test_usage_missing_journal_shows_searched_path(
+    cli_files, tmp_path: Path, minimal_cfg, monkeypatch
+):
+    """Если журнала нет, видно, где именно искали (диагностика CWD)."""
+    config_path, _ = cli_files
+    _cfg_with_relative_jsonl(config_path, minimal_cfg)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.chdir(empty)
+
+    result = runner.invoke(app, ["usage", "--config", str(config_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Журнал пуст" in result.stdout
+    assert "usage.jsonl" in result.stdout
