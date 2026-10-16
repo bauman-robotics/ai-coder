@@ -204,6 +204,7 @@
                             title="Запустить ai-coder со стримингом (SSE)">Запустить</button>
                     <button type="button" id="stop-btn" disabled
                             title="Остановить процесс (SIGTERM)">Остановить</button>
+                    <span id="run-status" role="status" aria-live="polite"></span>
                 </div>
             </form>
 
@@ -651,9 +652,33 @@
             var currentAbort = null;
             var currentRunId = null;
 
+            var runStatus = document.getElementById("run-status");
+            var runStartedAt = null;
+            var runTimer = null;
+
+            function _elapsedSec() {
+                return Math.round((Date.now() - runStartedAt) / 1000);
+            }
+
             function setRunning(running) {
                 runBtn.disabled = running;
                 stopBtn.disabled = !running;
+                if (running) {
+                    runStartedAt = Date.now();
+                    runBtn.classList.add("btn-running");
+                    runStatus.textContent = "Выполняется… 0 с";
+                    if (runTimer) { clearInterval(runTimer); }
+                    runTimer = setInterval(function () {
+                        runStatus.textContent = "Выполняется… " + _elapsedSec() + " с";
+                    }, 1000);
+                } else {
+                    if (runTimer) { clearInterval(runTimer); runTimer = null; }
+                    runBtn.classList.remove("btn-running");
+                    if (runStartedAt) {
+                        runStatus.textContent = "Готово за " + _elapsedSec() + " с";
+                        runStartedAt = null;
+                    }
+                }
             }
 
             runBtn.addEventListener("click", async function () {
@@ -697,6 +722,12 @@
                                     var match = text.match(/^run_id:\s*(.+)$/);
                                     if (match) {
                                         currentRunId = match[1].trim();
+                                        continue;
+                                    }
+                                    var omatch = text.match(/^\[отчёт\]\s*(\S+)$/);
+                                    if (omatch) {
+                                        document.getElementById("report-link").innerHTML =
+                                            '<a href="' + omatch[1] + '" target="_blank">Открыть отчёт</a>';
                                         continue;
                                     }
                                     var jmatch = text.match(/^Журнал:\s*(.+)$/);
