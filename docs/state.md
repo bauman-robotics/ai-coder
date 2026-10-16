@@ -2,8 +2,8 @@
 
 **Дата обновления:** 2026-10-16 (10.75 — spawn_subagent, D4)
 **Ветка:** main
-**Последний коммит:** `1546ad0` (feat(agent): исполнение spawn_subagent)
-**Тесты:** 540 passed (+49 spawn_subagent) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `9d5d840` (feat(agent): атрибуция usage + документация spawn)
+**Тесты:** 542 passed (+51 spawn_subagent) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -267,7 +267,10 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ### Agent
 
-**spawn_subagent (10.75, D4, Направление 12):**
+**Subagents (spawn_subagent) — 10.75, D4, Направление 12:** инструмент
+`spawn_subagent`, секция `agent.subagents` в конфиге, перехват в
+tool loop + модуль `spawn.py`. Ограничения — в конце раздела.
+
 - `SubagentConfig` (Pydantic, frozen) + `AgentConfig.subagents=[]` и
   3 cap-поля (`subagent_max_per_task=3`,
   `subagent_max_total_cost_rub=3.0`,
@@ -291,9 +294,22 @@ Python-проектов через DeepSeek API. Работает с git-про�
   `parent_action="agent:spawn:<name>"`.
 - `{{subagents_section}}` + правило 19 в `agent_tool_json`; заодно
   исправлена нумерация правил (1..19 без дублей).
-- Тесты: `tests/test_spawn.py` (49). 540 passed.
-- Отложено: depth 2, мёрж backup-манифестов, time-лимит
-  (`max_minutes` в tool loop не проверяется).
+- Тесты: `tests/test_spawn.py` (51). **542 passed**.
+- Реализовано **dsh** (D4). E2E: `/tmp/spawn-e2e`, **0.1139 RUB**.
+- **Коммиты:** `d679409` (A: конфиг), `00c6700` (B: ToolSpec +
+  allowlist), `1546ad0` (C: исполнение), `9d5d840` (D: usage + docs).
+
+**Ограничения (v1):**
+- **Depth = 1** — subagent не может вызвать subagent'а (depth 2 не
+  реализовано).
+- Родительский `rollback` **не** откатывает правки subagent'а: у
+  ребёнка свой `backup_dir` (мёрж манифестов не реализован).
+- `max_minutes` в tool loop **не** проверяется — subagent'а ограничивает
+  только бюджет.
+- `step_type="edit"` + explorer-родитель: `read_ops` не удовлетворяет
+  edit-критерию `_handle_finish` (см. «Известные проблемы»).
+- `iterations` не считает finish-итерацию (`len(ctx.history)`), а
+  `usage.jsonl` считает — расхождение на 1.
 
 **Feedback loop (10.74, D3):**
 - `_build_feedback(subtask_results, max_items=7)` в `decomposer.py`.
@@ -526,6 +542,23 @@ Python-проектов через DeepSeek API. Работает с git-про�
   - Промпт > 15 строк — модель теряет фокус.
   - Агент не справляется с задачами на 5+ файлов.
   - См. подробно `TODO.md`, раздел «Известные проблемы tool loop».
+- **Subagents (spawn_subagent, 10.75) — найденное E2E:**
+  - **depth 2 не реализовано** — subagent не может вызвать subagent'а
+    (осознанное ограничение v1, 3 барьера).
+  - **backup merge не реализован** — у ребёнка свой `backup_dir`, поэтому
+    родительский `rollback` **не** откатывает правки subagent'а.
+  - **`max_minutes` не проверяется в tool loop** — subagent'а
+    ограничивает только бюджет (`cap`), не время.
+  - **`_handle_finish` + `step_type="edit"` для explorer-родителя:**
+    критерий успеха — `applied_ops > 0`, поэтому родитель, который
+    только делегировал read-only разведку, завершиться не может
+    (`read_ops` не подходит). `_handle_finish` не менялся.
+  - **`toolN` начинается с 0** (pre-existing: `start_iteration = 0`) —
+    первый запрос `agent:tool0`, а не `tool1`.
+  - **`iterations` не считает finish-итерацию:**
+    `iterations=len(ctx.history)`, а `_handle_finish` в history **не**
+    пишет. Итог: `iterations` = число LLM-вызовов − 1, тогда как
+    `usage.jsonl` пишет все вызовы (расхождение на 1).
 
 ---
 
@@ -605,16 +638,24 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 Осталось:
 
-1. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
+1. **Направление 12 — subagents (10.75):** сделаны Router (10.70),
+   Validator (10.71), Feedback loop (10.74), `spawn_subagent` (10.75).
+   Осталось: **depth 2**, **backup merge** subagent'а в родителя,
+   **`max_minutes`** в tool loop, **`_handle_finish`** для
+   explorer-родителя, `toolN` с 1, `iterations` включая finish.
+2. **3 находки dsh (D2/D3):** `usage --by-action` (нет флага),
+   пути `usage.jsonl` (CWD vs `project_root`), verify-подзадача в
+   decompose (`step_type="edit"` для `type="verify"`) — 🔴 высокий.
+3. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
    Отложено: ветки `ai-coder/<slug>-<ts>`, push, PR (без веток —
    только коммит в текущую ветку).
-2. **Улучшения tool loop:**
+4. **Улучшения tool loop:**
    - read-шаги в `run_agent` (не только edit);
    - кэш phase1 (для похожих задач);
    - YAML-правки (модель слабо справляется).
-3. **`agent.py`** — 43% покрытия (190 строк)
-4. **`apply.py`, `pricing.py`, `prompts.py`** — покрытие до ~90%
-5. **YAML-правки** — модель слабо справляется, усилить промпт
+5. **`agent.py`** — 43% покрытия (190 строк)
+6. **`apply.py`, `pricing.py`, `prompts.py`** — покрытие до ~90%
+7. **YAML-правки** — модель слабо справляется, усилить промпт
 
 ---
 

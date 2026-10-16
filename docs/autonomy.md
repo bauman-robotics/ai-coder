@@ -504,12 +504,36 @@ issue — `issues/2026-10-16/8-11-spawn-*.md` (A → B → C → D).
 `allowed_tools` + `spawn_depth` + `max_spawns` + `usage_action_prefix`
 в `run_tool_loop`; `{{subagents_section}}` и правило 19 в
 `agent_tool_json` (заодно исправлена нумерация правил: 1..19 без дублей).
-Отложено: рекурсия (depth 2), мёрж backup-манифестов ребёнка в родителя,
-time-лимит на subagent'а (`max_minutes` в tool loop не проверяется).
+
+- **Коммиты:** `d679409` (A: конфиг + валидация), `00c6700` (B: ToolSpec
+  + allowlist + промпт), `1546ad0` (C: исполнение), `9d5d840`
+  (D: атрибуция usage + docs).
+- **E2E:** `/tmp/spawn-e2e` — **0.1139 RUB**; родитель вызывает
+  `code-explorer`, ребёнок читает файл, родитель получает digest.
+- **Тесты:** 542 passed (+51 в `tests/test_spawn.py`).
+- **Дизайн:** `docs/dsh/D4/answer.md`. **Реализовано dsh** (D4).
+- Реализовано **не всё** из D4: см. ограничения ниже.
+
+**Оставшиеся ограничения (v1):**
+
+1. **depth 2** — рекурсия subagent'ов не реализована (depth = 1,
+   3 барьера: валидатор конфига, effective allowlist, guard).
+2. **backup merge** — правки subagent'а **не** откатываются родительским
+   `rollback` (у ребёнка свой `backup_dir`).
+3. **`max_minutes`** в tool loop **не** проверяется — subagent'а
+   ограничивает только бюджет.
+4. **`_handle_finish` + `step_type="edit"`** — explorer-родитель
+   (только `read_ops`) завершиться не может; `_handle_finish` не менялся.
+5. **`toolN` начинается с 0** (pre-existing) — первый запрос
+   `agent:tool0`.
+6. **`iterations` не считает finish-итерацию** — расхождение с
+   `usage.jsonl` на 1.
 
 **Validator (10.71):** `--decompose-reverse-check`. После `finish(success=True)` — `_collect_subtask_diff` (baseline через `git stash create`) → `run_reverse_check` → ключи `reverse_*` в `subtask_results[-1]`. Колонка RC + секция `## Reverse-check` в отчёте. Fail-open сохранён. Политики `fail`/`rollback` — отложены.
 
 ### Связь
 
 - **E36** (`docs/experiments.md`) — данные.
-- **TODO** — «Направление 12: subagents» (2-3 недели).
+- **D4** (`docs/dsh/D4/answer.md`) — дизайн `spawn_subagent` (от dsh).
+- **D1-D3** (`docs/dsh.md`) — Validator, RC в usage, Feedback loop.
+- **TODO** — «Направление 12: subagents» — ✅ закрыто (10.75).
