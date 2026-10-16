@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.75 — spawn_subagent, D4)
+**Дата обновления:** 2026-10-16 (10.76 — verify+mypy, делегирование; D5/D6)
 **Ветка:** main
-**Последний коммит:** `9d5d840` (feat(agent): атрибуция usage + документация spawn)
-**Тесты:** 542 passed (+51 spawn_subagent) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `1d0ee4c` (merge: D6 — verify+mypy (#1), делегирование (#3))
+**Тесты:** 562 passed (+51 spawn, +18 verify/делегирование) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -267,9 +267,9 @@ Python-проектов через DeepSeek API. Работает с git-про�
 
 ### Agent
 
-**Subagents (spawn_subagent) — 10.75, D4, Направление 12:** инструмент
-`spawn_subagent`, секция `agent.subagents` в конфиге, перехват в
-tool loop + модуль `spawn.py`. Ограничения — в конце раздела.
+**Subagents (spawn_subagent) — 10.75/10.76, D4/D6, Направление 12:**
+инструмент `spawn_subagent`, секция `agent.subagents` в конфиге,
+перехват в tool loop + модуль `spawn.py`. Ограничения — в конце раздела.
 
 - `SubagentConfig` (Pydantic, frozen) + `AgentConfig.subagents=[]` и
   3 cap-поля (`subagent_max_per_task=3`,
@@ -294,10 +294,34 @@ tool loop + модуль `spawn.py`. Ограничения — в конце р
   `parent_action="agent:spawn:<name>"`.
 - `{{subagents_section}}` + правило 19 в `agent_tool_json`; заодно
   исправлена нумерация правил (1..19 без дублей).
-- Тесты: `tests/test_spawn.py` (51). **542 passed**.
+- Тесты: `tests/test_spawn.py` (51). **562 passed** (всего).
 - Реализовано **dsh** (D4). E2E: `/tmp/spawn-e2e`, **0.1139 RUB**.
 - **Коммиты:** `d679409` (A: конфиг), `00c6700` (B: ToolSpec +
   allowlist), `1546ad0` (C: исполнение), `9d5d840` (D: usage + docs).
+
+**3 роли в `config/config.yaml` (10.76):** `code-explorer` (read-only,
+flash, 5 ит, cap 1.0), `test-runner` (`run_shell`, flash, 3 ит, cap 0.5),
+`markdown-writer` (`read_file`+`write_file`, v4-pro, 8 ит, cap 2.0).
+Коммит `1775bc1`. E2E D5: 2 из 3 ролей упали (max_iterations /
+max_cost), родитель сделал работу сам.
+
+**Verify: `self_verify_commands` (10.76, finding #1):** `verify_commands`
+выполняются в **проекте-цели**, поэтому `python -m mypy ai_coder`
+нельзя хардкодить — в чужом проекте упадёт. Новое:
+`agent.self_verify_commands` применяются **только** когда проект-цель —
+сам ai-coder (`apply.is_self_hosted`). Приоритет:
+`--no-verify` → `--verify-commands` → `config + self`; явный `[]`
+(read-only subagent) остаётся `[]`. Врезка одна — `cli.py::agent_cmd`.
+Коммит `1b2ee2f`.
+
+**Делегирование: правило «когда» (10.76, finding #3):**
+`build_subagents_section` получил блок «Делегируй, когда нужно прочитать
+много файлов (>3-4)… НЕ делегируй мелочи». Эксперимент
+(`scripts/d6_delegation_ab.py`, песочница 30 файлов): большая задача
+0/3 → **3/3** (и 1/1 на v4-pro); маленькая — 0/3 в обоих вариантах,
+и это **правильно** (решается за 4 шага). Коммит `043aa96`.
+⚠️ Выгода делегирования **не** доказана: все прогоны упирались в
+`max_iterations`.
 
 **Ограничения (v1):**
 - **Depth = 1** — subagent не может вызвать subagent'а (depth 2 не
@@ -559,6 +583,25 @@ tool loop + модуль `spawn.py`. Ограничения — в конце р
     `iterations=len(ctx.history)`, а `_handle_finish` в history **не**
     пишет. Итог: `iterations` = число LLM-вызовов − 1, тогда как
     `usage.jsonl` пишет все вызовы (расхождение на 1).
+- **Findings D5 (`docs/findings-d5.md`) — 7 находок E2E:**
+  - ✅ **#1 verify не ловит mypy** — закрыто 10.76 (`1b2ee2f`):
+    `self_verify_commands` для self-hosted.
+  - ✅ **#3 модель не делегирует без подсказки** — закрыто 10.76
+    (`043aa96`), с уточнением: на малой задаче это **правильно**.
+  - 🔴 **#2 Validator в tool loop** — `--reverse-check` **уже** работает
+    (`cli.py:1332/1816`, `tool_loop.py:747/766`), но `default=False`
+    и срабатывает **один раз в конце**, не per-iteration. Плюс: даже
+    включённый RC может не поймать фикс, формально соответствующий
+    goal (случай E2E-2). → задача D7.
+  - 🟡 **#4 `iterations` ≠ LLM-вызовов** (= пункт выше; в D6
+    подтверждено: 15 шагов против 16 записей в `usage.jsonl`).
+  - 🟡 **#5 пустой `summary` при `max_iterations`** — родитель не знает,
+    что упало (подтверждено в D5 и D6).
+  - 🟡 **#6 перерасход `cap`** — «≤ 1 итерации»; задокументировано
+    в `CHANGELOG.md`, но **не** в `docs/tools.md` §6.
+  - 🟢 **#7 `.venv/bin/ai-coder` из worktree** — не баг ai-coder:
+    venv в main + editable install → нужен `PYTHONPATH=<worktree>`,
+    `PATH=.venv/bin`, ключ из `.env`. Задокументировать.
 
 ---
 
@@ -638,24 +681,31 @@ tool loop + модуль `spawn.py`. Ограничения — в конце р
 
 Осталось:
 
-1. **Направление 12 — subagents (10.75):** сделаны Router (10.70),
-   Validator (10.71), Feedback loop (10.74), `spawn_subagent` (10.75).
-   Осталось: **depth 2**, **backup merge** subagent'а в родителя,
-   **`max_minutes`** в tool loop, **`_handle_finish`** для
-   explorer-родителя, `toolN` с 1, `iterations` включая finish.
-2. **3 находки dsh (D2/D3):** `usage --by-action` (нет флага),
-   пути `usage.jsonl` (CWD vs `project_root`), verify-подзадача в
-   decompose (`step_type="edit"` для `type="verify"`) — 🔴 высокий.
-3. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
+1. **Направление 12 — subagents — ✅ ЗАКРЫТО (10.70–10.76):**
+   Router (10.70), Validator (10.71), Feedback (10.74),
+   `spawn_subagent` (10.75), 3 роли + verify+mypy + делегирование
+   (10.76). Follow-up 10.75 (depth 2, backup merge, `max_minutes`,
+   `_handle_finish` для explorer-родителя, `toolN` с 1,
+   `iterations` с finish) — перенесены в findings ниже.
+2. **🔴 #2 Validator в tool loop** (`docs/findings-d5.md`) — `default`
+   и момент срабатывания RC. **Следующая задача (D7).**
+3. **🟡 findings #4-#7:** `iterations` ≠ LLM-вызовов; пустой `summary`
+   при `max_iterations`; перерасход `cap` (доки); рецепт self-hosted
+   E2E в worktree (доки).
+4. **3 находки dsh (D2/D3):** `usage --by-action` (нет флага),
+   пути `usage.jsonl` (CWD vs `project_root`) — 🟡; verify-подзадача
+   в decompose (`step_type="edit"` для `type="verify"`) — 🔴 **не
+   закрыта** (D6 её не касался).
+5. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
    Отложено: ветки `ai-coder/<slug>-<ts>`, push, PR (без веток —
    только коммит в текущую ветку).
-4. **Улучшения tool loop:**
-   - read-шаги в `run_agent` (не только edit);
-   - кэш phase1 (для похожих задач);
-   - YAML-правки (модель слабо справляется).
-5. **`agent.py`** — 43% покрытия (190 строк)
-6. **`apply.py`, `pricing.py`, `prompts.py`** — покрытие до ~90%
-7. **YAML-правки** — модель слабо справляется, усилить промпт
+6. **GUI UX** — прогресс-бар, «Открыть отчёт» для `run`.
+7. **MCP-интеграция**, **унификация `--reverse-check`** (все режимы),
+   **`_legacy.py`** — 140 патчей.
+8. **Улучшения tool loop:** read-шаги в `run_agent`; кэш phase1;
+   YAML-правки (модель слабо справляется).
+9. **Покрытие:** `agent.py` — 43%; `apply.py`/`pricing.py`/
+   `prompts.py` — до ~90%.
 
 ---
 

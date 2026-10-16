@@ -4,6 +4,57 @@
 
 ---
 
+## [2026-10-16] iteration 10.76 — 3 subagents, verify+mypy, делегирование (D5/D6)
+
+### Что сделано
+
+**D5 — E2E на реальной задаче (21.70 RUB).** 3 subagents раскомментированы
+в `config/config.yaml`: `code-explorer` (read-only, flash, 5 ит, cap 1.0),
+`test-runner` (`run_shell`, flash, 3 ит, cap 0.5), `markdown-writer`
+(`read_file`+`write_file`, v4-pro, 8 ит, cap 2.0). Коммит `1775bc1`.
+E2E-1 (с подсказкой): 11.1805 RUB — все 3 роли вызваны, 2 из 3 упали
+(max_iterations, max_cost). E2E-2 (без подсказки): 10.5242 RUB, 0 spawn,
+`max_iterations`. Написаны `docs/findings-d5.md` (7 находок).
+
+**D6 #1 — verify ловит mypy (`1b2ee2f`).** `verify_commands` выполняются
+в **проекте-цели**, поэтому `python -m mypy ai_coder` нельзя хардкодить
+(в чужом проекте пакета нет). Новое поле
+`agent.self_verify_commands` — применяется **только** когда проект-цель
+сам ai-coder (`apply.is_self_hosted`). Приоритет:
+`--no-verify` → `--verify-commands` → `config + self`; явный `[]`
+(read-only subagent) остаётся `[]`. Врезка одна — `cli.py::agent_cmd`.
+
+**D6 #3 — делегирование (`043aa96`).** `build_subagents_section` получил
+блок «Делегируй, когда нужно прочитать много файлов (>3-4)… НЕ делегируй
+мелочи». Эксперимент (`scripts/d6_delegation_ab.py`, песочница 30 файлов):
+большая задача 0/3 → **3/3** (v4-pro 0/1 → 1/1); маленькая — 0/3 в обоих
+вариантах, и это правильно. Правило 19 в `prompts.yaml` не менялось.
+
+### Новые файлы
+
+- `ai_coder/apply.py`: `is_self_hosted`, `resolve_verify_commands`.
+- `scripts/d6_delegation_ab.py` — стенд A/B делегирования.
+- `tests/test_verify_resolve.py` (15 тестов) + 2 теста на секцию
+  subagents + 3 CLI-теста проводки.
+
+### Проверка
+
+- **562 passed** (было 542: +18 verify/делегирование, +2 секция),
+  ruff/mypy/pre-commit — зелёные.
+- E2E D5: **21.70 RUB** (11.1805 + 10.5242).
+- Эксперименты D6: **27.54 RUB** (flash 16.54 + v4-pro 11.00).
+- Механизменный E2E для #1: песочница с `ai_coder/__init__.py` и
+  типовой ошибкой → mypy добавляется → verify падает; в чужом проекте
+  проверка не добавляется.
+
+### Известные ограничения
+
+- **Выгода делегирования не доказана:** все large-прогоны упирались
+  в `max_iterations` и со spawn, и без.
+- Открыты findings #2, #4-#7 (`docs/findings-d5.md`).
+
+---
+
 ## [2026-10-16] iteration 10.75 — spawn_subagent (D4)
 
 ### Что сделано
