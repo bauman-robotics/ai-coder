@@ -14,6 +14,7 @@ from ..config import AppConfig, PromptsConfig
 from ..git import is_git_repo
 from ..llm import LLMClient
 from ..pricing import calculate_cost, get_rate, is_peak_now
+from ..usage import append_usage
 from .models import ReverseCheckResult
 
 _MAX_DIFF_CHARS = 15000
@@ -226,6 +227,28 @@ def run_reverse_check(
         completion_tokens=llm_resp.completion_tokens,
         cny_to_rub=cny_to_rub,
         usd_to_rub=usd_to_rub,
+    )
+
+    # Логируем в usage.jsonl сразу после успешного chat-вызова (до парсинга):
+    # иначе стоимость RC не видна в `ai-coder usage`.
+    # Поля is_peak/peak_window/cost_*/...rates/rate_source берутся из cost.
+    append_usage(
+        project_root=project_root,
+        output_root=project_root / cfg.output.dir,
+        action="agent:reverse_check",
+        project_name=project_root.name,
+        model=rc_model,
+        depth="normal",
+        files_count=0,
+        prompt_tokens=llm_resp.prompt_tokens,
+        completion_tokens=llm_resp.completion_tokens,
+        total_tokens=llm_resp.total_tokens,
+        cost=cost,
+        duration_ms=llm_resp.duration_ms,
+        status="ok",
+        usage_cfg=cfg.usage,
+        iteration=0,
+        parent_action="agent",
     )
 
     content = llm_resp.content.strip()
