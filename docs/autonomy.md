@@ -365,7 +365,7 @@ E2E: 3 issues (0.19 RUB) → 3 задачи ✅ (0.77 RUB).
 
 ## 9. Subagents и оркестрация (10.70)
 
-**Статус:** Router — ✅ MVP (10.70, 2026-10-15). Validator и Feedback — план.
+**Статус:** Router — ✅ MVP (10.70, 2026-10-15). Validator — ✅ MVP (10.71, 2026-10-16). Feedback — план.
 
 
 **Основание:** E36 (2026-10-15) — `--decompose` **уже** реализует
@@ -403,7 +403,7 @@ retry v4-pro — **+2-3 RUB**.
 
 Основание: E36, E38.
 
-**2. Validator (семантическая проверка).**
+**2. Validator (семантическая проверка). — ✅ MVP (10.71, 2026-10-16).**
 
 Проблема: «success» — потому что **pytest прошёл**. Header
 `# (total: N symbols)` — **никто не проверил семантически**.
@@ -463,12 +463,14 @@ retry v4-pro — **+2-3 RUB**.
 ### Оценка
 
 - **Router:** ✅ MVP (10.70, 2026-10-15). Конфиг `agent.subagents` — ~1 день.
-- **Validator:** ~3-4 дня.
+- **Validator:** ✅ MVP (10.71, 2026-10-16). Политики fail/rollback — отдельно.
 - **Feedback:** ~2-3 дня.
 - **Инструмент `spawn_subagent`:** ~5-7 дней.
 - **Итого:** 2-3 недели (не месяцы).
 
-**Порядок:** Router → Validator → Feedback → `spawn_subagent`.
+**Порядок:** Router ✅ → Validator ✅ → Feedback → `spawn_subagent`.
+
+**Validator (10.71):** `--decompose-reverse-check`. После `finish(success=True)` — `_collect_subtask_diff` (baseline через `git stash create`) → `run_reverse_check` → ключи `reverse_*` в `subtask_results[-1]`. Колонка RC + секция `## Reverse-check` в отчёте. Fail-open сохранён. Политики `fail`/`rollback` — отложены.
 
 ### Связь
 

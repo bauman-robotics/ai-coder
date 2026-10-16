@@ -6,6 +6,143 @@
 
 ---
 
+## 2026-10-16 — E39: Validator через 3 маленьких issue (✅ успех + урок)
+
+**Гипотеза:** Validator (`--decompose-reverse-check`) можно сделать
+агентом. **Разбить** на **маленькие** issue (по E37/E38) — в отличие
+от Router (E38), где было 3 больших прогона.
+
+**Задача:** семантическая проверка подзадач в `--decompose`.
+После `finish(success=True)` — LLM-вызов, проверяющий, что diff
+**соответствует** goal подзадачи.
+
+**План от D1 (`docs/dsh.md`) был обогащён:**
+- Diff-изоляция (baseline через `git stash create`).
+- Точка вставки — **после** retry-блока.
+- Политика `ok=False` — 3 уровня (warn/fail/rollback).
+- **Не менять** `success` — добавить `verified`.
+- Fail-open (parse_error → ok=True).
+- Пропуск при `applied_ops == 0` / пустом diff.
+
+### Два больших прогона (❌ провал)
+
+**Прогон 1** (issue 1, ~180 строк, `--max-cost-rub 20`):
+
+    ai-coder agent --issue ...1-validator-decompose.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 30 --max-cost-rub 20 --reverse-check
+
+- **13 итераций, 19.93 RUB, max_cost.**
+- 4 правки: `config.py` (флаг), `reverse.py` × 2
+  (`_collect_subtask_diff`), `decomposer.py` (import subprocess).
+- **~70% задачи.**
+
+**Прогон 2** (issue 2, ~180 строк, `--max-cost-rub 10`):
+
+- **7 итераций, 9.89 RUB, max_cost.**
+- 2 правки: helpers + импорт.
+- **~40% остатка.**
+
+**Урок:** issue **180 строк** → v4-pro **читает** и **не делает**.
+Каждая итерация ~1.4 RUB, 2 правки за 7 итераций.
+
+### Три маленьких issue (✅ успех)
+
+**Issue A** (~25 строк, только параметр + baseline):
+
+    ai-coder agent --issue ...3-validator-a-baseline.md . \
+        --tool-loop --apply --model deepseek-v4-pro \
+        --max-iterations 20 --max-cost-rub 8
+
+- **6 итераций, 6.77 RUB.** ✅.
+- Сделано **точно** по issue: параметр, rc_flag, baseline.
+
+**Issue B** (~30 строк, только RC-блок):
+
+    ... --max-cost-rub 12
+
+- **9 итераций, 12.20 RUB, success=True.** ✅.
+- RC-блок после retry, ключи `reverse_*` в `subtask_results[-1]`.
+
+**Issue C** (~50 строк, отчёт + CLI):
+
+    ... --max-cost-rub 15
+
+- **11 итераций, 8.21 RUB, `stopped_reason=completed`.** ✅.
+- Колонка RC в отчёте + секция `## Reverse-check`.
+- Флаг `--decompose-reverse-check` в CLI.
+
+**Тесты** (issue D) — **вручную** (2 теста, 0 RUB):
+- `test_decompose_reverse_check_default_false`;
+- `test_run_agent_decompose_has_rc_param`.
+
+### E2E — реальная проверка
+
+**`/tmp/validator-e2e4`:**
+
+    ai-coder agent "Добавь mul в calc.py и test_mul в test_calc.py." \
+        /tmp/validator-e2e4 --tool-loop --decompose \
+        --decompose-reverse-check --apply \
+        --max-iterations 10 --max-cost-rub 5
+
+**Результат:**
+- v4-pro разбил на **2 подзадачи**: mul (calc.py) + test_mul
+  (test_calc.py).
+- **Обе ✅.** RC **вызвался** для **каждой** (подтверждено debug).
+- `reverse_ok=True`, `reverse_problems=[]`, `reverse_suggestion=None`.
+- `reverse_cost_rub=0.0238` (подзадача 1) + `0.0303` (подзадача 2).
+- Стоимость отчёта: **0.1162 + 0.1550** — **включает** RC.
+
+### Найденное в E2E — «загадка» (by design)
+
+**Искали** в `usage.jsonl` запись RC — **не нашли**. Стоимость
+подзадачи в отчёте **совпадала** с суммой `agent:*` в usage
+**1:1** — значит, `rc.cost_rub` = 0. **Решили, что RC не вызвался.**
+
+**E2E4 с debug-принтом показал:** `reverse_cost_rub=0.0238`
+(не 0!), RC **вызвался**. **Значит:**
+- `run_reverse_check` **не пишет** в `usage.jsonl` — **by design**
+  (не логируется как `parent_action`).
+- Стоимость **суммируется** в `dec_result.cost_rub`, но **не**
+  попадает в usage-записи.
+
+**Урок:** `usage.jsonl` — **не единственный** источник истины для
+стоимости. RC-стоимость видна **только** в `report.md` (и debug-выводе).
+**Отдельная задача:** логировать RC в usage — TODO «usage: RC-записи».
+
+### Итоги
+
+- **Всего ~62 RUB** (57 агент + 5 E2E).
+- **Вручную** — 25 минут.
+- **5 коммитов** в `test-validator`, merge в main `23d785c`.
+- **489 passed** (+2 теста).
+- ruff, mypy — clean.
+
+### Уроки (для будущего)
+
+1. **Большой issue (>100 строк) → провал.** v4-pro тратит ~60%
+   бюджета на «сориентироваться». ~1.4 RUB/итерация, 2 правки
+   за 7 итераций.
+2. **3 маленьких issue (20-50 строк, одна операция) → 100% успех.**
+   Каждый ✅ без ручной доводки. **Правило:** issue = одна операция
+   + маркеры (**не** номера строк).
+3. **E2E ловит то, что тесты не видят.** «Загадка» RC-без-usage
+   обнаружена **только** на реальном прогоне. Мок-тесты **не**
+   показали бы.
+4. **debug-принты — быстро и эффективно.** Одна строка в коде →
+   точное место проблемы.
+5. **Worktree-изоляция** (git worktree) — обязательна для
+   экспериментов. E2E — в `/tmp/validator-e2e*`, **не** в основном
+   проекте.
+6. **E37/E38/E39 — три эксперимента подтверждают:** v4-pro —
+   **послушный исполнитель**, не свободный исследователь.
+   **Конкретика > свобода.**
+
+**Артефакты:** worktree `test-validator` (merge `23d785c`),
+E2E `/tmp/validator-e2e4`, debug в `decomposer.py` (убран).
+
+---
+
 ## 2026-10-15 — E38: Router — выбор модели подзадачи по типу (⚠️ успех через 3 прогона)
 
 **Гипотеза:** v4-pro планировщик разобьёт задачу на 4 подзадачи,

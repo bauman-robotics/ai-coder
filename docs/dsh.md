@@ -161,6 +161,46 @@
 
 **Связь:** см. `docs/dsh/D1/analysis.md` → «Что взять» (детали).
 
+---
+
+## 2026-10-16 — D1.5: Validator реализован (✅)
+
+**Итог D1 + E39:** план Validator от dsh (D1) **реализован** в ai-coder
+через 3 маленьких issue + E2E-проверку.
+
+**Что сделано (issue 10.71):**
+- `decompose_reverse_check: bool = False` в конфиге.
+- `_collect_subtask_diff(project_root, baseline_sha, untracked_before)`
+  в `reverse.py` — изолированный diff подзадачи.
+- Baseline через `git stash create` — **работает** как снапшот «до».
+- RC **после** retry-блока, до `max_cost`-проверки.
+- Ключи `reverse_ok/problems/suggestion/cost_rub` в `subtask_results[-1]`.
+- Колонка RC + секция `## Reverse-check` в `report.md`.
+- Флаг `--decompose-reverse-check` в CLI.
+
+**Что отложено (второй шаг):**
+- Политики `fail` / `rollback` для `ok=False` — opt-in, не сделано.
+- Retry-с-фидбеком — не сделано.
+- `success` **не** меняется на `verified` — добавили **отдельные** ключи
+  (`reverse_*`), `success` по-прежнему **verify-based**.
+
+**Находки D1 подтвердились:**
+- Diff-изоляция — **главный риск.** Решена через baseline.
+- Точка вставки — после retry. **Проверено.**
+- Fail-open — сохранён (`parse_error → ok=True`).
+- `success` **не трогаем.**
+
+**Проверки:** 489 passed, ruff/mypy clean, merge `23d785c`,
+E2E в `/tmp/validator-e2e4`.
+
+**Связь:** `docs/experiments.md` → E39, `CHANGELOG.md` → 10.71,
+`docs/autonomy.md` → раздел 9.
+
+**Остаток Направления 12:** Feedback loop (summary в N+1),
+`spawn_subagent`.
+
+---
+
 **Гипотезы на будущее:**
 - **D2:** дать `dsh` ту же задачу в **режиме реализации** (не план) —
   сравнить с `ai-coder --tool-loop --apply`.
@@ -170,5 +210,5 @@
   с результатом `ai-coder` (32 RUB, 3 прогона).
 
 **Ссылки:**
-- `next-chat/in-progress.md` → Validator (обогащён находками dsh).
+- `next-chat/in-progress.md` → Feedback (следующее, после Validator 10.71).
 - `docs/autonomy.md` → раздел 9 (Validator).

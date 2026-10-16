@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-15 (10.70 — Router: выбор модели подзадачи по типу)
+**Дата обновления:** 2026-10-16 (10.71 — Validator: семантическая проверка подзадач)
 **Ветка:** main
-**Последний коммит:** `94e113d` (merge: Router — выбор модели подзадачи по типу)
-**Тесты:** 487 passed (переименован fallback → router_edit_simple_iters; кол-во не изменилось) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `23d785c` (merge: Validator — семантическая проверка подзадач)
+**Тесты:** 489 passed (+2 для Validator) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -257,6 +257,17 @@ Python-проектов через DeepSeek API. Работает с git-про�
 `next-chat/in-progress.md`.
 
 ### Agent
+
+**Validator (10.71, Направление 12):**
+- `decompose_reverse_check: bool = False` в `AgentConfig`.
+- `_collect_subtask_diff` в `reverse.py` — изолированный diff подзадачи.
+- Baseline через `git stash create` — снапшот «до».
+- RC после retry, до `max_cost`. Ключи `reverse_ok/problems/suggestion/cost_rub`.
+- Колонка RC + секция `## Reverse-check` в отчёте.
+- Флаг `--decompose-reverse-check` в CLI.
+- Fail-open сохранён. Политики fail/rollback — отложены.
+- E2E: `/tmp/validator-e2e4`, 2 подзадачи, обе ✅, RC ✅.
+- Основание: D1 (`docs/dsh.md`), E39.
 
 **Router (10.70, Направление 12):**
 - `Subtask.type`: `explore` | `edit-simple` | `edit-complex` | `verify`.

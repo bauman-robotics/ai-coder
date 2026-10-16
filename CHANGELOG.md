@@ -4,6 +4,107 @@
 
 ---
 
+## [2026-10-16] iteration 10.71 — Validator: семантическая проверка подзадач
+
+### Что сделано
+
+**`ai_coder/config.py` → `AgentConfig`:**
+- Новое поле `decompose_reverse_check: bool = False`.
+- Default `False` — обратная совместимость.
+
+**`ai_coder/agent/reverse.py` → `_collect_subtask_diff`:**
+- Новая функция: diff **одной** подзадачи относительно baseline-снапшота.
+- Параметры: `project_root`, `baseline_sha` (SHA от `git stash create`),
+  `untracked_before` (set untracked-путей до подзадачи).
+- Untracked — **новые** (дельта `untracked_now - untracked_before`).
+- Обрезка до `_MAX_DIFF_CHARS`.
+- Экспортирована в `__all__`.
+
+**`ai_coder/agent/decomposer.py`:**
+- Импорт `_collect_subtask_diff`, `run_reverse_check`.
+- Helpers `_git_stash_create(project_root)`, `_list_untracked(project_root)`.
+- Параметр `run_agent_decompose(..., decompose_reverse_check: bool | None = None)`.
+- Флаг `rc_flag` — если параметр `None` → берётся из `cfg.agent`.
+- **Baseline** в цикле подзадач — до `run_tool_loop` (только если `rc_flag`).
+- **RC-блок** после retry, до `max_cost`-проверки:
+  - если `loop_result.success and not dry_run` — `_collect_subtask_diff`;
+  - если diff непустой — `run_reverse_check`;
+  - `dec_result.cost_*` += `rc.cost_*`;
+  - ключи `reverse_ok`, `reverse_problems`, `reverse_suggestion`,
+    `reverse_cost_rub` — в `subtask_results[-1]`;
+  - при `not rc.ok` — печать `Validator subtask N: найдены проблемы`.
+- `_save_decompose_report` — колонка `RC` (✅/❌/—) + секция
+  `## Reverse-check` со списком проблем и `suggestion`.
+
+**`ai_coder/cli.py`:**
+- Флаг `--decompose-reverse-check` в `agent_cmd`.
+- Прокид в `run_agent_decompose`.
+- **Не** триггерит проверку `if reverse_check and not tool_loop`.
+
+**`tests/test_agent.py`:**
+- `test_decompose_reverse_check_default_false` — конфиг default.
+- `test_run_agent_decompose_has_rc_param` — параметр в сигнатуре.
+
+### Как сделано
+
+**Агентом (v4-pro), 5 прогонов, ~57 RUB + 5 RUB E2E.**
+
+- **Прогон 1** (issue 1, ~180 строк) — 13 итераций, 19.93 RUB,
+  упёрлись в `max_cost`. Сделано **~70%**: config, reverse,
+  import subprocess.
+- **Прогон 2** (issue 2, ~180 строк) — 7 итераций, 9.89 RUB,
+  снова `max_cost`. Сделано **~40%** остатка: helpers,
+  импорты.
+- **Прогон 3** (issue A, ~25 строк) — 6 итераций, 6.77 RUB.
+  **Полностью** ✅: параметр + rc_flag + baseline.
+- **Прогон 4** (issue B, ~30 строк) — 9 итераций, 12.20 RUB.
+  ✅. RC-блок в цикле.
+- **Прогон 5** (issue C, ~50 строк) — 11 итераций, 8.21 RUB,
+  `stopped_reason=completed`. ✅. Отчёт + CLI.
+- **Тесты** — вручную (2 теста, 0 RUB).
+
+**Итого: ~57 RUB.** Вручную — 25 минут.
+
+### Урок (E39)
+
+- **Большой issue (~180 строк) → провал.** v4-pro тратит
+  **~60%** бюджета на «сориентироваться» (read_file/read_symbol).
+  ~1.4 RUB за итерацию, 2 правки за 7 итераций.
+- **3 маленьких issue (20-50 строк, одна операция) → 100% успех.**
+  Каждый ✅ без ручной доводки.
+- **Правило:** issue = **одна операция** + маркеры (не строки).
+  E37/E38/E39 — три эксперимента подтверждают.
+
+### E2E-проверка
+
+- `/tmp/validator-e2e4` — задача «Добавь mul в calc.py и test_mul
+  в test_calc.py.», `--decompose --decompose-reverse-check`.
+- Результат: 2 подзадачи, обе ✅, колонка RC = ✅.
+- `reverse_cost_rub=0.0238` (подзадача 1) + `0.0303` (подзадача 2).
+- Стоимость отчёта (0.1162 + 0.1550) **включает** стоимость RC.
+- **RC работает end-to-end.**
+
+### Найденное (by design — задокументировать)
+
+- `run_reverse_check` **не пишет** в `usage.jsonl`.
+  В E2E мы **искали** там следы RC и **не нашли** — пришлось
+  дебажить. Это **не бага**, но **неочевидно**.
+  См. TODO «usage: RC-записи».
+
+### Проверки
+
+- pytest — **489 passed** (+2).
+- ruff, mypy — clean.
+- Merge в main: `23d785c`.
+
+### Ссылки
+
+- `docs/experiments.md` → E39.
+- `docs/dsh.md` → Validator реализован (Направление 12).
+- `docs/autonomy.md` → раздел 9.
+
+---
+
 ## [2026-10-15] iteration 10.70 — Router: выбор модели подзадачи по типу
 
 ### Что сделано
