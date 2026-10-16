@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.76 — verify+mypy, делегирование; D5/D6)
+**Дата обновления:** 2026-10-16 (10.77 — reverse-check по умолчанию; D7)
 **Ветка:** main
-**Последний коммит:** `1d0ee4c` (merge: D6 — verify+mypy (#1), делегирование (#3))
-**Тесты:** 562 passed (+51 spawn, +18 verify/делегирование) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `575f464` (merge: D7 — reverse-check по умолчанию в tool loop (#2))
+**Тесты:** 566 passed (+51 spawn, +18 verify/делегирование, +4 RC) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -314,6 +314,18 @@ max_cost), родитель сделал работу сам.
 (read-only subagent) остаётся `[]`. Врезка одна — `cli.py::agent_cmd`.
 Коммит `1b2ee2f`.
 
+**Reverse-check по умолчанию (10.77, finding #2):** `--reverse-check`
+включён по умолчанию в tool loop. Реализация — **tri-state**
+(`bool | None`): `None` → вкл в tool loop и выкл вне него;
+`--no-reverse-check` → явный отказ; явный `--reverse-check` без
+`--tool-loop` — по-прежнему ошибка. Библиотечный
+`run_tool_loop(reverse_check=False)` не менялся (CLI передаёт явно),
+поэтому `decompose`/`spawn` не затронуты.
+Стоимость: **+1 LLM-запрос**, только при непустом diff.
+⚠️ RC ловит несоответствие diff и goal, но **не** ловит фикс, формально
+удовлетворяющий размытому goal (эксперимент 0.85 RUB: размытый goal →
+`ok=True`; точный goal → `ok=False`). Коммиты `1822df5`, `092760c`.
+
 **Делегирование: правило «когда» (10.76, finding #3):**
 `build_subagents_section` получил блок «Делегируй, когда нужно прочитать
 много файлов (>3-4)… НЕ делегируй мелочи». Эксперимент
@@ -588,11 +600,12 @@ max_cost), родитель сделал работу сам.
     `self_verify_commands` для self-hosted.
   - ✅ **#3 модель не делегирует без подсказки** — закрыто 10.76
     (`043aa96`), с уточнением: на малой задаче это **правильно**.
-  - 🔴 **#2 Validator в tool loop** — `--reverse-check` **уже** работает
-    (`cli.py:1332/1816`, `tool_loop.py:747/766`), но `default=False`
-    и срабатывает **один раз в конце**, не per-iteration. Плюс: даже
-    включённый RC может не поймать фикс, формально соответствующий
-    goal (случай E2E-2). → задача D7.
+  - ✅ **#2 Validator в tool loop** — закрыто 10.77 (`1822df5`):
+    `--reverse-check` включён по умолчанию (tri-state).
+    **Остаточное ограничение:** RC ловит несоответствие diff и goal,
+    но **не** ловит фикс, формально удовлетворяющий размытому goal
+    (эксперимент D7: размытый goal → `ok=True`, точный → `ok=False`).
+    Корень — формулировка задачи, а не тайминг RC.
   - 🟡 **#4 `iterations` ≠ LLM-вызовов** (= пункт выше; в D6
     подтверждено: 15 шагов против 16 записей в `usage.jsonl`).
   - 🟡 **#5 пустой `summary` при `max_iterations`** — родитель не знает,
@@ -687,25 +700,26 @@ max_cost), родитель сделал работу сам.
    (10.76). Follow-up 10.75 (depth 2, backup merge, `max_minutes`,
    `_handle_finish` для explorer-родителя, `toolN` с 1,
    `iterations` с finish) — перенесены в findings ниже.
-2. **🔴 #2 Validator в tool loop** (`docs/findings-d5.md`) — `default`
-   и момент срабатывания RC. **Следующая задача (D7).**
-3. **🟡 findings #4-#7:** `iterations` ≠ LLM-вызовов; пустой `summary`
+2. **✅ #2 Validator в tool loop** — закрыто 10.77 (`1822df5`):
+   RC по умолчанию. Остаток — качество goal (см. «Известные проблемы»).
+3. **🔴 verify-подзадача в decompose** — `step_type="edit"` для
+   `type="verify"` → `applied_ops>0` не выполняется. **Следующая
+   задача (D8).** `decomposer.py` + `tool_loop.py`.
+4. **🟡 findings #4-#7:** `iterations` ≠ LLM-вызовов; пустой `summary`
    при `max_iterations`; перерасход `cap` (доки); рецепт self-hosted
    E2E в worktree (доки).
-4. **3 находки dsh (D2/D3):** `usage --by-action` (нет флага),
-   пути `usage.jsonl` (CWD vs `project_root`) — 🟡; verify-подзадача
-   в decompose (`step_type="edit"` для `type="verify"`) — 🔴 **не
-   закрыта** (D6 её не касался).
-5. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
+5. **2 находки dsh (D2):** `usage --by-action` (нет флага) — 🟢;
+   пути `usage.jsonl` (CWD vs `project_root`) — 🟡.
+6. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
    Отложено: ветки `ai-coder/<slug>-<ts>`, push, PR (без веток —
    только коммит в текущую ветку).
-6. **GUI UX** — прогресс-бар, «Открыть отчёт» для `run`.
-7. **MCP-интеграция**, **унификация `--reverse-check`** (все режимы),
+7. **GUI UX** — прогресс-бар, «Открыть отчёт» для `run`.
+8. **MCP-интеграция**, **унификация `--reverse-check`** (все режимы),
    **`_legacy.py`** — 140 патчей.
-8. **Улучшения tool loop:** read-шаги в `run_agent`; кэш phase1;
+9. **Улучшения tool loop:** read-шаги в `run_agent`; кэш phase1;
    YAML-правки (модель слабо справляется).
-9. **Покрытие:** `agent.py` — 43%; `apply.py`/`pricing.py`/
-   `prompts.py` — до ~90%.
+10. **Покрытие:** `agent.py` — 43%; `apply.py`/`pricing.py`/
+    `prompts.py` — до ~90%.
 
 ---
 

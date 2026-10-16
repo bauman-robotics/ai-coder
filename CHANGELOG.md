@@ -4,6 +4,62 @@
 
 ---
 
+## [2026-10-16] iteration 10.77 — D7: reverse-check по умолчанию в tool loop
+
+### Что сделано
+
+`--reverse-check` **включён по умолчанию** в tool loop. Раньше флаг уже
+работал (`cli.py:1336`, RC-блок `tool_loop.py:747`/`:766`), но был
+`default=False`, поэтому в E2E-2 семантическая проверка не выполнялась.
+
+Реализация — **tri-state** (`bool | None`), иначе `default=True` сломал бы
+существующую валидацию `if reverse_check and not tool_loop` — она
+срабатывала бы на каждом прогоне без tool loop:
+
+- `None` (флаг не указывали) → **включено в tool loop**, выключено вне него;
+- `--reverse-check` без `--tool-loop` → по-прежнему ошибка;
+- `--no-reverse-check` → явный отказ.
+
+**`ai_coder/cli.py`:** `reverse_check: bool | None = typer.Option(None,
+"--reverse-check/--no-reverse-check", ...)`; `rc_enabled = tool_loop
+if reverse_check is None else reverse_check`. Библиотечный
+`run_tool_loop(reverse_check=False)` **не менялся** — CLI передаёт
+значение явно, поэтому `decompose` и `spawn` не затронуты.
+
+### Эксперимент (0.85 RUB)
+
+`scripts/d7_rc_experiment.py` — `run_reverse_check` на **реальном**
+неправильном диффе из E2E-2:
+
+| Goal | Вердикт RC |
+|---|---|
+| goal из E2E-2 (размытый: «пробрасывай type») | `ok=True` — **не поймал** |
+| точный (контракт `_handle_finish`) | `ok=False` — поймал |
+| issue-стиль (`explore→read, verify→None, edit-*→edit`) | `ok=False` — поймал |
+
+**Вывод:** потолок RC — **качество goal**, а не момент срабатывания.
+Поэтому выбран вариант A (default on), а не B (per-iteration):
+размытый goal per-iteration RC тоже не вылечит, а это N лишних вызовов.
+
+### Стоимость
+
+Предсказуема: **+1 LLM-запрос** на прогон, и только если diff непустой
+(при пустом diff RC пропускается сам).
+
+### Проверка
+
+- **566 passed** (+4 CLI-теста: дефолт вкл; `--no-reverse-check` выкл;
+  явный `--reverse-check` без `--tool-loop` = ошибка; дефолт без
+  `--tool-loop` — ошибки нет), ruff/mypy/pre-commit — зелёные.
+- **Коммиты:** `1822df5` (фикс), `092760c` (отчёт D7). Merge: `575f464`.
+
+### Ограничение
+
+RC ловит несоответствие diff и goal, но **не ловит** фикс, формально
+удовлетворяющий размытому goal. Корень — формулировка задачи, а не RC.
+
+---
+
 ## [2026-10-16] iteration 10.76 — 3 subagents, verify+mypy, делегирование (D5/D6)
 
 ### Что сделано
