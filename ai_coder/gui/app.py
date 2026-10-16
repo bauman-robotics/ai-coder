@@ -5,12 +5,14 @@ import shlex
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from html import escape as html_escape
 from pathlib import Path
 from typing import cast
+from urllib.parse import quote
 
 import markdown
 from fastapi import FastAPI, Form, Request
@@ -258,8 +260,18 @@ def _build_argv(
     return [sys.executable, "-m", "ai_coder.cli", *parts[1:]]
 
 
-def _stream_process(run_id: str, proc: subprocess.Popen) -> Iterator[str]:
-    """Генератор SSE-строк с выводом процесса."""
+def _stream_process(
+    run_id: str,
+    proc: subprocess.Popen,
+    emit_report: bool = False,
+    started_at: float = 0.0,
+    project: str | None = None,
+) -> Iterator[str]:
+    """Генератор SSE-строк с выводом процесса.
+
+    D12: для `run` после выхода ищем свежий отчёт и шлём маркер
+    `[отчёт] <url>` — клиент показывает ссылку «Открыть отчёт».
+    """
     yield f"data: run_id: {run_id}\n\n"
     try:
         if proc.stdout is not None:
@@ -269,6 +281,10 @@ def _stream_process(run_id: str, proc: subprocess.Popen) -> Iterator[str]:
         proc.wait()
         RUNNING.pop(run_id, None)
         yield f"data: [exit {proc.returncode}]\n\n"
+        found = _newest_report(started_at, project) if emit_report else None
+        if found is not None:
+            project, filename = found
+            yield f"data: [отчёт] /reports/file/{quote(project)}/{quote(filename)}\n\n"
 
 
 def _collect_docs_cli() -> list[dict]:
@@ -425,6 +441,7 @@ async def run(
         decompose_reverse_check=decompose_reverse_check,
         chain_path=chain_path,
     )
+    started_at = time.time()
     proc: subprocess.Popen = subprocess.Popen(
         argv,
         stdout=subprocess.PIPE,
@@ -433,8 +450,26 @@ async def run(
         bufsize=1,
     )
     RUNNING[run_id] = proc
+    # D12: у действий `run` отчёт лежит не в каталоге журнала, а отдельным
+    # файлом — после выхода процесса шлём ссылку «Открыть отчёт».
+    emit_report = task_type == "run"
+    project_name = ""
+    if emit_report:
+        # имя подкаталога отчёта = имя каталога проекта (scan.root.name)
+        try:
+            project_name = (
+                Path(path).expanduser().resolve().name if path.strip() else Path.cwd().name
+            )
+        except OSError:
+            project_name = ""
     return StreamingResponse(
-        _stream_process(run_id, proc),
+        _stream_process(
+            run_id,
+            proc,
+            emit_report=emit_report,
+            started_at=started_at,
+            project=project_name or None,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -624,6 +659,74 @@ def _safe_report_path(project: str, journal: str) -> Path | None:
     return report_path
 
 
+def _safe_flat_report_path(project: str, filename: str) -> Path | None:
+    """D12: плоский отчёт (у `run` — `.ai-out/<project>/<action>-<ts>.md`).
+
+    Отчёты команд `agent`/`tool-loop` лежат в каталоге журнала
+    (`<journal>/report.md`), а у `run` — отдельным файлом рядом. Для них
+    этот резолвер. Защита от traversal — как в _safe_report_path.
+    """
+    if not project or not filename:
+        return None
+    if (
+        "/" in project
+        or "\\" in project
+        or project.startswith(".")
+        or "/" in filename
+        or "\\" in filename
+        or filename.startswith(".")
+        or not filename.endswith(".md")
+    ):
+        return None
+    path = (AI_OUT_DIR / project / filename).resolve()
+    try:
+        path.relative_to(AI_OUT_DIR.resolve())
+    except ValueError:
+        return None
+    if not path.is_file():
+        return None
+    return path
+
+
+def _newest_report(since: float, project: str | None = None) -> tuple[str, str] | None:
+    """D12: самый свежий отчёт в AI_OUT_DIR, созданный после `since`.
+
+    Возвращает (project, filename) для ссылки «Открыть отчёт» после `run`,
+    либо None. Каталог cache/ пропускается — там не отчёты.
+
+    Сканируется именно AI_OUT_DIR панели (а не каталог, переданный в форме
+    как `path`): маршрут `/reports/...` отдаёт файлы только оттуда, иначе
+    ссылка вела бы на 404. См. ограничение в docs/dsh.md → D12.
+    """
+    out_dir = AI_OUT_DIR
+    if not out_dir.is_dir():
+        return None
+
+    best: tuple[float, str, str] | None = None
+    for path in out_dir.rglob("*.md"):
+        if "cache" in path.parts:
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < since:
+            continue
+        try:
+            rel = path.relative_to(out_dir)
+        except ValueError:
+            continue
+        if len(rel.parts) != 2:  # ожидаем <project>/<file>.md
+            continue
+        if project and rel.parts[0] != project:
+            continue
+        if best is None or mtime > best[0]:
+            best = (mtime, rel.parts[0], rel.parts[1])
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
 def _collect_stats() -> dict:
     """
     Агрегирует usage.jsonl для графиков.
@@ -733,6 +836,32 @@ async def stats_data() -> dict:
 async def stats_view(request: Request) -> HTMLResponse:
     """Страница со графиками расходов (Chart.js)."""
     return templates.TemplateResponse(request, "stats.html", {})
+
+
+@app.get("/reports/file/{project}/{filename}", response_class=HTMLResponse)
+async def flat_report_view(request: Request, project: str, filename: str) -> HTMLResponse:
+    """D12: показать плоский отчёт (`.ai-out/<project>/<file>.md`).
+
+    Нужен для действий `run`: у них отчёт не в каталоге журнала, поэтому
+    `/reports/{project}/{journal}` его не находит.
+    """
+    report_path = _safe_flat_report_path(project, filename)
+    if report_path is None:
+        return HTMLResponse("<h1>Отчёт не найден</h1>", status_code=404)
+    md_text = report_path.read_text(encoding="utf-8")
+    html = markdown.markdown(
+        md_text,
+        extensions=["fenced_code", "tables", "sane_lists"],
+    )
+    return templates.TemplateResponse(
+        request,
+        "report.html",
+        {
+            "content": html,
+            "project": project,
+            "journal": filename,
+        },
+    )
 
 
 @app.get("/reports", response_class=HTMLResponse)

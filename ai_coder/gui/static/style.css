@@ -543,3 +543,34 @@ button.primary:hover {
     opacity: 0.7;
     margin-top: 0.25em;
 }
+
+/* ---- D12: индикатор выполнения долгих операций ---- */
+#run-status {
+    margin-left: 0.75rem;
+    color: #9aa0a6;
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+
+button.btn-running {
+    position: relative;
+    padding-left: 2.1rem;
+}
+
+button.btn-running::before {
+    content: "";
+    position: absolute;
+    left: 0.7rem;
+    top: 50%;
+    width: 13px;
+    height: 13px;
+    margin-top: -7px;
+    border: 2px solid #6b6b6b;
+    border-top-color: #e0e0e0;
+    border-radius: 50%;
+    animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+    to { transform: rotate(360deg); }
+}

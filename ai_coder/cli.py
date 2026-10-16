@@ -2342,6 +2342,11 @@ def fix_cmd(
 @app.command("usage")
 def usage_show(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", "-c"),
+    path: Path = typer.Option(
+        Path("."),
+        "--path",
+        help="Проект, чей журнал читать: usage.jsonl ищется относительно него.",
+    ),
     since: str | None = typer.Option(None, "--since", help="С какого дня (YYYY-MM-DD), в UTC"),
     until: str | None = typer.Option(None, "--until", help="По какой день (YYYY-MM-DD), в UTC"),
     action: str | None = typer.Option(None, "--action", "-a", help="Фильтр по действию"),
@@ -2358,9 +2363,13 @@ def usage_show(
     import json as _json
 
     cfg = load_config(config)
-    jsonl_path = Path(cfg.usage.jsonl)
+    # D12 (#D2.2): append_usage пишет журнал относительно project_root
+    # (target), а не CWD. Поэтому и читаем относительно --path: иначе при
+    # запуске из другого каталога статистика «терялась». Абсолютный путь
+    # в cfg.usage.jsonl работает как раньше (Path / abs = abs).
+    jsonl_path = Path(path) / cfg.usage.jsonl
     if not jsonl_path.exists():
-        console.print("[yellow]Журнал пуст — ещё не было запросов.[/yellow]")
+        console.print(f"[yellow]Журнал пуст — ещё не было запросов.[/yellow] (искал: {jsonl_path})")
         raise typer.Exit(0)
 
     # --- читаем все записи ---
