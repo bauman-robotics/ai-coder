@@ -73,6 +73,38 @@ def _list_untracked(project_root: Path) -> set[str]:
     return out
 
 
+_FEEDBACK_GOAL_MAX_CHARS = 200
+
+
+def _build_feedback(subtask_results: list[dict], max_items: int = 7) -> str:
+    """Собирает краткий summary предыдущих подзадач для промпта.
+
+    Пустой список (или max_items <= 0) → "". Иначе — последние max_items
+    записей в виде Markdown-секции "## Предыдущие подзадачи".
+    """
+    if not subtask_results or max_items <= 0:
+        return ""
+
+    lines = ["## Предыдущие подзадачи", ""]
+    for r in subtask_results[-max_items:]:
+        n = r.get("n", "?")
+        mark = "✅" if r.get("success") else "❌"
+        goal = " ".join(str(r.get("goal", "")).split())
+        if len(goal) > _FEEDBACK_GOAL_MAX_CHARS:
+            goal = goal[:_FEEDBACK_GOAL_MAX_CHARS] + "…"
+        files = r.get("files") or []
+        files_str = ", ".join(str(f) for f in files) if files else "—"
+        summary = r.get("stopped_reason") or f"{r.get('cost_rub') or 0.0:.4f} RUB"
+
+        lines.append(f"### {n} — {mark}")
+        lines.append(f"Goal: {goal}")
+        lines.append(f"Файлы: {files_str}")
+        lines.append(f"Результат: {summary}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
 _SUBAGENT_MODEL = {
     "explore": "deepseek-flash",
     "edit-simple": "deepseek-flash",
@@ -296,6 +328,16 @@ def run_agent_decompose(
             baseline_sha = _git_stash_create(project_root)
             untracked_before = _list_untracked(project_root)
 
+        # Feedback loop: подзадача N видит результат подзадач 1..N-1.
+        # Считаем один раз на итерацию (до первого run_tool_loop), чтобы
+        # retry той же подзадачи не видел собственную неудачную попытку.
+        feedback = ""
+        if getattr(cfg.agent, "feedback_enabled", True):
+            feedback = _build_feedback(
+                dec_result.subtask_results,
+                max_items=getattr(cfg.agent, "feedback_max_subtasks", 7),
+            )
+
         subtask_subdir: Path | None = None
         if decompose_dir is not None:
             subtask_subdir = decompose_dir / f"subtask-{st.n}"
@@ -323,6 +365,7 @@ def run_agent_decompose(
             allow_blacklist=allow_blacklist,
             verify_commands=verify_commands,
             step_type="edit",
+            feedback_section=feedback,
         )
 
         dec_result.cost_rub += loop_result.total_cost_rub
@@ -375,6 +418,7 @@ def run_agent_decompose(
                     allow_blacklist=allow_blacklist,
                     verify_commands=verify_commands,
                     step_type="edit",
+                    feedback_section=feedback,
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub
                 dec_result.cost_cny += loop_result.total_cost_cny

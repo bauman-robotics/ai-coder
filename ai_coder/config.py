@@ -209,6 +209,8 @@ class AgentConfig(BaseModel):
     reverse_check_model: str | None = None  # NEW: модель для --reverse-check
     reverse_check_max_diff_chars: int = 15000  # NEW: обрезка diff
     decompose_reverse_check: bool = False
+    feedback_enabled: bool = True  # NEW: feedback-loop между подзадачами
+    feedback_max_subtasks: int = 7  # NEW: сколько предыдущих подзадач включать
 
 
 # ---------- root ----------

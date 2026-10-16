@@ -321,6 +321,8 @@ agent_tool_json:
   user: |
     ЦЕЛЬ: {{goal}}
 
+    {{feedback_section}}
+
     ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
     {{tools}}
 

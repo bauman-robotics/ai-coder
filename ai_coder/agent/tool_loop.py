@@ -82,6 +82,7 @@ class _ToolLoopCtx:
     verify_commands: list[str] | None
     step_type: str | None
     reverse_check: bool
+    feedback_section: str
     prompt_entry: PromptEntry
     tools_block: str
     scan_meta: MetadataScanResult
@@ -474,6 +475,7 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
             "tree": ctx.scan_meta.tree,
             "history": history_block,
             "max_iterations": str(max_iterations),
+            "feedback_section": ctx.feedback_section,
         },
     )
 
@@ -834,6 +836,7 @@ def run_tool_loop(
     verify_commands: list[str] | None = None,
     step_type: str | None = None,
     reverse_check: bool = False,
+    feedback_section: str = "",
 ) -> ToolLoopResult:
     """Tool loop: модель сама вызывает инструменты до завершения.
 
@@ -914,6 +917,7 @@ def run_tool_loop(
         verify_commands=verify_commands,
         step_type=step_type,
         reverse_check=reverse_check,
+        feedback_section=feedback_section,
         prompt_entry=prompt_entry,
         tools_block=tools_block,
         scan_meta=scan_meta,
