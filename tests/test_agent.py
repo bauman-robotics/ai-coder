@@ -481,7 +481,10 @@ def test_run_tool_loop_finish_immediately(sample_project, minimal_cfg, prompts_c
     assert result.success is True
     assert result.summary == "done"
     assert result.stopped_reason == "completed"
-    assert result.iterations == 0  # finish на первой итерации — history пуст
+    # D11 (#4): iterations = число вызовов LLM, и finish — тоже вызов.
+    # Раньше здесь было 0 (len(history)), из-за чего отчёт расходился
+    # с usage.jsonl на 1.
+    assert result.iterations == 1
 
 
 def test_run_tool_loop_one_tool_then_finish(sample_project, minimal_cfg, prompts_cfg):
@@ -519,6 +522,55 @@ def test_run_tool_loop_one_tool_then_finish(sample_project, minimal_cfg, prompts
     assert len(result.history) == 1
     assert result.history[0][0].tool == "list_files"
     assert result.history[0][1].ok is True
+    # D11 (#4): 1 вызов инструмента + 1 finish = 2 вызова LLM.
+    # history при этом короче (finish в неё не пишется) — именно это
+    # расхождение и чинилось.
+    assert result.iterations == 2
+    assert len(result.history) == 1
+
+
+def test_iterations_equals_llm_calls(sample_project, minimal_cfg, prompts_cfg):
+    """D11 (#4): iterations == число вызовов LLM (включая finish).
+
+    Раньше iterations = len(history), а finish в history не пишется —
+    отчёт показывал на 1 меньше, чем записей в usage.jsonl
+    (D5: «3 итер» против 4 записей; D6: 15 против 16).
+    """
+    responses = [
+        '{"tool": "list_files", "args": {"dir": "."}}',
+        '{"tool": "list_files", "args": {"dir": "."}}',
+        '{"tool": "list_files", "args": {"dir": "."}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+
+    with (
+        patch("ai_coder.agent.planner.LLMClient") as MockClient,
+        patch("ai_coder.agent.reverse.LLMClient", MockClient),
+        patch("ai_coder.agent.tool_loop.LLMClient", MockClient),
+        patch("ai_coder.agent._legacy.LLMClient", MockClient),
+        patch("ai_coder.agent.planner.get_rate") as mock_rate,
+        patch("ai_coder.agent.reverse.get_rate", mock_rate),
+        patch("ai_coder.agent.tool_loop.get_rate", mock_rate),
+        patch("ai_coder.agent._legacy.get_rate", mock_rate),
+        patch("ai_coder.agent.planner.append_usage"),
+        patch("ai_coder.agent._legacy.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_make_llm_response(r) for r in responses]
+
+        result = run_tool_loop(
+            goal="test",
+            project_root=sample_project,
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+        )
+
+    # 3 инструмента + finish = 4 вызова LLM; в history — только 3
+    assert result.iterations == 4
+    assert len(result.history) == 3
+    assert result.iterations == len(result.history) + 1
+    assert MockClient.return_value.chat.call_count == 4
 
 
 def test_run_tool_loop_max_iterations(sample_project, minimal_cfg, prompts_cfg):
