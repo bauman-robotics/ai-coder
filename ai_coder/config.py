@@ -208,6 +208,7 @@ class AgentConfig(BaseModel):
     decompose_rollback_on_fail: bool = False
     reverse_check_model: str | None = None  # NEW: модель для --reverse-check
     reverse_check_max_diff_chars: int = 15000  # NEW: обрезка diff
+    decompose_reverse_check: bool = False
 
 
 # ---------- root ----------

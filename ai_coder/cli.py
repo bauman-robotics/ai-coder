@@ -1335,6 +1335,14 @@ def agent_cmd(
             "(вторая LLM-проверка). Требует --tool-loop."
         ),
     ),
+    decompose_reverse_check: bool = typer.Option(
+        False,
+        "--decompose-reverse-check",
+        help=(
+            "При --decompose проверять diff каждой подзадачи "
+            "через run_reverse_check (семантический validator)."
+        ),
+    ),
     issue: Path | None = typer.Option(
         None,
         "--issue",
@@ -1723,6 +1731,7 @@ def agent_cmd(
                     allow_blacklist=allow_blacklist,
                     plan=pre_plan,
                     max_iterations=max_iterations,
+                    decompose_reverse_check=decompose_reverse_check,
                 )
         except typer.Exit:
             raise

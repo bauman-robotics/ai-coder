@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +30,48 @@ from .planner import (
     run_planner_decompose,
     run_planner_replan,
 )
+from .reverse import _collect_subtask_diff, run_reverse_check
 from .tool_loop import run_tool_loop
+
+
+def _git_stash_create(project_root: Path) -> str | None:
+    """git stash create → SHA или None."""
+    try:
+        r = subprocess.run(
+            ["git", "stash", "create"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    sha = r.stdout.strip()
+    return sha or None
+
+
+def _list_untracked(project_root: Path) -> set[str]:
+    """git status --porcelain → set untracked-путей (без кавычек)."""
+    try:
+        r = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return set()
+    out: set[str] = set()
+    for line in r.stdout.splitlines():
+        if line.startswith("?? "):
+            rel = line[3:].strip()
+            if len(rel) >= 2 and rel[0] == '"' and rel[-1] == '"':
+                rel = rel[1:-1]
+            if rel:
+                out.add(rel)
+    return out
+
 
 _SUBAGENT_MODEL = {
     "explore": "deepseek-flash",
@@ -185,6 +227,7 @@ def run_agent_decompose(
     plan: DecomposeResult | None = None,  # NEW: готовый план (--plan)
     max_iterations: int | None = None,  # NEW: лимит tool loop на подзадачу
     verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
+    decompose_reverse_check: bool | None = None,  # NEW: обратная проверка декомпозиции
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -192,6 +235,12 @@ def run_agent_decompose(
     Если передан `plan` — повторно не декомпозирует, использует его
     (для workflow `--plan`: показать → подтвердить → выполнить).
     """
+
+    rc_flag = (
+        decompose_reverse_check
+        if decompose_reverse_check is not None
+        else getattr(cfg.agent, "decompose_reverse_check", False)
+    )
 
     # 1. Декомпозиция (через v4-pro, если задано)
     decompose_model = getattr(cfg.agent, "decompose_model", None) or model
@@ -240,6 +289,12 @@ def run_agent_decompose(
                 title=f"subtask {st.n}",
             )
         )
+
+        baseline_sha: str | None = None
+        untracked_before: set[str] = set()
+        if rc_flag and not dry_run:
+            baseline_sha = _git_stash_create(project_root)
+            untracked_before = _list_untracked(project_root)
 
         subtask_subdir: Path | None = None
         if decompose_dir is not None:
@@ -344,6 +399,27 @@ def run_agent_decompose(
                         if loop_result.journal_dir
                         else None,
                     }
+
+        if rc_flag and loop_result.success and not dry_run:
+            sub_diff = _collect_subtask_diff(project_root, baseline_sha, untracked_before)
+            if sub_diff.strip():
+                rc = run_reverse_check(
+                    goal=st.goal,
+                    diff=sub_diff,
+                    project_root=project_root,
+                    cfg=cfg,
+                    prompts_cfg=prompts_cfg,
+                )
+                dec_result.cost_rub += rc.cost_rub
+                dec_result.cost_cny += rc.cost_cny
+                dec_result.cost_usd += rc.cost_usd
+                if dec_result.subtask_results:
+                    dec_result.subtask_results[-1]["reverse_ok"] = rc.ok
+                    dec_result.subtask_results[-1]["reverse_problems"] = rc.problems
+                    dec_result.subtask_results[-1]["reverse_suggestion"] = rc.suggestion
+                    dec_result.subtask_results[-1]["reverse_cost_rub"] = rc.cost_rub
+                if not rc.ok:
+                    _console.print(f"[yellow]Validator subtask {st.n}: найдены проблемы[/yellow]")
 
         if max_cost_rub is not None and dec_result.cost_rub >= max_cost_rub:
             dec_result.parse_error = "max_cost exceeded"
@@ -484,15 +560,30 @@ def _save_decompose_report(
         lines.append(f"**Explanation:** {result.explanation}\n")
 
     lines.append("## Подзадачи\n")
-    lines.append("| # | Goal | Статус | Стоимость | Журнал |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| # | Goal | Статус | RC | Стоимость | Журнал |")
+    lines.append("|---|---|---|---|---|---|")
     for r in result.subtask_results:
         st_status = "✅" if r.get("success") else "❌"
+        rc_val = r.get("reverse_ok")
+        rc_col = "—" if rc_val is None else ("✅" if rc_val else "❌")
         jrel = Path(r["journal_dir"]).name if r.get("journal_dir") else "—"
         lines.append(
-            f"| {r['n']} | {r['goal'][:60]} | {st_status} | {r['cost_rub']:.4f} | {jrel} |"
+            f"| {r['n']} | {r['goal'][:60]} | {st_status} | {rc_col} "
+            f"| {r['cost_rub']:.4f} | {jrel} |"
         )
     lines.append("")
+
+    rc_bad = [r for r in result.subtask_results if r.get("reverse_ok") is False]
+    if rc_bad:
+        lines.append("## Reverse-check\n")
+        for r in rc_bad:
+            lines.append(f"### Подзадача {r['n']} — ❌\n")
+            for p in r.get("reverse_problems", []):
+                lines.append(f"- {p}")
+            sug = r.get("reverse_suggestion")
+            if sug:
+                lines.append(f"- **Suggestion:** {sug}")
+            lines.append("")
 
     if result.skipped_subtasks:
         lines.append(f"**Пропущено:** {len(result.skipped_subtasks)}\n")

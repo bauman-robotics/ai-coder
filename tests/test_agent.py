@@ -3669,3 +3669,23 @@ def test_reverse_check_result_dataclass():
     assert r.suggestion is None
     assert r.cost_rub == 0.0
     assert r.parse_error is None
+
+
+# ---------- Validator (decompose_reverse_check) ----------
+
+
+def test_decompose_reverse_check_default_false(minimal_cfg):
+    """AgentConfig.decompose_reverse_check по умолчанию False."""
+    assert minimal_cfg.agent.decompose_reverse_check is False
+
+
+def test_run_agent_decompose_has_rc_param():
+    """run_agent_decompose принимает decompose_reverse_check."""
+    import inspect
+
+    from ai_coder.agent.decomposer import run_agent_decompose
+
+    sig = inspect.signature(run_agent_decompose)
+    assert "decompose_reverse_check" in sig.parameters
+    param = sig.parameters["decompose_reverse_check"]
+    assert param.default is None
