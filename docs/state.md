@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.74 — Feedback loop + D2/D3 через dsh)
+**Дата обновления:** 2026-10-16 (10.75 — spawn_subagent, D4)
 **Ветка:** main
-**Последний коммит:** `254f41e` (feat(decompose): feedback loop)
-**Тесты:** 491 passed (+2 для Validator + 2 для RC-usage) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `1546ad0` (feat(agent): исполнение spawn_subagent)
+**Тесты:** 540 passed (+49 spawn_subagent) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -266,6 +266,34 @@ Python-проектов через DeepSeek API. Работает с git-про�
 `next-chat/in-progress.md`.
 
 ### Agent
+
+**spawn_subagent (10.75, D4, Направление 12):**
+- `SubagentConfig` (Pydantic, frozen) + `AgentConfig.subagents=[]` и
+  3 cap-поля (`subagent_max_per_task=3`,
+  `subagent_max_total_cost_rub=3.0`,
+  `subagent_default_max_cost_rub=1.5`) в `config.py`.
+- Валидация **на старте**: regex имени, уникальность, `tools ⊆
+  TOOL_REGISTRY`, `spawn_subagent ∉ tools` (depth=1), `model ∈ pricing`.
+- `spawn_subagent` в `TOOL_REGISTRY` — **только** `ToolSpec` + заглушка;
+  реальное исполнение — перехват в `_tool_loop_one_iteration` перед
+  `execute_tool` (у tool-функции нет `cfg`/бюджета, и был бы цикл
+  импортов).
+- `ai_coder/agent/spawn.py` (новый): `build_subagents_section`,
+  `_remaining_budget`, `_spawn_cap`, `summarize_subagent_result`,
+  `run_spawn_subagent`.
+- `run_tool_loop`: `allowed_tools`, `spawn_depth`, `max_spawns`,
+  `subagents_section`, `usage_action_prefix`.
+- **Allowlist enforce на исполнении**; нет subagents или `spawn_depth>0`
+  → `spawn_subagent` не рекламируется.
+- Бюджет **fail-closed**, провал ребёнка **fail-open**; digest вместо
+  истории ребёнка; журнал ребёнка внутри родительского.
+- `usage.jsonl`: `action="agent:spawn:<name>:toolN"`,
+  `parent_action="agent:spawn:<name>"`.
+- `{{subagents_section}}` + правило 19 в `agent_tool_json`; заодно
+  исправлена нумерация правил (1..19 без дублей).
+- Тесты: `tests/test_spawn.py` (49). 540 passed.
+- Отложено: depth 2, мёрж backup-манифестов, time-лимит
+  (`max_minutes` в tool loop не проверяется).
 
 **Feedback loop (10.74, D3):**
 - `_build_feedback(subtask_results, max_items=7)` в `decomposer.py`.

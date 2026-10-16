@@ -237,9 +237,20 @@ def _prompt_tool_review(
 
 
 def _accumulate_cost_and_usage(
-    ctx, iteration, llm_resp, is_peak, peak_window, cny_to_rub, usd_to_rub
+    ctx,
+    iteration,
+    llm_resp,
+    is_peak,
+    peak_window,
+    cny_to_rub,
+    usd_to_rub,
+    usage_action_prefix: str = "agent",
 ) -> None:
-    """Стоимость + append_usage — точная копия оригинала."""
+    """Стоимость + append_usage — точная копия оригинала.
+
+    usage_action_prefix — атрибуция в usage.jsonl. Для subagent'а
+    "agent:spawn:<name>", иначе "agent" (обратная совместимость).
+    """
     cost = calculate_cost(
         pricing=ctx.cfg.api.pricing_for(ctx.model),
         is_peak=is_peak,
@@ -258,7 +269,7 @@ def _accumulate_cost_and_usage(
     append_usage(
         project_root=ctx.project_root,
         output_root=output_root,
-        action=f"agent:tool{iteration}",
+        action=f"{usage_action_prefix}:tool{iteration}",
         project_name=ctx.project_root.name,
         model=ctx.model,
         depth=ctx.depth,
@@ -271,7 +282,7 @@ def _accumulate_cost_and_usage(
         status="ok",
         usage_cfg=ctx.cfg.usage,
         iteration=iteration,
-        parent_action="agent",
+        parent_action=usage_action_prefix,
     )
 
 
@@ -545,7 +556,14 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
 
     # --- стоимость + учёт ---
     _accumulate_cost_and_usage(
-        ctx, iteration, llm_resp, is_peak, peak_window, cny_to_rub, usd_to_rub
+        ctx,
+        iteration,
+        llm_resp,
+        is_peak,
+        peak_window,
+        cny_to_rub,
+        usd_to_rub,
+        usage_action_prefix=ctx.usage_action_prefix,
     )
 
     # --- парсинг ---

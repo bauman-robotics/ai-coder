@@ -4,6 +4,91 @@
 
 ---
 
+## [2026-10-16] iteration 10.75 — spawn_subagent (D4)
+
+### Что сделано
+
+Направление 12: родительский tool loop может **явно** делегировать
+подцель subagent'у (`spawn_subagent`). Реализовано по дизайну D4
+(`docs/dsh/D4/answer.md`) в 4 шага (A → B → C → D).
+
+**`ai_coder/config.py`:**
+- `SubagentConfig` (Pydantic, frozen): `name`, `description`, `tools`,
+  `model`, `max_iterations`, `instructions`, `max_cost_rub`.
+- `AgentConfig`: `subagents=[]`, `subagent_max_per_task=3`,
+  `subagent_max_total_cost_rub=3.0`, `subagent_default_max_cost_rub=1.5`.
+- Валидаторы (fail-fast): regex имени, уникальность, `tools` непустой,
+  `tools ⊆ TOOL_REGISTRY` (ленивый импорт — обход цикла),
+  `spawn_subagent ∉ tools` (depth=1), `model ∈ api.pricing`
+  (в `AppConfig` — `api` живёт там, а не в `AgentConfig`).
+
+**`ai_coder/tools.py`:**
+- `spawn_subagent` в `TOOL_REGISTRY` — только `ToolSpec` + заглушка
+  `_tool_spawn_unavailable` (реальное исполнение в tool loop).
+- `get_tool_specs(allowlist=None)`, `format_tools_for_prompt(allowlist=None)`
+  — фильтрация; дефолт `None` → все инструменты (совместимость).
+
+**`ai_coder/agent/spawn.py` (новый):**
+- `build_subagents_section` — секция для промпта родителя.
+- `_remaining_budget`, `_spawn_cap` — бюджет.
+- `summarize_subagent_result` — digest вместо истории ребёнка.
+- `run_spawn_subagent` — оркестрация (guards, cap, вызов
+  `run_tool_loop`, суммирование стоимости).
+
+**`ai_coder/agent/tool_loop.py`:**
+- Параметры `run_tool_loop`: `subagents_section`, `allowed_tools`,
+  `spawn_depth`, `max_spawns`, `usage_action_prefix`.
+- `_ToolLoopCtx`: `subagents_section`, `allowed_tools`,
+  `subagents_by_name`, `spawn_depth`, `max_spawns`,
+  `usage_action_prefix`, `spawn_count`, `spawn_cost_rub`.
+- **Effective allowlist**: нет subagents или `spawn_depth > 0` →
+  `spawn_subagent` не рекламируется; enforcement на **исполнении**
+  (parse пропускает любой tool из `TOOL_REGISTRY`).
+- Перехват `spawn_subagent` перед `execute_tool` (ленивый импорт
+  `spawn.py`).
+- `_accumulate_cost_and_usage(..., usage_action_prefix)`: атрибуция
+  `action="agent:spawn:<name>:toolN"`, `parent_action="agent:spawn:<name>"`.
+
+**`config/prompts.yaml`:**
+- `{{subagents_section}}` после блока инструментов.
+- Правило 19 `SUBAGENTS` (с `{{max_spawns}}`).
+- **Исправлена нумерация правил**: было `1..11` + дубли `10/11` +
+  `12..17`, стало `1..19` без дублей; правило про ошибки `edit_file`
+  перенесено сразу после правила 8.
+
+### Ограничения (v1)
+
+- **Depth = 1** (три барьера) — subagent не вызывает subagent'а.
+- **Бюджет fail-closed** (`cap <= 0` → отказ), **провал ребёнка
+  fail-open** (`ok=False` + явно провальный digest).
+- `cap = min(spec.max_cost_rub или default, total_limit - spawn_cost,
+  остаток родителя)`; перерасход возможен ≤ 1 итерации (поитерационная
+  проверка внутри `run_tool_loop`).
+- Родительский `rollback` **не** откатывает правки subagent'а (свой
+  `backup_dir`) — отложено.
+
+### Отступления от ТЗ
+
+- `instructions` подмешиваются в `goal` ребёнка блоком `[ИНСТРУКЦИЯ]`
+  (без нового плейсхолдера промпта).
+- `subagents_section`/`max_spawns` вычисляются из `cfg`, если не заданы
+  (иначе фича мертва: никто не передаёт их в `run_tool_loop`).
+- `step_type` ребёнку не передаётся: с `step_type="edit"` read-only
+  subagent (explorer) всегда получал бы `success=False`.
+
+### Тесты
+
+- `tests/test_spawn.py` (новый): 49 тестов — конфиг/валидаторы,
+  allowlist, промпт (включая реальный `prompts.yaml` без `KeyError`),
+  props ребёнка, бюджет, guards, fail-open, dry_run E2E, атрибуция
+  `usage.jsonl`, вложенный журнал.
+- `tests/test_tools.py`: `test_registry_has_six_tools` →
+  `test_registry_has_expected_tools` (точный набор из 7), `len(specs)
+  == len(TOOL_REGISTRY)` — счётчик 6→7 неизбежен.
+- **540 passed** (491 + 49), ruff/mypy clean, pre-commit зелёный.
+
+---
+
 ## [2026-10-16] iteration 10.74 — Feedback loop (D3)
 
 ### Что сделано

@@ -365,7 +365,7 @@ E2E: 3 issues (0.19 RUB) → 3 задачи ✅ (0.77 RUB).
 
 ## 9. Subagents и оркестрация (10.70)
 
-**Статус:** Router — ✅ MVP (10.70). Validator — ✅ MVP (10.71). Feedback — ✅ MVP (10.74). spawn_subagent — дизайн (D4) + 4 issue.
+**Статус:** Router — ✅ MVP (10.70). Validator — ✅ MVP (10.71). Feedback — ✅ MVP (10.74). spawn_subagent — ✅ MVP (10.75).
 
 
 **Основание:** E36 (2026-10-15) — `--decompose` **уже** реализует
@@ -398,8 +398,9 @@ retry v4-pro — **+2-3 RUB**.
 `_resolve_subagent(st)` выбирает модель и лимит итераций.
 Приоритет: явный `max_iterations` → Router → `cfg.agent.max_steps`.
 
-**MVP хардкодит** dict в `decomposer.py`. Конфиг `agent.subagents` —
-отдельная задача (TODO).
+**MVP хардкодит** dict в `decomposer.py` (Router). Секция
+`agent.subagents` (D4) — **отдельный** механизм: она описывает
+subagent'ов для `spawn_subagent`, а не типы подзадач Router'а.
 
 Основание: E36, E38.
 
@@ -451,38 +452,60 @@ retry v4-pro — **+2-3 RUB**.
 
 ### Инструмент `spawn_subagent`
 
-**Статус:** дизайн готов (D4, `docs/dsh/D4/answer.md`).
-**4 issue:** `issues/2026-10-16/8-11-spawn-*.md`. **Порядок A → B → C → D.**
+**Статус:** ✅ MVP (10.75, 2026-10-16). Дизайн — `docs/dsh/D4/answer.md`,
+issue — `issues/2026-10-16/8-11-spawn-*.md` (A → B → C → D).
 
-**Ключевые решения (D4):**
-- `spawn_subagent` — **не** tool, а **второй оркестратор**. Через
-  `execute_tool` **не** работает (нет `cfg`/`ctx`/бюджета).
-- `SubagentConfig` — **Pydantic** в `config.py` (**fail-fast** валидация).
-- **Allowlist** — enforce на **исполнении**, не только в промпте.
-- **Depth = 1** (3 барьера: валидатор, allowlist, guard).
-- **Fail-closed** для бюджета (**трата** денег).
-- 2 скрытых бага: `_handle_finish` (explorer-only) и `append_usage`
-  (хардкод action).
-- Оценка: **5-6 прогонов**, **~40-60 RUB** (вместо 5-7 дней).
-
-**Раньше** (после Router/Validator/Feedback):
+**Реализовано:**
 
     spawn_subagent(name="code-explorer", goal="найди все вызовы _collect_diff")
 
-Родитель **видит** subagents в промпте, **вызывает** их.
-Результат — **краткая выжимка** в родителя.
+Родитель **видит** subagents в промпте (`{{subagents_section}}`),
+**вызывает** их инструментом; результат — **краткая выжимка** (digest)
+в родителя, история ребёнка остаётся у ребёнка.
+
+**Ключевые решения (D4, все реализованы):**
+- `spawn_subagent` — **не** tool, а **второй оркестратор**: перехват в
+  `_tool_loop_one_iteration` перед `execute_tool` + новый модуль
+  `ai_coder/agent/spawn.py` (через `execute_tool` не работает — нет
+  `cfg`/`ctx`/бюджета, и был бы цикл импортов).
+- `SubagentConfig` — **Pydantic** в `config.py` (**fail-fast**: regex
+  имени, уникальность, `tools ⊆ TOOL_REGISTRY`, цены модели).
+- **Allowlist** — enforce на **исполнении**, не только в промпте.
+- **Depth = 1** (3 барьера: валидатор, effective allowlist, guard).
+- **Fail-closed** для бюджета, **fail-open** для провала ребёнка.
+- Оба скрытых бага исправлены: `applied_ops`/`read_ops` от spawn
+  (иначе explorer-родитель не завершится) и атрибуция `append_usage`
+  (`agent:spawn:<name>:toolN`).
+- `subagents: []` по умолчанию → инструмент **не** рекламируется,
+  существующее поведение не меняется.
+
+**Отступления от ТЗ (осознанные, см. коммиты spawn-B/C):**
+- `instructions` подмешиваются в `goal` ребёнка блоком
+  `[ИНСТРУКЦИЯ]` — без нового плейсхолдера промпта.
+- `subagents_section`/`max_spawns` считаются из `cfg`, если не заданы —
+  иначе фича была бы мертва (никто не передаёт их в `run_tool_loop`).
+- `step_type` ребёнку не передаётся: с `step_type="edit"` read-only
+  subagent (explorer) всегда получал бы `success=False`.
 
 **Это — уровень 4 автономности** (после Feedback).
 
 ### Оценка
 
-- **Router:** ✅ MVP (10.70, 2026-10-15). Конфиг `agent.subagents` — ~1 день.
+- **Router:** ✅ MVP (10.70, 2026-10-15).
 - **Validator:** ✅ MVP (10.71, 2026-10-16). Политики fail/rollback — отдельно.
 - **Feedback:** ✅ MVP (10.74).
-- **Инструмент `spawn_subagent`:** дизайн D4 + 4 issue (~40-60 RUB).
+- **Инструмент `spawn_subagent`:** ✅ MVP (10.75, 2026-10-16).
 - **Итого:** 2-3 недели (не месяцы).
 
-**Порядок:** Router ✅ → Validator ✅ → Feedback ✅ → `spawn_subagent` (дизайн D4).
+**Порядок:** Router ✅ → Validator ✅ → Feedback ✅ → `spawn_subagent` ✅.
+
+**spawn_subagent (10.75):** `SubagentConfig` в `config.py`;
+`spawn_subagent` в `TOOL_REGISTRY` (заглушка) + `spawn.py` (оркестрация);
+`allowed_tools` + `spawn_depth` + `max_spawns` + `usage_action_prefix`
+в `run_tool_loop`; `{{subagents_section}}` и правило 19 в
+`agent_tool_json` (заодно исправлена нумерация правил: 1..19 без дублей).
+Отложено: рекурсия (depth 2), мёрж backup-манифестов ребёнка в родителя,
+time-лимит на subagent'а (`max_minutes` в tool loop не проверяется).
 
 **Validator (10.71):** `--decompose-reverse-check`. После `finish(success=True)` — `_collect_subtask_diff` (baseline через `git stash create`) → `run_reverse_check` → ключи `reverse_*` в `subtask_results[-1]`. Колонка RC + секция `## Reverse-check` в отчёте. Fail-open сохранён. Политики `fail`/`rollback` — отложены.
 

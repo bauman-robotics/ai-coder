@@ -744,3 +744,92 @@ def test_spawn_real_child_writes_when_not_dry_run(minimal_cfg, prompts_cfg, samp
 
     assert result.history[0][1].ok is True
     assert (sample_project / "spawn_out.txt").read_text(encoding="utf-8") == "hello"
+
+
+# ---------- D. Наблюдаемость ----------
+
+
+def _spawn_responses(name: str = "markdown-writer") -> list[str]:
+    return [
+        json.dumps(
+            {
+                "tool": "spawn_subagent",
+                "args": {"name": name, "goal": "создай файл spawn_out.txt"},
+                "reason": "делегирую",
+            }
+        ),
+        '{"tool": "write_file", "args": {"path": "spawn_out.txt", "content": "hello"}}',
+        '{"finish": true, "summary": "записал", "success": true}',
+        '{"finish": true, "summary": "готово", "success": true}',
+    ]
+
+
+def _run_loop_real_usage(cfg, prompts_cfg, project_root, responses, **kwargs):
+    """run_tool_loop с РЕАЛЬНЫМ append_usage (пишет usage.jsonl)."""
+    with (
+        patch("ai_coder.agent.tool_loop.LLMClient") as MockClient,
+        patch("ai_coder.agent.tool_loop.get_rate") as mock_rate,
+        patch("ai_coder.agent.tool_loop.is_peak_now", return_value=(False, None)),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_response(r) for r in responses]
+        return run_tool_loop(
+            goal="test goal",
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=prompts_cfg,
+            **kwargs,
+        )
+
+
+def _read_usage(cfg, project_root):
+    path = project_root / cfg.usage.jsonl
+    if not path.exists():
+        return []
+    return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def test_usage_action_prefix_attribution(minimal_cfg, prompts_cfg, sample_project):
+    """Запросы subagent'а отличимы в usage.jsonl от запросов родителя."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+
+    result = _run_loop_real_usage(
+        cfg, prompts_cfg, sample_project, _spawn_responses(), journal=False
+    )
+
+    assert result.success is True
+    records = _read_usage(cfg, sample_project)
+    actions = [r["action"] for r in records]
+    print("\nusage actions:", actions)
+
+    # родитель
+    assert "agent:tool0" in actions or "agent:tool1" in actions
+    # subagent — своя категория
+    child = [r for r in records if r["action"].startswith("agent:spawn:markdown-writer:tool")]
+    assert child, actions
+    assert child[0]["parent_action"] == "agent:spawn:markdown-writer"
+    assert child[0]["model"] == "test-model"
+    # родительская запись не помечена как spawn
+    parent = [
+        r
+        for r in records
+        if r["action"] in ("agent:tool0", "agent:tool1") and r["parent_action"] == "agent"
+    ]
+    assert parent, records
+
+
+def test_spawn_journal_nested_on_disk(minimal_cfg, prompts_cfg, sample_project):
+    """Журнал subagent'а лежит ВНУТРИ родительского: spawn-<name>/tool-loop-<ts>/."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_MD_WRITER])
+
+    with patch("ai_coder.agent.tool_loop.append_usage"):
+        result = _run_loop_real_usage(
+            cfg, prompts_cfg, sample_project, _spawn_responses(), journal=True
+        )
+
+    assert result.success is True
+    base = sample_project / cfg.output.dir / sample_project.name
+    nested = list(base.glob("tool-loop-*/spawn-markdown-writer/tool-loop-*"))
+    assert nested, [str(p) for p in base.glob("tool-loop-*")]
+    # в журнале ребёнка есть шаги
+    assert list(nested[0].glob("step-*.md")) or list(nested[0].glob("*.md"))

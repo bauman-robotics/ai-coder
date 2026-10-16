@@ -1192,15 +1192,19 @@ Decompose **не решает** — связь между файлами сох�
 
 ### Что добавить
 
-- [x] **Router** — модель по сложности (explore/edit-simple/edit-complex/verify). ✅ 10.70 (2026-10-15). Конфиг `agent.subagents` — TODO.
+- [x] **Router** — модель по сложности (explore/edit-simple/edit-complex/verify). ✅ 10.70 (2026-10-15).
+  Router по-прежнему хардкодит типы в `decomposer.py`; секция
+  `agent.subagents` (10.75) — отдельный механизм для `spawn_subagent`.
   ~3-4 дня.
-- [ ] **Validator** — семантическая проверка результата подзадачи
-  (адаптация `--reverse-check`). ~3-4 дня.
-- [ ] **Feedback loop** — summary подзадачи N в подзадачу N+1
-  и в планировщик. ~2-3 дня.
+- [x] **Validator** — семантическая проверка результата подзадачи
+  (адаптация `--reverse-check`). ✅ 10.71 (2026-10-16).
+- [x] **Feedback loop** — summary подзадачи N в подзадачу N+1
+  и в планировщик. ✅ 10.74 (2026-10-16).
 - [ ] **Retry-политика** — расширить (parse_error, verify_failed). ~1-2 дня.
-- [ ] **Инструмент `spawn_subagent`** — после Router/Validator/Feedback.
-  ~5-7 дней.
+- [x] **Инструмент `spawn_subagent`** — ✅ 10.75 (2026-10-16).
+  Осталось (отложено): рекурсия (depth 2), мёрж backup-манифестов
+  subagent'а в родителя, time-лимит на subagent'а
+  (`max_minutes` в tool loop не проверяется).
 
 ### Концепция
 
