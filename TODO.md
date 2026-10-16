@@ -63,6 +63,24 @@
       **Файлы:** `docs/tools.md` (раздел «Self-hosted E2E в worktree»).
       ~30 мин. **Приоритет:** 🟢.
 
+### 🟡 E2E Router без `--model`
+
+- [ ] **Симптом:** после D8 Router (10.70) работает (whitelist
+      `parse_decompose_response` исправлен — типы `explore` /
+      `edit-simple` / `edit-complex` / `verify` больше не приводятся
+      к `"edit"`), но E2E **не проверяет** выбор модели:
+      `edit-complex → v4-pro`.
+      В прогоне D8 модель tool loop задавалась флагом `--model`,
+      который перекрывает выбор Router, поэтому «ожил ли Router
+      по-настоящему» не подтверждено.
+      **Задача:** E2E без `--model` — чтобы модель подзадачи выбирал
+      `_resolve_subagent` по `type`. Проверить, что `edit-complex`
+      идёт на v4-pro, `explore`/`verify` — на flash, и что лимиты
+      итераций (5/10/15/3) применяются по типу.
+      **Файлы:** прогон `--decompose --tool-loop --apply` +
+      проверка `usage.jsonl` (какая модель у какой подзадачи).
+      **Оценка:** ~2 ч. **Приоритет:** 🟡.
+
 ## Из Validator/GUI (сессия 2026-10-16, 10.71 + 10.72)
 
 ### CLI: валидация `--decompose-reverse-check`

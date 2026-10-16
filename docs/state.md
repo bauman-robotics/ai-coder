@@ -1,9 +1,9 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.77 — reverse-check по умолчанию; D7)
+**Дата обновления:** 2026-10-16 (10.77 — reverse-check; D8 — verify-подзадача в decompose)
 **Ветка:** main
-**Последний коммит:** `575f464` (merge: D7 — reverse-check по умолчанию в tool loop (#2))
-**Тесты:** 566 passed (+51 spawn, +18 verify/делегирование, +4 RC) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `19cd172` (merge: D8 — verify-подзадача в decompose + Router whitelist fix)
+**Тесты:** 576 passed (+51 spawn, +18 verify/делегирование, +4 RC, +10 D8) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
 
@@ -294,7 +294,7 @@ Python-проектов через DeepSeek API. Работает с git-про�
   `parent_action="agent:spawn:<name>"`.
 - `{{subagents_section}}` + правило 19 в `agent_tool_json`; заодно
   исправлена нумерация правил (1..19 без дублей).
-- Тесты: `tests/test_spawn.py` (51). **562 passed** (всего).
+- Тесты: `tests/test_spawn.py` (51). **576 passed** (всего).
 - Реализовано **dsh** (D4). E2E: `/tmp/spawn-e2e`, **0.1139 RUB**.
 - **Коммиты:** `d679409` (A: конфиг), `00c6700` (B: ToolSpec +
   allowlist), `1546ad0` (C: исполнение), `9d5d840` (D: usage + docs).
@@ -702,23 +702,28 @@ max_cost), родитель сделал работу сам.
    `iterations` с finish) — перенесены в findings ниже.
 2. **✅ #2 Validator в tool loop** — закрыто 10.77 (`1822df5`):
    RC по умолчанию. Остаток — качество goal (см. «Известные проблемы»).
-3. **🔴 verify-подзадача в decompose** — `step_type="edit"` для
-   `type="verify"` → `applied_ops>0` не выполняется. **Следующая
-   задача (D8).** `decomposer.py` + `tool_loop.py`.
+3. **✅ verify-подзадача в decompose** — закрыто D8 (`9eae807`):
+   Root cause был в парсере — `parse_decompose_response` приводил все
+   типы Router к `"edit"`, поэтому Router (10.70) не работал, а
+   `explore`/`verify` были обречены. Фикс: whitelist типов Router +
+   `_step_type_for` (explore/read→read, verify→None, edit-*→edit).
+   E2E: EXIT=1 → **EXIT=0**. Осталось — E2E Router без `--model`.
 4. **🟡 findings #4-#7:** `iterations` ≠ LLM-вызовов; пустой `summary`
    при `max_iterations`; перерасход `cap` (доки); рецепт self-hosted
    E2E в worktree (доки).
-5. **2 находки dsh (D2):** `usage --by-action` (нет флага) — 🟢;
+5. **🟡 E2E Router без `--model`** — проверить, что `edit-complex`
+   действительно берёт v4-pro (после фикса whitelist).
+6. **2 находки dsh (D2):** `usage --by-action` (нет флага) — 🟢;
    пути `usage.jsonl` (CWD vs `project_root`) — 🟡.
-6. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
+7. **Уровень D.1 (автокоммит для tool loop)** — сделано в 10.1.
    Отложено: ветки `ai-coder/<slug>-<ts>`, push, PR (без веток —
    только коммит в текущую ветку).
-7. **GUI UX** — прогресс-бар, «Открыть отчёт» для `run`.
-8. **MCP-интеграция**, **унификация `--reverse-check`** (все режимы),
+8. **GUI UX** — прогресс-бар, «Открыть отчёт» для `run`.
+9. **MCP-интеграция**, **унификация `--reverse-check`** (все режимы),
    **`_legacy.py`** — 140 патчей.
-9. **Улучшения tool loop:** read-шаги в `run_agent`; кэш phase1;
+10. **Улучшения tool loop:** read-шаги в `run_agent`; кэш phase1;
    YAML-правки (модель слабо справляется).
-10. **Покрытие:** `agent.py` — 43%; `apply.py`/`pricing.py`/
+11. **Покрытие:** `agent.py` — 43%; `apply.py`/`pricing.py`/
     `prompts.py` — до ~90%.
 
 ---
