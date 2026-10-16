@@ -158,19 +158,22 @@ def test_edit_file_missing_args(tmp_path: Path):
 # ---------- реестр ----------
 
 
-def test_registry_has_six_tools():
-    assert len(TOOL_REGISTRY) == 6
-    assert "read_file" in TOOL_REGISTRY
-    assert "read_symbol" in TOOL_REGISTRY
-    assert "list_files" in TOOL_REGISTRY
-    assert "write_file" in TOOL_REGISTRY
-    assert "edit_file" in TOOL_REGISTRY
-    assert "run_shell" in TOOL_REGISTRY
+def test_registry_has_expected_tools():
+    # spawn_subagent добавлен в D4 (заглушка; исполняется в tool_loop).
+    assert set(TOOL_REGISTRY) == {
+        "read_file",
+        "read_symbol",
+        "list_files",
+        "write_file",
+        "edit_file",
+        "run_shell",
+        "spawn_subagent",
+    }
 
 
 def test_get_tool_specs_returns_list():
     specs = get_tool_specs()
-    assert len(specs) == 6
+    assert len(specs) == len(TOOL_REGISTRY)
     names = [s.name for s in specs]
     assert "read_file" in names
     assert "run_shell" in names

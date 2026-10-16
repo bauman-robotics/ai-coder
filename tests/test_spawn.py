@@ -1,16 +1,31 @@
 """Тесты spawn_subagent (Направление 12, D4).
 
 Часть A — схема конфига и валидация (SubagentConfig).
-Часть B/C/D — добавляются в соответствующих issue.
+Часть B — ToolSpec, allowlist, секция в промпте.
+Часть C/D — добавляются в соответствующих issue.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from ai_coder.config import AppConfig, SubagentConfig, load_config
+from ai_coder.agent.tool_loop import run_tool_loop
+from ai_coder.config import AppConfig, SubagentConfig, load_config, load_prompts
+from ai_coder.llm import LLMResponse
+from ai_coder.pricing import Rate
+from ai_coder.tools import (
+    TOOL_REGISTRY,
+    execute_tool,
+    format_tools_for_prompt,
+    get_tool_specs,
+)
+
+REPO = Path(__file__).resolve().parent.parent
 
 # ---------- A. SubagentConfig + валидация ----------
 
@@ -150,3 +165,207 @@ def test_max_cost_rub_must_be_positive(minimal_cfg):
     bad["max_cost_rub"] = 0
     with pytest.raises(ValidationError):
         _cfg_with_subagents(minimal_cfg, [bad])
+
+
+# ---------- B. ToolSpec + allowlist + промпт ----------
+
+
+def _response(content: str) -> LLMResponse:
+    return LLMResponse(
+        content=content,
+        model="test-model",
+        prompt_tokens=100,
+        prompt_cache_hit_tokens=0,
+        prompt_cache_miss_tokens=100,
+        completion_tokens=50,
+        total_tokens=150,
+        duration_ms=1,
+        finish_reason="stop",
+    )
+
+
+def _run_loop(cfg, prompts_cfg, project_root, responses, **kwargs):
+    """Прогон run_tool_loop с замоканными LLM/курсами/usage."""
+    with (
+        patch("ai_coder.agent.tool_loop.LLMClient") as MockClient,
+        patch("ai_coder.agent.tool_loop.get_rate") as mock_rate,
+        patch("ai_coder.agent.tool_loop.append_usage"),
+        patch("ai_coder.agent.tool_loop.is_peak_now", return_value=(False, None)),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.side_effect = [_response(r) for r in responses]
+        result = run_tool_loop(
+            goal="test goal",
+            project_root=project_root,
+            cfg=cfg,
+            prompts_cfg=prompts_cfg,
+            journal=False,
+            **kwargs,
+        )
+        user_prompt = MockClient.return_value.chat.call_args.kwargs["user"]
+    return result, user_prompt
+
+
+def test_get_tool_specs_allowlist():
+    names = [s.name for s in get_tool_specs(["read_file", "run_shell"])]
+    assert names == ["read_file", "run_shell"]
+    # порядок — как в TOOL_REGISTRY, а не как в allowlist
+    names_rev = [s.name for s in get_tool_specs(["run_shell", "read_file"])]
+    assert names_rev == ["read_file", "run_shell"]
+
+
+def test_get_tool_specs_default_is_all():
+    assert [s.name for s in get_tool_specs()] == list(TOOL_REGISTRY)
+
+
+def test_format_tools_for_prompt_allowlist():
+    text = format_tools_for_prompt(["read_file"])
+    assert "read_file(" in text
+    assert "run_shell(" not in text
+    assert "spawn_subagent(" not in text
+
+
+def test_format_tools_for_prompt_default_unchanged():
+    """Дефолт None → все инструменты (обратная совместимость)."""
+    text = format_tools_for_prompt()
+    for name in TOOL_REGISTRY:
+        assert f"{name}(" in text
+
+
+def test_spawn_stub_returns_error(tmp_path):
+    """Заглушка в TOOL_REGISTRY не исполняет spawn."""
+    r = execute_tool("spawn_subagent", {"name": "x", "goal": "y" * 20}, tmp_path)
+    assert r.ok is False
+    assert "только внутри tool loop" in r.error
+
+
+def test_spawn_subagent_absent_without_subagents(minimal_cfg, prompts_cfg, sample_project):
+    """subagents=[] → spawn_subagent НЕ рекламируется (реальный промпт)."""
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+    _, user_prompt = _run_loop(
+        minimal_cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+    )
+    assert "run_shell(" in user_prompt  # инструменты вообще показаны
+    assert "spawn_subagent(" not in user_prompt
+    assert "ДОСТУПНЫЕ SUBAGENTS" not in user_prompt
+
+
+def test_spawn_subagent_present_with_subagents(minimal_cfg, sample_project):
+    """С subagents → spawn_subagent и секция есть в промпте (реальный промпт)."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER, _TEST_RUNNER])
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+    _, user_prompt = _run_loop(
+        cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+    )
+    assert "spawn_subagent(" in user_prompt
+    assert "ДОСТУПНЫЕ SUBAGENTS" in user_prompt
+    assert "code-explorer" in user_prompt
+    assert "test-runner" in user_prompt
+    assert "tools: read_file, read_symbol, list_files, run_shell" in user_prompt
+    assert "tools: run_shell" in user_prompt
+
+
+def test_spawn_not_advertised_at_depth(minimal_cfg, sample_project):
+    """spawn_depth>0 → subagent не может спавнить (даже если subagents есть)."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+    _, user_prompt = _run_loop(
+        cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+        spawn_depth=1,
+    )
+    assert "run_shell(" in user_prompt
+    assert "spawn_subagent(" not in user_prompt
+
+
+def test_real_prompts_yaml_renders_without_keyerror(minimal_cfg, sample_project):
+    """Интеграция: реальный prompts.yaml (урок D3 — KeyError на {{var}})."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+
+    result, user_prompt = _run_loop(
+        cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+    )
+
+    assert result.success is True
+    # все плейсхолдеры подставлены
+    assert "{{" not in user_prompt
+    assert "ДОСТУПНЫЕ SUBAGENTS" in user_prompt
+    assert "code-explorer" in user_prompt
+    # max_spawns подставлен числом (3 по умолчанию)
+    assert "не более 3 за задачу" in user_prompt
+
+
+def test_real_prompts_yaml_renders_without_subagents(minimal_cfg, sample_project):
+    """Без subagents реальный prompts.yaml тоже рендерится."""
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+    result, user_prompt = _run_loop(
+        minimal_cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+    )
+    assert result.success is True
+    assert "{{" not in user_prompt
+    assert "spawn_subagent(" not in user_prompt
+
+
+def test_max_spawns_from_config(minimal_cfg, sample_project):
+    """max_spawns берётся из cfg.agent.subagent_max_per_task (не хардкод)."""
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER])
+    cfg.agent.subagent_max_per_task = 7
+    prompts = load_prompts(REPO / "config" / "prompts.yaml")
+    _, user_prompt = _run_loop(
+        cfg,
+        prompts,
+        sample_project,
+        ['{"finish": true, "summary": "d", "success": true}'],
+    )
+    assert "не более 7 за задачу" in user_prompt
+
+
+def test_allowlist_enforcement_denies_tool(minimal_cfg, prompts_cfg, sample_project):
+    """Запрещённый tool → ok=False, файл НЕ создан (enforcement, не промпт)."""
+    responses = [
+        '{"tool": "write_file", "args": {"path": "denied.txt", "content": "x"}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+    result, _ = _run_loop(
+        minimal_cfg,
+        prompts_cfg,
+        sample_project,
+        responses,
+        allowed_tools=["read_file"],
+    )
+
+    denied_action, denied_result = result.history[0]
+    assert denied_action.tool == "write_file"
+    assert denied_result.ok is False
+    assert "не разрешён" in denied_result.error
+    assert not (sample_project / "denied.txt").exists()
+
+
+def test_allowlist_allows_listed_tool(minimal_cfg, prompts_cfg, sample_project):
+    responses = [
+        '{"tool": "list_files", "args": {"dir": "."}}',
+        '{"finish": true, "summary": "done", "success": true}',
+    ]
+    result, _ = _run_loop(
+        minimal_cfg,
+        prompts_cfg,
+        sample_project,
+        responses,
+        allowed_tools=["list_files"],
+    )
+    assert result.history[0][1].ok is True

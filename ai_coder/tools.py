@@ -776,6 +776,16 @@ def tool_edit_file(args: dict[str, Any], project_root: Path) -> ToolResult:
 # ---------- реестр ----------
 
 
+def _tool_spawn_unavailable(args: dict[str, Any], project_root: Path) -> ToolResult:
+    """Заглушка для spawn_subagent в TOOL_REGISTRY.
+
+    Реальное исполнение — в tool_loop.py (перехват перед execute_tool):
+    tool-функция не видит cfg/ctx/бюджет. Эта заглушка — предохранитель
+    на случай вызова из другого пути (apply/verify).
+    """
+    return ToolResult(ok=False, error="spawn_subagent доступен только внутри tool loop")
+
+
 TOOL_REGISTRY: dict[str, tuple[ToolSpec, Callable[[dict[str, Any], Path], ToolResult]]] = {
     "read_file": (
         ToolSpec(
@@ -866,12 +876,35 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, Callable[[dict[str, Any], Path], ToolRe
         ),
         tool_run_shell,
     ),
+    "spawn_subagent": (
+        ToolSpec(
+            name="spawn_subagent",
+            description=(
+                "Делегировать подцель настроенному subagent'у (отдельному агенту). "
+                "ДОРОГО: это свой контекст и свой бюджет. Используй для широкой "
+                "разведки или многошаговой работы, а не для чтения одного файла."
+            ),
+            args={
+                "name": "имя subagent'а из списка ДОСТУПНЫЕ SUBAGENTS",
+                "goal": "что именно сделать (>= 10 символов)",
+            },
+            returns="краткая выжимка: статус, summary, файлы, стоимость",
+        ),
+        _tool_spawn_unavailable,
+    ),
 }
 
 
-def get_tool_specs() -> list[ToolSpec]:
-    """Возвращает список ToolSpec для промпта."""
-    return [spec for spec, _ in TOOL_REGISTRY.values()]
+def get_tool_specs(allowlist: list[str] | None = None) -> list[ToolSpec]:
+    """Возвращает список ToolSpec для промпта.
+
+    allowlist=None → все инструменты (обратная совместимость).
+    Порядок — как в TOOL_REGISTRY (детерминированный).
+    """
+    if allowlist is None:
+        return [spec for spec, _ in TOOL_REGISTRY.values()]
+    allowed = set(allowlist)
+    return [spec for name, (spec, _) in TOOL_REGISTRY.items() if name in allowed]
 
 
 def execute_tool(
@@ -957,9 +990,12 @@ def execute_tool(
         return ToolResult(ok=False, error=f"tool crashed: {type(e).__name__}: {e}")
 
 
-def format_tools_for_prompt() -> str:
+def format_tools_for_prompt(allowlist: list[str] | None = None) -> str:
     """
     Формирует текстовое описание инструментов для промпта.
+
+    allowlist=None → все инструменты (обратная совместимость).
+    allowlist=[...] → только перечисленные (для subagents).
 
     Пример вывода:
         read_file(path)
@@ -968,7 +1004,7 @@ def format_tools_for_prompt() -> str:
           returns: file contents as text
     """
     lines: list[str] = []
-    for spec in get_tool_specs():
+    for spec in get_tool_specs(allowlist):
         args_str = ", ".join(f"{k}: {v}" for k, v in spec.args.items())
         lines.append(f"{spec.name}({args_str})")
         lines.append(f"  {spec.description}")

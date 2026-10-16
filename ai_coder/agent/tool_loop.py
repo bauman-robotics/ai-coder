@@ -23,6 +23,7 @@ from ..config import (
     AppConfig,
     PromptEntry,
     PromptsConfig,
+    SubagentConfig,
 )
 from ..llm import LLMClient, LLMResponse
 from ..pricing import calculate_cost, get_rate, is_peak_now
@@ -56,6 +57,7 @@ _REQUIRED_ARGS: dict[str, list[str]] = {
     "edit_file": ["path", "old", "new"],
     "list_files": [],
     "run_shell": ["command"],
+    "spawn_subagent": ["name", "goal"],
 }
 
 
@@ -83,6 +85,12 @@ class _ToolLoopCtx:
     step_type: str | None
     reverse_check: bool
     feedback_section: str
+    subagents_section: str
+    allowed_tools: frozenset[str]
+    subagents_by_name: dict[str, SubagentConfig]
+    spawn_depth: int
+    max_spawns: int
+    usage_action_prefix: str
     prompt_entry: PromptEntry
     tools_block: str
     scan_meta: MetadataScanResult
@@ -114,6 +122,8 @@ class _ToolLoopCtx:
     last_iteration: bool = False
     start_iteration: int = 1
     end_iteration: int = 0
+    spawn_count: int = 0
+    spawn_cost_rub: float = 0.0
 
 
 def _has_missing_args(action: ToolAction) -> bool:
@@ -476,6 +486,8 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
             "history": history_block,
             "max_iterations": str(max_iterations),
             "feedback_section": ctx.feedback_section,
+            "subagents_section": ctx.subagents_section,
+            "max_spawns": str(ctx.max_spawns),
         },
     )
 
@@ -582,6 +594,18 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
     if action.finish:
         _handle_finish(ctx, action, iteration, llm_resp)
         return "break"
+
+    # --- allowlist: enforcement на исполнении, не только в промпте ---
+    if action.tool not in ctx.allowed_tools:
+        allowed_hint = ", ".join(sorted(ctx.allowed_tools)) or "(нет)"
+        denied = ToolResult(
+            ok=False,
+            error=f"tool '{action.tool}' не разрешён. Доступные: {allowed_hint}",
+        )
+        ctx.history.append((action, denied))
+        if ctx.journal_dir is not None:
+            _save_tool_loop_step(ctx.journal_dir, iteration, action, denied, llm_resp)
+        return "continue"
 
     # --- interactive ---
     if interactive:
@@ -837,6 +861,11 @@ def run_tool_loop(
     step_type: str | None = None,
     reverse_check: bool = False,
     feedback_section: str = "",
+    subagents_section: str | None = None,
+    allowed_tools: list[str] | None = None,
+    spawn_depth: int = 0,
+    max_spawns: int | None = None,
+    usage_action_prefix: str = "agent",
 ) -> ToolLoopResult:
     """Tool loop: модель сама вызывает инструменты до завершения.
 
@@ -864,7 +893,27 @@ def run_tool_loop(
 
     # --- промпт ---
     prompt_entry = prompts_cfg.get("agent_tool_json")
-    tools_block = format_tools_for_prompt()
+
+    # --- effective allowlist (D4 §3.4) ---
+    # allowlist enforce'ится и в промпте, и на исполнении: parse_tool_action
+    # пропускает любой tool из TOOL_REGISTRY, даже не показанный модели.
+    if allowed_tools is not None:
+        effective_tools = [t for t in TOOL_REGISTRY if t in set(allowed_tools)]
+    else:
+        effective_tools = list(TOOL_REGISTRY)
+        if not cfg.agent.subagents or spawn_depth > 0:
+            # не рекламируем то, что нельзя вызвать
+            effective_tools = [t for t in effective_tools if t != "spawn_subagent"]
+    tools_block = format_tools_for_prompt(effective_tools)
+
+    if subagents_section is None:
+        # Ленивый импорт: spawn.py импортирует run_tool_loop из этого модуля.
+        from .spawn import build_subagents_section
+
+        subagents_section = build_subagents_section(cfg.agent.subagents)
+
+    if max_spawns is None:
+        max_spawns = cfg.agent.subagent_max_per_task
 
     # --- resume ---
     history: list = []
@@ -918,6 +967,12 @@ def run_tool_loop(
         step_type=step_type,
         reverse_check=reverse_check,
         feedback_section=feedback_section,
+        subagents_section=subagents_section,
+        allowed_tools=frozenset(effective_tools),
+        subagents_by_name={s.name: s for s in cfg.agent.subagents},
+        spawn_depth=spawn_depth,
+        max_spawns=max_spawns,
+        usage_action_prefix=usage_action_prefix,
         prompt_entry=prompt_entry,
         tools_block=tools_block,
         scan_meta=scan_meta,
