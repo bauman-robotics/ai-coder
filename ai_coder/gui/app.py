@@ -77,6 +77,7 @@ def _build_command(
     task_type: str = "agent",
     run_action: str = "",
     reverse_check: bool = False,
+    decompose_reverse_check: bool = False,
     chain_path: str = "",
 ) -> str:
     """Собирает строку команды ai-coder из полей формы."""
@@ -143,6 +144,8 @@ def _build_command(
         parts.extend(["--max-cost-rub", max_cost_rub.strip()])
     if reverse_check:
         parts.append("--reverse-check")
+    if decompose_reverse_check:
+        parts.append("--decompose-reverse-check")
     if advanced_flags.strip():
         parts.append(advanced_flags.strip())
 
@@ -192,6 +195,7 @@ async def build(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    decompose_reverse_check: bool = Form(False),
     chain_path: str = Form(""),
 ) -> HTMLResponse:
     """Собирает команду из формы и возвращает её как <pre>-фрагмент."""
@@ -208,6 +212,7 @@ async def build(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        decompose_reverse_check=decompose_reverse_check,
         chain_path=chain_path,
     )
     return HTMLResponse(
@@ -228,6 +233,7 @@ def _build_argv(
     task_type: str = "agent",
     run_action: str = "",
     reverse_check: bool = False,
+    decompose_reverse_check: bool = False,
     chain_path: str = "",
 ) -> list[str]:
     """Собирает argv для запуска агента через python -m ai_coder.cli."""
@@ -244,6 +250,7 @@ def _build_argv(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        decompose_reverse_check=decompose_reverse_check,
         chain_path=chain_path,
     )
     parts = shlex.split(command)
@@ -397,6 +404,7 @@ async def run(
     task_type: str = Form("agent"),
     run_action: str = Form(""),
     reverse_check: bool = Form(False),
+    decompose_reverse_check: bool = Form(False),
     chain_path: str = Form(""),
 ) -> StreamingResponse:
     """Запускает агента и стримит его вывод в формате SSE."""
@@ -414,6 +422,7 @@ async def run(
         task_type=task_type,
         run_action=run_action,
         reverse_check=reverse_check,
+        decompose_reverse_check=decompose_reverse_check,
         chain_path=chain_path,
     )
     proc: subprocess.Popen = subprocess.Popen(

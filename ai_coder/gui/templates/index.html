@@ -146,6 +146,9 @@
                         <label class="checkbox" id="reverse-check-label" title="требует --tool-loop">
                             <input type="checkbox" name="reverse_check" value="true"> reverse-check
                         </label>
+                        <label class="checkbox" id="decompose-reverse-check-label" title="требует --decompose">
+                            <input type="checkbox" name="decompose_reverse_check" value="true"> decompose-reverse-check
+                        </label>
                     </div>
                     <div class="flags-row">
                         <label for="check-mode">Режим проверки:</label>
@@ -321,6 +324,15 @@
                     if (!rcEnabled) { reverseEl.checked = false; }
                     var rvLabel = document.getElementById("reverse-check-label");
                     if (rvLabel) { rvLabel.classList.toggle("field-hidden", isRun); }
+                }
+                // decompose-reverse-check: только для mode=decompose.
+                var drcEl = document.querySelector("input[name=decompose_reverse_check]");
+                if (drcEl) {
+                    var isDecompose = modeEl ? (modeEl.value === "decompose") : false;
+                    drcEl.disabled = !isDecompose;
+                    if (!isDecompose) { drcEl.checked = false; }
+                    var drcLabel = document.getElementById("decompose-reverse-check-label");
+                    if (drcLabel) { drcLabel.classList.toggle("field-hidden", !isDecompose); }
                 }
                 if (commitEl) {
                     commitEl.disabled = !isApply;
