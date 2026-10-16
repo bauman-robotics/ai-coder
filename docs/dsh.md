@@ -13,6 +13,106 @@
 
 ---
 
+## 2026-10-16 — D9: E2E Router без `--model` (Router ✅ работает)
+
+**Задача:** проверить, что Router (10.70) **реально** выбирает модель
+подзадачи по `type`, а не только «числится» починенным после D8.
+**Где:** worktree `.worktrees/d9` (ветка `d9`). **Не запушено.**
+
+### E2E без `--model` — Router работает ✅
+
+Песочница (README с опечаткой, `calc.py`, `utils.py`, `test_calc.py`),
+цель: «Изучи структуру проекта, исправь опечатку в README.md, добавь
+функцию `mul` в `calc.py` и используй её в `utils.py`, добавь тест
+`test_mul` в `test_calc.py` и прогони тесты.»
+Команда: `--tool-loop --decompose --apply` **без `--model`**,
+`--max-cost-rub 15`.
+
+Результат: **6 подзадач, все ✅, EXIT=0, 4.6092 RUB.**
+
+| # | Подзадача | Роль | Модель | Итер |
+|---|---|---|---|---|
+| 1 | Изучить текущее содержимое `calc.py` | `explore` | `deepseek-flash` | 2 |
+| 2 | Изучить `test_calc.py` и `README.md` | `explore` | `deepseek-flash` | 2 |
+| 3 | Добавить функцию `mul(a, b)` в `calc.py` | `edit-complex` | **`deepseek-v4-pro`** | 7 |
+| 4 | Исправить опечатку в `README.md` | `edit-simple` | `deepseek-flash` | 4 |
+| 5 | Добавить тест `test_mul` | `edit-simple` | `deepseek-flash` | 3 |
+| 6 | Запустить `pytest` | `verify` | `deepseek-flash` | 4 |
+
+Покрыты **все четыре типа** Router. Модель каждой подзадачи взята из
+её журнала (`step-0.md` → «Модель»).
+
+### Уточнение: `--model` и не перекрывал Router
+
+Исходная посылка задачи («в D8 E2E модель задавалась `--model`, который
+перекрывает Router») **неверна**. В коде модель подзадачи берётся из
+`_resolve_subagent(st)`, а параметр `model` из CLI идёт только в
+планировщик (`decompose_model`) и в retry-fallback:
+
+```python
+subtask_model, subtask_iters = _resolve_subagent(st)  # decomposer.py:371
+...
+model = (subtask_model,)  # :379
+```
+
+Журнал **D8** это подтверждает: подзадачи 1/4 — flash, 2/3 — v4-pro.
+То есть Router был в силе уже в D8, а запись в `TODO.md` (и в
+`state.md`) про «не проверено» опиралась на неверную предпосылку —
+исправлено.
+
+### 🐞 Баг A: у Router нет fallback, если модели нет в `pricing`
+
+`_resolve_subagent` возвращает **захардкоженные** имена
+(`deepseek-flash` / `deepseek-v4-pro`) и **не проверяет** их наличие
+в конфиге. Если у пользователя нет цен для выбранной модели:
+
+```
+del cfg.api.pricing["deepseek-v4-pro"]
+_estimate_next_cost_rub(cfg, "deepseek-v4-pro", ...)
+→ KeyError: "Нет цен для модели 'deepseek-v4-pro' в конфиге"
+```
+
+Падение происходит **в середине прогона** (`pricing_for` вызывается в
+precheck и в `calculate_cost`), то есть уже после потраченных денег.
+
+При этом `SubagentConfig.model` (D6) **валидируется на старте**. Router
+и subagents ведут себя непоследовательно.
+
+→ issue в `TODO.md`.
+
+### 🐞 Баг B: `--max-iterations` (default 20) перекрывает лимиты Router
+
+`agent_cmd` объявляет `--max-iterations` со **значением по умолчанию
+20** (не `None`) и всегда передаёт его в `run_agent_decompose`, а там:
+
+```python
+final_iters = max_iterations if max_iterations is not None else subtask_iters
+```
+
+`20 is not None` → всегда 20 → **лимиты Router (5/10/15/3) не
+применяются** при запуске через CLI.
+
+**Доказательство из этого же E2E:** подзадача 6 (`verify`) отработала
+**5 шагов** (`step-0..step-4`) при лимите Router **3**. Значит
+действовал не Router-лимит, а 20.
+
+Модели при этом выбираются правильно (за это отвечает `subtask_model`,
+а не `final_iters`) — поэтому баг не был заметен.
+
+→ issue в `TODO.md`.
+
+### Что НЕ подтвердилось
+
+- «Router не работает без `--model`» — работает.
+- «`--model` перекрывает Router» — не перекрывает (для подзадач).
+
+### Стоимость
+
+- E2E: **4.6092 RUB**. Диагностика (чистые функции, без LLM): 0 RUB.
+- Артефакты: `.ai-out/dsh-d9/` (лог, журнал).
+
+---
+
 ## 2026-10-16 — D8: verify-подзадача в decompose (🔴) — ROOT CAUSE найден
 
 **Задача:** закрыть 🔴 «планировщик создаёт verify-подзадачи» из `TODO.md`

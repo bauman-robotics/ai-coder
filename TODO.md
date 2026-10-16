@@ -63,23 +63,56 @@
       **Файлы:** `docs/tools.md` (раздел «Self-hosted E2E в worktree»).
       ~30 мин. **Приоритет:** 🟢.
 
-### 🟡 E2E Router без `--model`
+### ✅ E2E Router без `--model` — закрыто (D9)
 
-- [ ] **Симптом:** после D8 Router (10.70) работает (whitelist
-      `parse_decompose_response` исправлен — типы `explore` /
-      `edit-simple` / `edit-complex` / `verify` больше не приводятся
-      к `"edit"`), но E2E **не проверяет** выбор модели:
-      `edit-complex → v4-pro`.
-      В прогоне D8 модель tool loop задавалась флагом `--model`,
-      который перекрывает выбор Router, поэтому «ожил ли Router
-      по-настоящему» не подтверждено.
-      **Задача:** E2E без `--model` — чтобы модель подзадачи выбирал
-      `_resolve_subagent` по `type`. Проверить, что `edit-complex`
-      идёт на v4-pro, `explore`/`verify` — на flash, и что лимиты
-      итераций (5/10/15/3) применяются по типу.
-      **Файлы:** прогон `--decompose --tool-loop --apply` +
-      проверка `usage.jsonl` (какая модель у какой подзадачи).
+- [x] **Проверено (D9): Router работает.** E2E
+      `--tool-loop --decompose --apply` **без `--model`**: 6 подзадач,
+      все ✅, EXIT=0, 4.6092 RUB.
+      `explore` → flash, `edit-complex` → **v4-pro**, `edit-simple` →
+      flash, `verify` → flash (модель из журнала каждой подзадачи).
+- ⚠️ **Исходная посылка была неверна:** `--model` **не** перекрывает
+      выбор Router. Модель подзадачи берётся из `_resolve_subagent(st)`
+      (`decomposer.py:371/379`), а параметр `model` идёт только в
+      планировщик и retry-fallback. Журнал D8 это подтверждает
+      (подзадачи 1/4 — flash, 2/3 — v4-pro).
+
+### 🐞 Баг A: у Router нет fallback, если модели нет в `pricing`
+
+- [ ] **Симптом:** `_resolve_subagent` возвращает захардкоженные
+      `deepseek-flash` / `deepseek-v4-pro` и **не проверяет** их наличие
+      в конфиге. Если цен для модели нет:
+      `_estimate_next_cost_rub(cfg, "deepseek-v4-pro", ...)` →
+      `KeyError: "Нет цен для модели 'deepseek-v4-pro' в конфиге"`.
+      Падение — **в середине прогона** (precheck + `calculate_cost`),
+      то есть уже после потраченных денег.
+      Непоследовательно: `SubagentConfig.model` (D6) валидируется
+      **на старте**, а модели Router — нет.
+      **Решение:** либо валидировать модели Router на старте
+      (`AppConfig.model_validator`), либо фолбэк на `cfg.api.model`
+      с предупреждением.
+      **Файлы:** `ai_coder/agent/decomposer.py` (`_resolve_subagent`),
+      `ai_coder/config.py`.
       **Оценка:** ~2 ч. **Приоритет:** 🟡.
+
+### 🐞 Баг B: `--max-iterations` перекрывает лимиты Router
+
+- [ ] **Симптом:** `agent_cmd` объявляет `--max-iterations` со
+      значением по умолчанию **20** (не `None`) и всегда передаёт его
+      в `run_agent_decompose`, где
+      `final_iters = max_iterations if max_iterations is not None
+      else subtask_iters` → всегда 20. Значит **лимиты Router
+      (explore 5 / edit-simple 10 / edit-complex 15 / verify 3) при
+      запуске через CLI не применяются**.
+      **Доказательство (D9):** подзадача `verify` отработала 5 шагов
+      (`step-0..step-4`) при лимите Router 3.
+      Модели выбираются правильно (за это отвечает `subtask_model`),
+      поэтому баг незаметен.
+      **Решение:** сделать default `None` (тогда Router-лимиты
+      заработают) либо явно переопределять per-type, если пользователь
+      не задал флаг.
+      **Файлы:** `ai_coder/cli.py` (опция `--max-iterations`),
+      `ai_coder/agent/decomposer.py` (`final_iters`).
+      **Оценка:** ~1 ч. **Приоритет:** 🟡.
 
 ## Из Validator/GUI (сессия 2026-10-16, 10.71 + 10.72)
 
