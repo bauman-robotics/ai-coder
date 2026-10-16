@@ -4,7 +4,7 @@
 
 
 
-## Findings D5/D6/D7 (сессия 2026-10-16, 10.75–10.77)
+## Findings D5/D6/D7 — все 7 закрыты (D6, D7, D10.1-D11)
 
 Детали — `docs/findings-d5.md`; отчёты — `docs/dsh.md` → D5, D6.
 
@@ -33,31 +33,31 @@
       goal (эксперимент D7, 0.85 RUB: размытый goal → `ok=True`,
       точный → `ok=False`). Корень — формулировка задачи, а не тайминг.
 
-### 🟡 #4 `iterations` ≠ числа LLM-вызовов
+### ✅ #4 `iterations` = число LLM-вызовов — закрыто (D11, `1b2b1e4`)
 
-- [ ] `iterations=len(ctx.history)`, а `_handle_finish` в `history`
+- [x] `iterations=len(ctx.history)`, а `_handle_finish` в `history`
       не пишет → расхождение на 1 с `usage.jsonl` (в D6: 15 шагов
       против 16 записей). **Файлы:** `ai_coder/agent/tool_loop.py`.
       ~1 ч. **Приоритет:** 🟡.
 
-### 🟡 #5 пустой `summary` при `max_iterations`
+### ✅ #5 пустой `summary` при `max_iterations` — закрыто (D11, `3240890`)
 
-- [ ] Digest subagent'а приходит с `summary:` пустым — родитель
+- [x] Digest subagent'а приходит с `summary:` пустым — родитель
       не знает, что упало (D5: test-runner; D6: все large-прогоны).
       **Файлы:** `ai_coder/agent/tool_loop.py` (ветка `for/else`),
       `ai_coder/agent/spawn.py` (`summarize_subagent_result`). ~1 ч.
       **Приоритет:** 🟡.
 
-### 🟡 #6 перерасход `cap`
+### ✅ #6 перерасход `cap` — закрыто (D11, `8f3a972`)
 
-- [ ] «≤ 1 итерации» уже задокументировано в `CHANGELOG.md`, но
+- [x] «≤ 1 итерации» уже задокументировано в `CHANGELOG.md`, но
       **не** в `docs/tools.md` §6 → дописать. Опционально: precheck
       по типу инструмента (E37). **Файлы:** `docs/tools.md`,
       `ai_coder/agent/planner.py`. ~15 мин / ~2 ч. **Приоритет:** 🟡→🟢.
 
-### 🟢 #7 `.venv/bin/ai-coder` из worktree не существует
+### ✅ #7 `.venv/bin/ai-coder` из worktree — закрыто (D11, `cbddd2f`)
 
-- [ ] Не баг ai-coder: venv в main + editable install. Нужен рецепт
+- [x] Не баг ai-coder: venv в main + editable install. Нужен рецепт
       (абсолютный путь к venv, `PATH=.venv/bin`,
       `PYTHONPATH=<worktree>`, `set -a; . .env; set +a`).
       **Файлы:** `docs/tools.md` (раздел «Self-hosted E2E в worktree»).
@@ -100,9 +100,9 @@
       **Тесты:** `[5, 10, 15, 3]` при `None`; явный `N` перекрывает;
       CLI-проброс в обоих режимах.
 
-### ⚠️ Баг C: `verify: 3` мало — лимит поднят до 5 (D10 → D10.1), но это НЕ корень
+### ✅ Баг C: `verify: 3` мало — закрыто (D10.1 `f045772` → D10.2)
 
-- [ ] **Симптом (E2E D10, повтор сценария D9):** после включения
+- [x] **Симптом (E2E D10, повтор сценария D9):** после включения
       Router-лимитов verify-подзадача («Запустить pytest и
       убедиться») **упала**: `max_iterations` при 3 итерациях, и
       retry (v4-pro) тоже получил 3 → `subtask 7 failed`, EXIT=1.
@@ -126,9 +126,9 @@
       (модель повторяет `pytest -q` и не делает `finish`), поэтому
       значение лимита её не лечит. Лимит 5 оставлен: 3 заведомо мало.
 
-### 🐞 Баг D: verify зацикливается на `pytest -q` и не делает `finish`
+### ✅ Баг D: verify зацикливалась на `pytest -q` — закрыто (D10.2, `e6a77f4`)
 
-- [ ] **Симптом (D10/D10.1):** verify-подзадача («Запустить pytest и
+- [x] **Симптом (D10/D10.1):** verify-подзадача («Запустить pytest и
       убедиться») вызывает **одну и ту же** команду `pytest -q` каждую
       итерацию, каждый раз получает `✅ ok` (`2 passed`) и **ни разу не
       возвращает `finish`** → `max_iterations`. Воспроизводится и на
@@ -195,7 +195,7 @@
 
 ---
 
-### usage: `--by-action` не существует
+### ✅ usage: `--by-action` — закрыто (D12, `8e544c1`)
 
 - [ ] **Наш ТЗ упоминал `usage --by-action`, но такого флага нет.**
       У команды `usage` есть только `--action` (для фильтра).
@@ -204,7 +204,7 @@
       или исправить доку (в `docs/cli/usage.md`).
       **Приоритет:** 🟢 низкий.
 
-### usage: пути (CWD vs project_root)
+### ✅ usage: пути (CWD vs project_root) — закрыто (D12, `83b5a3c`)
 
 - [ ] **Pre-existing баг:** `usage` читает `Path(cfg.usage.jsonl)`
       **относительно CWD**, а `append_usage` пишет **относительно
