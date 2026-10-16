@@ -124,6 +124,29 @@ def _resolve_subagent(st: Subtask) -> tuple[str, int]:
     return _SUBAGENT_MODEL[t], _SUBAGENT_ITERS[t]
 
 
+def _step_type_for(st: Subtask) -> str | None:
+    """`type` подзадачи → `step_type` для run_tool_loop.
+
+    До D8 decomposer передавал ВСЕМ подзадачам `step_type="edit"`,
+    а `_handle_finish` при "edit" требует `applied_ops > 0`. Поэтому
+    подзадачи `explore` (только читает) и `verify` (только запускает
+    тесты) не могли завершиться успешно в принципе — Router (10.70)
+    создавал 4 типа, а работал фактически один.
+
+    Соответствие:
+      explore / read        → "read" (критерий: read_ops > 0)
+      verify                → None   (критерий: finish модели; ниже
+                                      всё равно отработает verify_commands)
+      edit / edit-simple /
+      edit-complex / прочее → "edit" (критерий: applied_ops > 0)
+    """
+    if st.type in ("explore", "read"):
+        return "read"
+    if st.type == "verify":
+        return None
+    return "edit"
+
+
 _console = Console()
 
 
@@ -346,6 +369,7 @@ def run_agent_decompose(
             max(0.0, max_cost_rub - dec_result.cost_rub) if max_cost_rub is not None else None
         )
         subtask_model, subtask_iters = _resolve_subagent(st)
+        step_type = _step_type_for(st)  # D8: explore→read, verify→None, edit→edit
         final_iters = max_iterations if max_iterations is not None else subtask_iters
         loop_result = run_tool_loop(
             goal=st.goal,
@@ -364,7 +388,7 @@ def run_agent_decompose(
             journal_subdir=subtask_subdir,
             allow_blacklist=allow_blacklist,
             verify_commands=verify_commands,
-            step_type="edit",
+            step_type=step_type,
             feedback_section=feedback,
         )
 
@@ -417,7 +441,7 @@ def run_agent_decompose(
                     journal_subdir=subtask_subdir,
                     allow_blacklist=allow_blacklist,
                     verify_commands=verify_commands,
-                    step_type="edit",
+                    step_type=step_type,
                     feedback_section=feedback,
                 )
                 dec_result.cost_rub += loop_result.total_cost_rub

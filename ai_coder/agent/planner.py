@@ -267,6 +267,17 @@ def _parse_phase1_response(content: str) -> tuple[list[str], str | None]:
     return sorted(set(paths)), None
 
 
+# Допустимые `type` подзадачи: типы Router (10.70) + legacy edit/read (D8).
+_VALID_SUBTASK_TYPES: tuple[str, ...] = (
+    "explore",
+    "edit-simple",
+    "edit-complex",
+    "verify",
+    "edit",
+    "read",
+)
+
+
 def parse_decompose_response(content: str) -> DecomposeResult:
     """
     Парсит ответ планировщика-декомпозитора.
@@ -324,7 +335,12 @@ def parse_decompose_response(content: str) -> DecomposeResult:
         files = [str(f) for f in files_raw] if isinstance(files_raw, list) else []
 
         stype = str(s.get("type", "edit")).strip().lower()
-        if stype not in ("edit", "read"):
+        # D8: принимаем типы Router (10.70) — explore / edit-simple /
+        # edit-complex / verify — плюс legacy edit/read. До D8 здесь
+        # оставался whitelist ("edit", "read"), поэтому ВСЕ типы Router
+        # приводились к "edit" и Router фактически не работал:
+        # edit-complex не получал v4-pro, verify/explore не существовали.
+        if stype not in _VALID_SUBTASK_TYPES:
             stype = "edit"
 
         result.subtasks.append(Subtask(n=i, goal=goal, files=files, type=stype))
