@@ -5,7 +5,7 @@ deepseek-v4-pro, не проверяя наличие цен → `KeyError` в �
 (в `_estimate_next_cost_rub` и `calculate_cost`).
 
 Баг B: `--max-iterations` имел default 20 (не None) и всегда перекрывал
-лимиты Router (explore 5 / edit-simple 10 / edit-complex 15 / verify 3).
+лимиты Router (explore 5 / edit-simple 10 / edit-complex 15 / verify 5).
 """
 
 from __future__ import annotations
@@ -143,7 +143,7 @@ def test_router_iters_applied_when_max_iterations_none(minimal_cfg, prompts_cfg,
     captured = _capture_iters(
         minimal_cfg, prompts_cfg, sample_project, list(_SUBTASKS), max_iterations=None
     )
-    assert [c["max_iterations"] for c in captured] == [5, 10, 15, 3]
+    assert [c["max_iterations"] for c in captured] == [5, 10, 15, 5]
 
 
 def test_explicit_max_iterations_wins(minimal_cfg, prompts_cfg, sample_project):
@@ -155,7 +155,11 @@ def test_explicit_max_iterations_wins(minimal_cfg, prompts_cfg, sample_project):
 
 
 def test_verify_subtask_gets_three_iterations(minimal_cfg, prompts_cfg, sample_project):
-    """Acceptance D10: verify-подзадача получает лимит 3."""
+    """Acceptance D10/D10.1: verify получает лимит 5.
+
+    5 = «K вызовов pytest + 1 итерация на finish»: при 3 модель
+    тратила все итерации на run_shell и не успевала finish (баг C).
+    """
     captured = _capture_iters(
         minimal_cfg,
         prompts_cfg,
@@ -163,4 +167,4 @@ def test_verify_subtask_gets_three_iterations(minimal_cfg, prompts_cfg, sample_p
         [Subtask(n=1, goal="прогони тесты", type="verify")],
         max_iterations=None,
     )
-    assert captured[0]["max_iterations"] == 3
+    assert captured[0]["max_iterations"] == 5

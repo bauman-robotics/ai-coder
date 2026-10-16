@@ -111,11 +111,17 @@ _SUBAGENT_MODEL = {
     "edit-complex": "deepseek-v4-pro",
     "verify": "deepseek-flash",
 }
+# Лимиты итераций tool loop по типу подзадачи.
+# ВАЖНО: max_iterations считает ВСЕ вызовы LLM, включая тот, в котором
+# модель возвращает finish. Поэтому лимит должен покрывать «K вызовов
+# инструментов + 1 итерация на finish».
+# D10.1: verify было 3 — модель тратила все 3 на run_shell (pytest)
+# и не успевала finish → max_iterations → падение подзадачи (и retry).
 _SUBAGENT_ITERS = {
     "explore": 5,
     "edit-simple": 10,
     "edit-complex": 15,
-    "verify": 3,
+    "verify": 5,
 }
 
 
