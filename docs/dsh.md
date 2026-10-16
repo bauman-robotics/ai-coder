@@ -13,6 +13,151 @@
 
 ---
 
+## 2026-10-16 — D8: verify-подзадача в decompose (🔴) — ROOT CAUSE найден
+
+**Задача:** закрыть 🔴 «планировщик создаёт verify-подзадачи» из `TODO.md`
+(он же — причина, по которой `--decompose` падал на реальных прогонах).
+**Где:** worktree `.worktrees/d8` (ветка `d8`), коммит `9eae807`.
+**Не запушено.**
+
+### Симптом
+
+В `--decompose` v4-pro создаёт подзадачу «Запустить тесты (pytest)».
+`decomposer.py` передавал **всем** подзадачам `step_type="edit"`, а
+`_handle_finish` при `"edit"` требует `applied_ops > 0`. Verify ничего
+не правит → `success=False` → retry → снова fail.
+
+### ROOT CAUSE — глубже, чем `step_type`
+
+Первый прогон E2E с уже исправленным `step_type` **всё равно упал**.
+Разбор журнала: у подзадачи 3 `finish(success=True)`, но
+`success=False` и verify даже не запускался → значит `step_type`
+не был `None`.
+
+Прямая проверка планировщика показала:
+
+```
+=== raw JSON (фрагмент с type) ===
+  type = explore
+  type = edit-complex
+  type = edit-complex
+  type = verify
+=== распарсенные подзадачи ===
+  n=1 type='edit'   n=2 type='edit'   n=3 type='edit'   n=4 type='edit'
+```
+
+`planner.py::parse_decompose_response` держал whitelist
+`("edit", "read")` и **приводил к `"edit"` всё остальное**. Промпт
+планировщика корректно просит `explore` / `edit-simple` /
+`edit-complex` / `verify` — но парсер их уничтожал.
+
+**Следствия (до фикса):**
+- **Router (10.70) фактически не работал:** `st.type` всегда `"edit"`,
+  а `_resolve_subagent` для `"edit"` не находит тип в `_SUBAGENT_MODEL`
+  и берёт фолбэк `edit-simple`. То есть `edit-complex` **никогда**
+  не получал v4-pro, а `explore`/`verify` не существовали.
+- ломались **два типа из четырёх**: `explore` (только читает →
+  `applied_ops=0`) и `verify` (ничего не правит) не могли завершиться
+  успешно **в принципе**.
+
+### Фикс (2 части)
+
+**1. `ai_coder/agent/planner.py`** — принимать типы Router:
+
+```python
+_VALID_SUBTASK_TYPES = (
+    "explore",
+    "edit-simple",
+    "edit-complex",
+    "verify",
+    "edit",
+    "read",
+)  # legacy edit/read
+...
+if stype not in _VALID_SUBTASK_TYPES:
+    stype = "edit"
+```
+
+**2. `ai_coder/agent/decomposer.py`** — `_step_type_for(st)`:
+
+| `st.type` | `step_type` | критерий `_handle_finish` |
+|---|---|---|
+| `explore`, `read` | `"read"` | `read_ops > 0` |
+| `verify` | `None` | из `finish` модели |
+| `edit`, `edit-simple`, `edit-complex`, прочее | `"edit"` | `applied_ops > 0` |
+
+Значение передаётся в **оба** вызова `run_tool_loop` (обычный и retry).
+
+### Почему `verify → None`, а не новый `"verify"`
+
+- При `None` `_handle_finish` берёт success из `finish` модели, а роль
+  «проверить» дальше закрывает **сам tool loop**: `verify_commands`
+  (pytest) выполняется после success и при падении тестов ставит
+  `success=False`. Отдельный критерий просто не нужен.
+- Новый `"verify"` потребовал бы своего критерия (например, «был
+  `run_shell`») — это новый счётчик и риск ложных падений у verify,
+  который проверяет чтением.
+- `_handle_finish` **не менялся** — минимальный радиус.
+
+### E2E (до / после)
+
+Песочница `calc.py` + `test_calc.py`, цель «Добавь sub в calc.py и
+test_sub в test_calc.py. Прогони тесты.»,
+`--decompose --tool-loop --apply --model deepseek-v4-pro`:
+
+| | Подзадач | Результат | Стоимость |
+|---|---|---|---|
+| **До** фикса | 3 | verify ❌ → **EXIT=1** | 0.7175 RUB |
+| **После** | 4 (explore + 2 edit + verify) | **все ✅ → EXIT=0** | 3.0292 RUB |
+
+В «после» впервые прошла и **explore**-подзадача («Изучить текущую
+реализацию calc.py…») — до фикса она была обречена так же, как verify.
+Разница в числе подзадач (3 vs 4) — недетерминизм планировщика.
+
+### Побочный (ожидаемый) эффект
+
+После фикса парсера **Router (10.70) начал работать по-настоящему**:
+`edit-complex` получает v4-pro, `explore` — flash и 5 итераций,
+`verify` — flash и 3. Это не «новый функционал», а включение уже
+написанного кода.
+
+### Тесты (+10, `tests/test_decompose_step_type.py`)
+
+- `_step_type_for`: explore→read, read→read (legacy), verify→None,
+  edit/edit-simple/edit-complex→edit, неизвестный→edit;
+- парсер **сохраняет** типы Router; регистр нормализуется; legacy
+  `read` сохраняется; мусор → `edit`; отсутствующий `type` → `edit`;
+- retry использует **тот же** `step_type` (не возвращается к `"edit"`);
+- сквозной путь: JSON планировщика → `type` → `step_type` в
+  `run_tool_loop`.
+
+**576 passed** (было 566), ruff/mypy/pre-commit — зелёные.
+
+### Acceptance
+
+| Критерий | Результат |
+|---|---|
+| decompose с verify-подзадачей — verify проходит | ✅ E2E: EXIT=1 → **EXIT=0**, все 4 подзадачи ✅ |
+| Не ломает 566 | ✅ **576 passed** (+10 новых) |
+| E2E `/tmp/decompose-verify-e2e` | ✅ выполнен до и после |
+
+### Осталось
+
+- `Router` теперь работает — но **не проверен** отдельно: нужен E2E,
+  где планировщик даёт `edit-complex`, и видно, что взят v4-pro
+  (в этом прогоне `edit-complex` был, но модель tool loop задана
+  флагом `--model`, что перекрывает Router).
+- D2: `usage --by-action`, пути `usage.jsonl`.
+- D5 findings #4-#7 (`iterations`, пустой `summary`, cap, worktree-рецепт).
+
+### Стоимость
+
+- E2E до фикса: **0.7175 RUB**; после: **3.0292 RUB**; диагностический
+  вызов планировщика: **0.6074 RUB**. Итого ~**4.35 RUB**.
+- Артефакты: `.ai-out/dsh-d8/` (логи, журналы до/после).
+
+---
+
 ## 2026-10-16 — D7: #2 Validator (`--reverse-check`) в tool loop
 
 **Задача:** закрыть finding #2 — «Validator не применяется в tool loop».
