@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-10-16] iteration 10.72 — GUI: чекбокс `--decompose-reverse-check`
+
+### Что сделано
+
+**`ai_coder/gui/app.py`:**
+- `_build_command`: параметр `decompose_reverse_check: bool = False` +
+  `if decompose_reverse_check: parts.append("--decompose-reverse-check")`.
+- `_build_argv`: параметр + прокид в `_build_command`.
+- `build` (FastAPI endpoint): параметр `Form(False)` + прокид.
+- `run` (FastAPI endpoint): параметр `Form(False)` + прокид.
+
+**`ai_coder/gui/templates/index.html`:**
+- Чекбокс `<input name="decompose_reverse_check">` рядом с
+  `reverse_check`.
+- JS `applyModeConstraints`:
+  - показывается только при `mode=decompose`;
+  - `disabled = !isDecompose`, `checked = false` при смене;
+  - label скрывается через `.field-hidden`.
+
+### Как сделано
+
+**Агентом** (v4-pro, `--tool-loop`, **10 итераций, 6.63 RUB**):
+- 3 правки в `app.py`: `_build_command` (параметр + if),
+  `_build_argv` (параметр).
+- **Дальше** — упёрлись в `max_cost` (работал в **worktree**
+  `/tmp/ai-coder-gui`).
+- **Доводка вручную** (~15 минут, 0 RUB):
+  - `_build_argv` — прокид в `_build_command`.
+  - `build` (endpoint) — параметр + прокид.
+  - `run` (endpoint) — параметр + прокид.
+  - `index.html` — чекбокс + `applyModeConstraints`.
+
+**Тесты:** smoke GUI — **17 passed** (+ основной набор).
+
+### Ограничение
+
+`--decompose-reverse-check` **работает только с `--decompose`**
+(для других режимов — подзадач нет). В GUI это отражено через
+`applyModeConstraints`. **В CLI** — валидации **нет** (молча
+игнорируется). TODO.
+
+### Проверки
+
+- pytest — **489 passed**.
+- ruff, mypy — clean.
+- Merge в main: `a721263`.
+
+### Ссылки
+
+- `docs/ui-ideas.md` → A.18.
+- `docs/state.md` → GUI A.18.
+- CHANGELOG 10.71 — Validator.
+
+---
+
 ## [2026-10-16] iteration 10.71 — Validator: семантическая проверка подзадач
 
 ### Что сделано

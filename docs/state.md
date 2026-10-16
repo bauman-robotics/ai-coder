@@ -252,6 +252,15 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - **Ограничение:** `--plan` в chain через GUI не заработает
   (subprocess без PTY).
 
+**A.18:** GUI — чекбокс `--decompose-reverse-check` (2026-10-16, 10.72).
+- `app.py`: параметр `decompose_reverse_check: bool = False` в
+  `_build_command`/`_build_argv`/`build`/`run`.
+- `index.html`: чекбокс `<input name="decompose_reverse_check">` рядом
+  с `reverse_check`.
+- `applyModeConstraints`: видно только при `mode=decompose`.
+- **Связано:** CLI-флаг `--decompose-reverse-check` (10.71, Validator).
+- Сделано агентом (v4-pro, 6.63 RUB) + ручная доводка.
+
 **Не умеет (A.14+):** встроенный терминал (PTY + WebSocket),
 пагинация `/reports`, экспорт статистики. См.
 `next-chat/in-progress.md`.

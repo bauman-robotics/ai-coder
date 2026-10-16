@@ -4,6 +4,53 @@
 
 
 
+## Из Validator/GUI (сессия 2026-10-16, 10.71 + 10.72)
+
+### CLI: валидация `--decompose-reverse-check`
+
+- [ ] **`--decompose-reverse-check` без `--decompose` молча игнорируется.**
+      Пользователь думает, что проверка включена, реально — нет.
+      **Фикс:** в `agent_cmd` (`cli.py`) проверка по образцу
+      `--reverse-check требует --tool-loop` (стр. ~1443):
+
+          if decompose_reverse_check and not decompose:
+              console.print("[red]--decompose-reverse-check требует --decompose[/red]")
+              raise typer.Exit(1)
+
+      **Приоритет:** 🟢 низкий (в GUI — не проблема, чекбокс скрыт).
+
+### Аналогично — для `--decompose-replan`
+
+- [ ] **`--decompose-replan` без `--decompose`** — тоже **молча
+      игнорируется**. Добавить такую же проверку.
+      **Приоритет:** 🟢 низкий.
+
+### usage: RC-записи
+
+- [ ] **`run_reverse_check` не пишет в `usage.jsonl`.**
+      Стоимость RC **не видна** в `usage`. В E2E мы это **искали**
+      и **не нашли** — полчаса на разгадку.
+      **Фикс:** добавить `append_usage` в `run_reverse_check`
+      (с `parent_action="reverse_check"`).
+      **Файл:** `ai_coder/agent/reverse.py`.
+      **Приоритет:** 🟡 средний (наблюдаемость).
+
+### Расширить `--reverse-check` на chain
+
+- [ ] **`--reverse-check` не работает с `--chain`.** Каждая задача
+      chain — отдельный tool-loop, RC **доступен**.
+      **Фикс:** прокид `reverse_check` в `_run_chain`.
+      **Приоритет:** 🟡 средний.
+
+### Унификация `--reverse-check` везде
+
+- [ ] **Идея:** один флаг `--reverse-check` для **всех** режимов
+      (`tool-loop`, `decompose`, `chain`, `plan`). Обсудить
+      семантику (RC per подзадача vs per задача).
+      **Приоритет:** 🟢 низкий (архитектурный вопрос).
+
+---
+
 ## Из GUI A.0/A.1 (сессия 2026-10-13)
 
 - [x] **Агент пишет под устаревший API библиотек.** ЗАКРЫТО 10.39:

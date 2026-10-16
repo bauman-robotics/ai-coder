@@ -106,6 +106,19 @@
   `/help -L` → 200, 12 кнопок `use-example`.
 - Сделано вручную (~20 мин, 0 RUB).
 
+**A.18:** GUI — чекбокс `--decompose-reverse-check` (2026-10-16, 10.72).
+- `app.py`: параметр `decompose_reverse_check: bool = False` в
+  `_build_command`/`_build_argv`/`build`/`run`. Прокид в команду.
+- `index.html`: чекбокс `<input name="decompose_reverse_check">` рядом
+  с `reverse_check`. Виден только при `mode=decompose`.
+- `applyModeConstraints`: `disabled` + скрытие label при
+  `mode != decompose`.
+- **Связано:** CLI-флаг `--decompose-reverse-check` (10.71, Validator).
+- **Как сделано:** агент (v4-pro, 10 итераций, 6.63 RUB) + ручная
+  доводка (~15 мин). Worktree `/tmp/ai-coder-gui`.
+- **Ограничение:** CLI-валидация `--decompose-reverse-check требует
+  --decompose` — **нет** (TODO).
+
 **Не умеет (A.17+):**
 
 - Встроенный терминал (PTY + WebSocket, этап B).
