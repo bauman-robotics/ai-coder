@@ -560,15 +560,30 @@ def _save_decompose_report(
         lines.append(f"**Explanation:** {result.explanation}\n")
 
     lines.append("## Подзадачи\n")
-    lines.append("| # | Goal | Статус | Стоимость | Журнал |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| # | Goal | Статус | RC | Стоимость | Журнал |")
+    lines.append("|---|---|---|---|---|---|")
     for r in result.subtask_results:
         st_status = "✅" if r.get("success") else "❌"
+        rc_val = r.get("reverse_ok")
+        rc_col = "—" if rc_val is None else ("✅" if rc_val else "❌")
         jrel = Path(r["journal_dir"]).name if r.get("journal_dir") else "—"
         lines.append(
-            f"| {r['n']} | {r['goal'][:60]} | {st_status} | {r['cost_rub']:.4f} | {jrel} |"
+            f"| {r['n']} | {r['goal'][:60]} | {st_status} | {rc_col} "
+            f"| {r['cost_rub']:.4f} | {jrel} |"
         )
     lines.append("")
+
+    rc_bad = [r for r in result.subtask_results if r.get("reverse_ok") is False]
+    if rc_bad:
+        lines.append("## Reverse-check\n")
+        for r in rc_bad:
+            lines.append(f"### Подзадача {r['n']} — ❌\n")
+            for p in r.get("reverse_problems", []):
+                lines.append(f"- {p}")
+            sug = r.get("reverse_suggestion")
+            if sug:
+                lines.append(f"- **Suggestion:** {sug}")
+            lines.append("")
 
     if result.skipped_subtasks:
         lines.append(f"**Пропущено:** {len(result.skipped_subtasks)}\n")
