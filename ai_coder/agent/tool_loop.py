@@ -109,6 +109,11 @@ class _ToolLoopCtx:
     summary: str = ""
     applied_ops: int = 0
     read_ops: int = 0
+    # D11 (#4): число ФАКТИЧЕСКИХ вызовов LLM. len(history) его не даёт:
+    # finish не пишется в history, поэтому было на 1 меньше (в отчёте
+    # «3 итер», а в usage.jsonl — 4 записи). Счётчик совпадает с тем,
+    # что ограничивает max_iterations.
+    llm_calls: int = 0
     warnings: list = field(default_factory=list)
     parse_retries: int = 0
     max_parse_retries: int = 2
@@ -554,6 +559,8 @@ def _tool_loop_one_iteration(ctx: _ToolLoopCtx, iteration: int) -> str:
         ctx.summary = f"LLM call failed: {type(e).__name__}: {e}"
         return "break"
 
+    ctx.llm_calls += 1
+
     # --- стоимость + учёт ---
     _accumulate_cost_and_usage(
         ctx,
@@ -794,7 +801,7 @@ def _tool_loop_finalize(ctx: _ToolLoopCtx) -> None:
     ctx.result = ToolLoopResult(
         success=ctx.success,
         summary=ctx.summary,
-        iterations=len(ctx.history),
+        iterations=ctx.llm_calls,
         history=ctx.history,
         total_cost_rub=ctx.total_cost_rub,
         total_cost_cny=ctx.total_cost_cny,
