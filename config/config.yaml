@@ -120,6 +120,12 @@ agent:
   max_minutes: 30
   verify_commands:
     - "python -m pytest -q"
+  # Доп. проверки ТОЛЬКО когда проект-цель — сам ai-coder (D6, finding #1).
+  # В чужом проекте `mypy ai_coder` упал бы: пакета ai_coder там нет.
+  # Отключается `--no-verify`, переопределяется `--verify-commands`.
+  self_verify_commands:
+    - "python -m ruff check ai_coder/"
+    - "python -m mypy ai_coder"
   verify_timeout_sec: 60
   verify_max_output_chars: 10000
   step_max_output_tokens: 24000

@@ -833,3 +833,31 @@ def test_spawn_journal_nested_on_disk(minimal_cfg, prompts_cfg, sample_project):
     assert nested, [str(p) for p in base.glob("tool-loop-*")]
     # в журнале ребёнка есть шаги
     assert list(nested[0].glob("step-*.md")) or list(nested[0].glob("*.md"))
+
+
+# ---------- D6 #3: правило «когда делегировать» в секции ----------
+
+
+def test_build_subagents_section_has_delegation_guidance(minimal_cfg):
+    """D6 #3: без явного правила модель не делегирует даже на большой задаче.
+
+    Эксперимент D6 (scripts/d6_delegation_ab.py): со старым текстом секции
+    делегирование на задаче с 30 файлами — 0/3, с новым — 3/3.
+    """
+    from ai_coder.agent.spawn import build_subagents_section
+
+    cfg = _cfg_with_subagents(minimal_cfg, [_EXPLORER, _TEST_RUNNER])
+    section = build_subagents_section(cfg.agent.subagents)
+
+    assert "Делегируй, когда" in section
+    assert "НЕ делегируй мелочи" in section
+    # роли по-прежнему перечислены
+    assert "code-explorer" in section
+    assert "test-runner" in section
+    assert "tools: run_shell" in section
+
+
+def test_build_subagents_section_empty_without_subagents():
+    from ai_coder.agent.spawn import build_subagents_section
+
+    assert build_subagents_section([]) == ""
