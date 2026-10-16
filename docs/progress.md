@@ -9,9 +9,9 @@
 > - `docs/experiments.md` — эксперименты (E19-E23).
 > - **`docs/progress.md`** (этот файл) — дневник: что делали.
 
-## 2026-10-16 — Validator + GUI-чекбокс (10.71 + 10.72)
+## 2026-10-16 — Validator + GUI + dsh D2/D3/D4 (10.71-10.74)
 
-**Длительность:** ~6 часов.
+**Длительность:** ~9 часов.
 
 **Главное:**
 
@@ -89,6 +89,58 @@
 - **MCP-интеграция**.
 - **CLI-валидация** `--decompose-reverse-check требует --decompose`
   (TODO). В GUI — не проблема (чекбокс только при decompose).
+
+---
+
+- **dsh (DeepSeek Harness) — D2/D3/D4 (10.73 + 10.74 + дизайн D4).**
+  - **D2:** dsh реализовал **RC в usage** (10.73). 1 turn, 38 steps,
+    ~0.25 RUB (cache hit 98%). 2 теста (mutation-check).
+    **Нашёл:** `usage --by-action` не существует; баг путей `usage.jsonl`.
+  - **D3:** dsh реализовал **Feedback loop** (10.74) — подзадача N
+    видит результат 1..N-1. 4 файла, +52 строки, E2E.
+  - **D4:** dsh спланировал **дизайн spawn_subagent** — 448 строк,
+    8 секций. **Ключевые находки:** `spawn_subagent` — не tool,
+    а **второй оркестратор**; `allowlist` — enforce на **исполнении**;
+    depth = 1; fail-closed для **бюджета**; 2 скрытых бага
+    (`_handle_finish` + `append_usage`).
+  - **Итог:** dsh **сильнее ai-coder** в **реализации** (E2E в изоляции,
+    mutation-check, адаптация ТЗ, находки нашей документации).
+    **Уровень middle+.** **ai-coder** — сильнее в CLI/git/verify/budget.
+    **Симбиоз** — оптимально.
+  - **4 issue** для spawn_subagent — `issues/2026-10-16/8-11-spawn-*.md`.
+    Дизайн — `docs/dsh/D4/answer.md`.
+
+**Ключевые цифры:**
+
+- Тесты: 487 → **491 passed** (+2 Validator + 2 RC-usage).
+- Коммитов: **10** (`4128895` … `71dafa9`).
+- Experiments: **E39** (Validator через маленькие issue),
+  **D1.5, D2, D3, D4** (dsh-эксперименты).
+- Стоимость: **~65 RUB** (ai-coder) + **~1 RUB** (dsh, 4 задачи).
+- Итерации: **10.71, 10.72, 10.73, 10.74**.
+- Файлов изменено: ~15 (код + docs + issues).
+
+**Уроки:**
+
+1. **Маленькие issue (20-50 строк) > большие (180 строк).**
+   Три эксперимента (E37/E38/E39) подтверждают: v4-pro тратит 60%
+   бюджета на «сориентироваться».
+2. **dsh — сильнее в реализации.** D2/D3: 1 turn, ~0.25 RUB,
+   mutation-check, E2E в изоляции. **Уровень middle+.**
+3. **E2E ловит то, что тесты не видят.** RC-без-usage, verify-подзадачи.
+4. **`git stash create` — работает как baseline** (пусто при чистом
+   worktree → fallback на `git diff HEAD`).
+5. **dsh находит баги нашей документации** — `--by-action`,
+   баг путей. **Ценно.**
+6. **Симбиоз:** ai-coder **реализует** → dsh **проверяет/улучшает**.
+
+**На следующий раз:**
+
+См. `next-chat/in-progress.md` → **spawn_subagent** (4 issue готовы).
+**Дизайн D4** — `docs/dsh/D4/answer.md`. **Плюс** 3 находки dsh.
+
+**Остаток docs (в TODO):**
+- `docs/autonomy.md` — раздел 9 (Feedback ✅ + spawn_subagent).
 
 ---
 

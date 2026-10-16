@@ -365,7 +365,7 @@ E2E: 3 issues (0.19 RUB) → 3 задачи ✅ (0.77 RUB).
 
 ## 9. Subagents и оркестрация (10.70)
 
-**Статус:** Router — ✅ MVP (10.70, 2026-10-15). Validator — ✅ MVP (10.71, 2026-10-16). Feedback — план.
+**Статус:** Router — ✅ MVP (10.70). Validator — ✅ MVP (10.71). Feedback — ✅ MVP (10.74). spawn_subagent — дизайн (D4) + 4 issue.
 
 
 **Основание:** E36 (2026-10-15) — `--decompose` **уже** реализует
@@ -415,7 +415,7 @@ retry v4-pro — **+2-3 RUB**.
 
 **Адаптация:** существующий `run_reverse_check` per подзадачу.
 
-**3. Feedback loop (явная передача результатов).**
+**3. Feedback loop (явная передача результатов). — ✅ MVP (10.74, 2026-10-16).**
 
 Проблема: subtask 3 **не знает**, что subtask 2 retry'нулась.
 
@@ -451,7 +451,21 @@ retry v4-pro — **+2-3 RUB**.
 
 ### Инструмент `spawn_subagent`
 
-**Позже** (после Router/Validator/Feedback):
+**Статус:** дизайн готов (D4, `docs/dsh/D4/answer.md`).
+**4 issue:** `issues/2026-10-16/8-11-spawn-*.md`. **Порядок A → B → C → D.**
+
+**Ключевые решения (D4):**
+- `spawn_subagent` — **не** tool, а **второй оркестратор**. Через
+  `execute_tool` **не** работает (нет `cfg`/`ctx`/бюджета).
+- `SubagentConfig` — **Pydantic** в `config.py` (**fail-fast** валидация).
+- **Allowlist** — enforce на **исполнении**, не только в промпте.
+- **Depth = 1** (3 барьера: валидатор, allowlist, guard).
+- **Fail-closed** для бюджета (**трата** денег).
+- 2 скрытых бага: `_handle_finish` (explorer-only) и `append_usage`
+  (хардкод action).
+- Оценка: **5-6 прогонов**, **~40-60 RUB** (вместо 5-7 дней).
+
+**Раньше** (после Router/Validator/Feedback):
 
     spawn_subagent(name="code-explorer", goal="найди все вызовы _collect_diff")
 
@@ -464,11 +478,11 @@ retry v4-pro — **+2-3 RUB**.
 
 - **Router:** ✅ MVP (10.70, 2026-10-15). Конфиг `agent.subagents` — ~1 день.
 - **Validator:** ✅ MVP (10.71, 2026-10-16). Политики fail/rollback — отдельно.
-- **Feedback:** ~2-3 дня.
-- **Инструмент `spawn_subagent`:** ~5-7 дней.
+- **Feedback:** ✅ MVP (10.74).
+- **Инструмент `spawn_subagent`:** дизайн D4 + 4 issue (~40-60 RUB).
 - **Итого:** 2-3 недели (не месяцы).
 
-**Порядок:** Router ✅ → Validator ✅ → Feedback → `spawn_subagent`.
+**Порядок:** Router ✅ → Validator ✅ → Feedback ✅ → `spawn_subagent` (дизайн D4).
 
 **Validator (10.71):** `--decompose-reverse-check`. После `finish(success=True)` — `_collect_subtask_diff` (baseline через `git stash create`) → `run_reverse_check` → ключи `reverse_*` в `subtask_results[-1]`. Колонка RC + секция `## Reverse-check` в отчёте. Fail-open сохранён. Политики `fail`/`rollback` — отложены.
 
