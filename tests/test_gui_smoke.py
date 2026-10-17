@@ -328,3 +328,24 @@ def test_newest_report_filters_by_project(tmp_path, monkeypatch):
     assert gui_app._newest_report(since, "proj-a")[0] == "proj-a"
     assert gui_app._newest_report(since, "proj-b")[0] == "proj-b"
     assert gui_app._newest_report(since, "other") is None
+
+
+def test_run_command_has_no_apply():
+    """run не принимает --apply: GUI не должен его добавлять."""
+    from ai_coder.gui.app import _build_command
+
+    cmd = _build_command(
+        goal="",
+        path=".",
+        mode="plain",
+        model="default",
+        apply=True,
+        commit=False,
+        check_mode="normal",
+        max_cost_rub="",
+        advanced_flags="",
+        task_type="run",
+        run_action="greet",
+    )
+    assert "--apply" not in cmd
+    assert cmd.startswith("ai-coder run greet")

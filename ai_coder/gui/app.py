@@ -96,8 +96,7 @@ def _build_command(
         parts.append(path_val)
         if model.strip() and model.strip() != "default":
             parts.extend(["--model", model.strip()])
-        if apply:
-            parts.append("--apply")
+        # --apply у `run` нет (флаг только для write-действий/agent).
         if check_mode == "dry-run":
             parts.append("--dry-run")
         if advanced_flags.strip():

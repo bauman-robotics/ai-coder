@@ -293,6 +293,13 @@
 
             // A.11: переключатель agent/run.
             function applyTaskType() {
+        var tt = document.getElementById("task-type").value;
+        var applyLabel = document.getElementById("apply-label");
+        var commitLabel = document.getElementById("commit-label");
+        if (applyLabel) { applyLabel.style.display = (tt === "run") ? "none" : ""; }
+        if (commitLabel) { commitLabel.style.display = (tt === "run") ? "none" : ""; }
+        // ... остальное (agent-only, run-action) — как было
+
                 var tt = document.getElementById("task-type");
                 if (!tt) { return; }
                 var isRun = tt.value === "run";
