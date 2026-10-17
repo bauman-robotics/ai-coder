@@ -5,7 +5,9 @@ Issue 2026-10-17/01_reports-structure.md.
 
 from __future__ import annotations
 
+import os
 import shlex
+import subprocess
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -252,6 +254,54 @@ def test_run_report_with_relative_path(project, monkeypatch):
     assert (task / "report.md").is_file()
     base = project["project"] / ".ai-out" / project["project"].name
     assert not list(base.glob("greet-*.md"))
+
+    # Команда в commands/<date>/<NN>_greet.txt создана и совпадает с goal.txt.
+    cmds = _commands(project["project"])
+    assert len(cmds) == 1
+    assert cmds[0].name.endswith("_greet.txt")
+    assert cmds[0].read_text(encoding="utf-8") == (task / "goal.txt").read_text(encoding="utf-8")
+    assert cmds[0].name.split("_", 1)[0] == task.name.split("_", 1)[0]
+
+
+def test_run_cli_subprocess_creates_commands_and_goal(project):
+    """Реальный `python -m ai_coder.cli run greet .`: commands/ + goal.txt.
+
+    API-ключа в subprocess нет, поэтому report.md не появится (ошибка
+    после записи истории), но проверяем именно фактический wiring run.
+    """
+    env = dict(os.environ)
+    env.pop("DEEPSEEK_API_KEY", None)
+    # Явно фиксируем worktree-пакет: без PYTHONPATH консольный ai-coder
+    # может исполнить установленный main-код (у него нет этой истории).
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ai_coder.cli",
+            "run",
+            "greet",
+            ".",
+            "--no-cache",
+            "--config",
+            str(project["config"]),
+            "--prompts",
+            str(project["prompts"]),
+        ],
+        cwd=project["project"],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "API-ключ" in proc.stdout + proc.stderr
+
+    cmds = _commands(project["project"])
+    assert len(cmds) == 1 and cmds[0].name.endswith("_greet.txt")
+    task = _task_dirs(project["project"], "run_greet")[0]
+    assert (task / "goal.txt").is_file()
+    assert cmds[0].name.split("_", 1)[0] == task.name.split("_", 1)[0]
 
 
 # ---------- 3-4. goal.txt = полная CLI-команда ----------
