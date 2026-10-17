@@ -2,8 +2,8 @@
 
 **Дата обновления:** 2026-10-17 (10.79 — структура отчётов; инцидент: потеря старых логов)
 **Ветка:** main
-**Последний коммит:** `15fc6aa` (test: изоляция тестов от реальных issues/commands; выше — merge `397a534`)
-**Тесты:** 624 passed (605 + 19 reports-structure: 14 в 173c44e, +4 в af8246c, +1 в ac010e0) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `1889b38` (fix(gui): run без --apply; выше — docs 10.79, merge `397a534`)
+**Тесты:** 625 passed (605 + 19 reports-structure: 14 в 173c44e, +4 в af8246c, +1 в ac010e0) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
 цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.18.
 
@@ -40,6 +40,12 @@ GUI: кнопка «Скопировать путь».
 **main**-код (editable `.pth`); для worktree — `PYTHONPATH` или
 `python -m ai_coder.cli`. См. `docs/incidents.md` (2026-10-17 — потеря
 старых логов `.ai-out`).
+
+**GUI fix (10.79+, 2026-10-17):** `run` **не** принимает `--apply` (флаг
+только для write/agent). GUI больше не добавляет `--apply` в `run`-
+команду; чекбоксы apply/commit скрыты для `run` (`applyTaskType`).
+Тест `test_run_command_has_no_apply`. Коммит `1889b38`.
+
 
 ---
 

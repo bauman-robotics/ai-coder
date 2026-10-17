@@ -42,6 +42,14 @@ Legacy читается как раньше. GUI: кнопка «Скопиро�
 - Обновлены `docs/state.md`, `docs/progress.md`, `next-chat/in-progress.md`
   (структура отчётов, инцидент, следующая задача).
 
+### GUI fix
+
+**`run` без `--apply`** (`1889b38`): GUI добавлял `--apply` в `run`-
+команду, хотя `run` его не принимает (Typer: `No such option`).
+Фикс: `_build_command` — `--apply` только для agent; в форме
+apply/commit скрыты для `run` (`applyTaskType`). Тест
+`test_run_command_has_no_apply` (**625 passed**).
+
 ### Тесты
 
 **Изоляция тестов** (`15fc6aa`): `test_cli_agent.py` — два теста
