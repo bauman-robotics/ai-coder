@@ -377,6 +377,7 @@ def run_agent(
     web_assets_override: bool | None = None,
     interactive: bool = False,  # NEW
     max_cost_rub: float | None = None,  # NEW
+    report_subdir: str | None = None,  # NEW: <date>/<NN>_plain_<slug>
 ) -> AgentRunResult:
     """
     Полный цикл агента: план → шаги → журнал.
@@ -391,8 +392,11 @@ def run_agent(
     # --- журнал ---
     journal_dir: Path | None = None
     if journal:
-        ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
-        journal_dir = project_root / cfg.output.dir / project_root.name / f"agent-{ts}"
+        if report_subdir:
+            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+        else:
+            ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
+            journal_dir = project_root / cfg.output.dir / project_root.name / f"agent-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)
 
     # --- NEW: phase1 — планировщик видит только дерево + метаданные ---

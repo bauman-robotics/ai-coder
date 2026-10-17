@@ -34,9 +34,13 @@ def run_auto_fix(
     interactive: bool = False,
     max_cost_rub: float | None = None,
     allow_blacklist: bool = False,  # NEW: обход blacklist (opt-in)
+    report_subdir: str | None = None,  # NEW: <date>/<NN>_fix_<slug>[/autofix]
 ) -> AutoFixResult:
     """
     Цикл: verify → fix (tool loop) → verify → ...
+
+    report_subdir задан → пишем в папку задачи (report.md, attempt-N/),
+    иначе — legacy `<project>/autofix-<ts>/`.
     """
     verify_commands = verify_commands or cfg.agent.verify_commands
     if not verify_commands:
@@ -50,8 +54,11 @@ def run_auto_fix(
 
     journal_dir: Path | None = None
     if journal:
-        ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
-        journal_dir = project_root / cfg.output.dir / project_root.name / f"autofix-{ts}"
+        if report_subdir:
+            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+        else:
+            ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
+            journal_dir = project_root / cfg.output.dir / project_root.name / f"autofix-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)
         result.journal_dir = journal_dir
 

@@ -46,6 +46,9 @@ JOURNAL_PREFIXES = (
     "plan-",
 )
 
+# Новый layout: .ai-out/<project>/<YYYY-MM-DD>/<NN>_<mode>_<slug>/report.md.
+_DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.is_dir():
@@ -269,8 +272,9 @@ def _stream_process(
 ) -> Iterator[str]:
     """Генератор SSE-строк с выводом процесса.
 
-    D12: для `run` после выхода ищем свежий отчёт и шлём маркер
-    `[отчёт] <url>` — клиент показывает ссылку «Открыть отчёт».
+    D12: после выхода ищем свежий отчёт и шлём маркеры:
+      `[отчёт-путь] <abs dir>` — абсолютный путь к папке задачи (для копирования);
+      `[отчёт] <url>` — клиент показывает ссылку «Открыть отчёт».
     """
     yield f"data: run_id: {run_id}\n\n"
     try:
@@ -283,8 +287,18 @@ def _stream_process(
         yield f"data: [exit {proc.returncode}]\n\n"
         found = _newest_report(started_at, project) if emit_report else None
         if found is not None:
-            project, filename = found
-            yield f"data: [отчёт] /reports/file/{quote(project)}/{quote(filename)}\n\n"
+            project_name, rel = found
+            if "/" in rel:
+                # новый layout: <date>/<task>
+                date_part, task_part = rel.split("/", 1)
+                url = f"/reports/{quote(project_name)}/{quote(date_part)}/{quote(task_part)}"
+                report_dir = AI_OUT_DIR / project_name / date_part / task_part
+            else:
+                # legacy плоский отчёт run
+                url = f"/reports/file/{quote(project_name)}/{quote(rel)}"
+                report_dir = AI_OUT_DIR / project_name
+            yield f"data: [отчёт-путь] {report_dir.resolve()}\n\n"
+            yield f"data: [отчёт] {url}\n\n"
 
 
 def _collect_docs_cli() -> list[dict]:
@@ -450,18 +464,15 @@ async def run(
         bufsize=1,
     )
     RUNNING[run_id] = proc
-    # D12: у действий `run` отчёт лежит не в каталоге журнала, а отдельным
-    # файлом — после выхода процесса шлём ссылку «Открыть отчёт».
-    emit_report = task_type == "run"
-    project_name = ""
-    if emit_report:
-        # имя подкаталога отчёта = имя каталога проекта (scan.root.name)
-        try:
-            project_name = (
-                Path(path).expanduser().resolve().name if path.strip() else Path.cwd().name
-            )
-        except OSError:
-            project_name = ""
+    # D12: после выхода процесса шлём ссылку «Открыть отчёт» и абсолютный
+    # путь к папке задачи. Новый layout (run/agent/tool-loop/...) и legacy
+    # плоский run-отчёт оба находятся через _newest_report.
+    emit_report = True
+    # имя подкаталога отчёта = имя каталога проекта (scan.root.name)
+    try:
+        project_name = Path(path).expanduser().resolve().name if path.strip() else Path.cwd().name
+    except OSError:
+        project_name = ""
     return StreamingResponse(
         _stream_process(
             run_id,
@@ -584,13 +595,61 @@ def _is_journal_dir(name: str) -> bool:
     return name.startswith(JOURNAL_PREFIXES)
 
 
+def _report_dir_entry(
+    project_dir: Path,
+    journal_dir: Path,
+    journal_name: str,
+    url: str,
+    root: Path,
+) -> dict[str, object] | None:
+    """Метаданные одной папки с report.md (общие для legacy и нового layout)."""
+    report = journal_dir / "report.md"
+    if not report.is_file():
+        return None
+    try:
+        # Защита от symlink-выхода за пределы AI_OUT_DIR.
+        report.resolve().relative_to(root)
+    except ValueError:
+        return None
+    meta = _parse_report_meta(report)
+    # У agent-* поля "Стоимость" нет — есть "Стоимость всего".
+    cost_raw = meta.get("Стоимость") or meta.get("Стоимость всего") or "—"
+    cost = _round_cost(cost_raw)
+    mtime = report.stat().st_mtime
+    # Первая строка report.md — заголовок.
+    try:
+        first_line = report.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        first_line = ""
+    title = first_line.lstrip("# ").strip()
+    return {
+        "project": project_dir.name,
+        "journal": journal_name,
+        "mtime": mtime,
+        "mtime_iso": datetime.fromtimestamp(mtime, tz=timezone.utc)
+        .astimezone()
+        .strftime("%Y-%m-%d %H:%M"),
+        "url": url,
+        # Абсолютный путь к папке задачи — для кнопки «Скопировать путь».
+        "path": str(journal_dir.resolve()),
+        "success": _extract_success(meta),
+        "cost": cost,
+        "iterations": meta.get("Итераций", "—"),
+        "reason": meta.get("Причина остановки", "—"),
+        "title": title,
+    }
+
+
 def _collect_journals() -> list[dict[str, object]]:
     """
-    Обходит .ai-out/<project>/<journal>/report.md и собирает метаданные.
+    Обходит .ai-out и собирает метаданные отчётов ОБОИХ layout:
 
-    Сортировка — по mtime (свежие сверху). Возвращает список словарей
-    с ключами: project, journal, mtime, mtime_iso, url, success,
-    cost, iterations, reason, title.
+    - legacy: .ai-out/<project>/<journal>/report.md (tool-loop-*, agent-*, ...)
+    - новый: .ai-out/<project>/<date>/<NN>_<mode>_<slug>/report.md
+
+    Старые отчёты не мигрируем — просто читаем. Сортировка по mtime
+    (свежие сверху). Ключи: project, journal, mtime, mtime_iso, url,
+    path, success, cost, iterations, reason, title.
     """
     result: list[dict[str, object]] = []
     if not AI_OUT_DIR.is_dir():
@@ -599,56 +658,52 @@ def _collect_journals() -> list[dict[str, object]]:
     for project_dir in sorted(AI_OUT_DIR.iterdir()):
         if not project_dir.is_dir():
             continue
-        for journal_dir in sorted(project_dir.iterdir()):
-            if not journal_dir.is_dir():
+        for entry in sorted(project_dir.iterdir()):
+            if not entry.is_dir():
                 continue
-            if not _is_journal_dir(journal_dir.name):
-                continue
-            report = journal_dir / "report.md"
-            if not report.is_file():
-                continue
-            try:
-                # Защита от symlink-выхода за пределы AI_OUT_DIR.
-                report.resolve().relative_to(root)
-            except ValueError:
-                continue
-            meta = _parse_report_meta(report)
-            # У agent-* поля "Стоимость" нет — есть "Стоимость всего".
-            cost_raw = meta.get("Стоимость") or meta.get("Стоимость всего") or "—"
-            cost = _round_cost(cost_raw)
-            mtime = report.stat().st_mtime
-            # Первая строка report.md — заголовок.
-            try:
-                first_line = report.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-            except (OSError, IndexError):
-                first_line = ""
-            title = first_line.lstrip("# ").strip()
-            result.append(
-                {
-                    "project": project_dir.name,
-                    "journal": journal_dir.name,
-                    "mtime": mtime,
-                    "mtime_iso": datetime.fromtimestamp(mtime, tz=timezone.utc)
-                    .astimezone()
-                    .strftime("%Y-%m-%d %H:%M"),
-                    "url": f"/reports/{project_dir.name}/{journal_dir.name}",
-                    "success": _extract_success(meta),
-                    "cost": cost,
-                    "iterations": meta.get("Итераций", "—"),
-                    "reason": meta.get("Причина остановки", "—"),
-                    "title": title,
-                }
-            )
+            if _DATE_DIR_RE.match(entry.name):
+                # Новый layout: <project>/<date>/<task>/report.md
+                for task_dir in sorted(entry.iterdir()):
+                    if not task_dir.is_dir():
+                        continue
+                    journal_name = f"{entry.name}/{task_dir.name}"
+                    item = _report_dir_entry(
+                        project_dir,
+                        task_dir,
+                        journal_name,
+                        f"/reports/{project_dir.name}/{entry.name}/{task_dir.name}",
+                        root,
+                    )
+                    if item is not None:
+                        result.append(item)
+            elif _is_journal_dir(entry.name):
+                item = _report_dir_entry(
+                    project_dir,
+                    entry,
+                    entry.name,
+                    f"/reports/{project_dir.name}/{entry.name}",
+                    root,
+                )
+                if item is not None:
+                    result.append(item)
     result.sort(key=lambda x: cast(float, x["mtime"]), reverse=True)
     return result
 
 
-def _safe_report_path(project: str, journal: str) -> Path | None:
+def _safe_report_path(project: str, *parts: str) -> Path | None:
     """
     Возвращает путь к report.md, если он внутри AI_OUT_DIR.
     Иначе None (защита от path traversal).
+
+    parts: legacy — (journal,); новый layout — (date, task).
     """
-    base = (AI_OUT_DIR / project / journal).resolve()
+    segments = (project, *parts)
+    if not project or not all(segments):
+        return None
+    for seg in segments:
+        if "/" in seg or "\\" in seg or seg.startswith("."):
+            return None
+    base = (AI_OUT_DIR / project / Path(*parts)).resolve()
     try:
         base.relative_to(AI_OUT_DIR.resolve())
     except ValueError:
@@ -691,8 +746,9 @@ def _safe_flat_report_path(project: str, filename: str) -> Path | None:
 def _newest_report(since: float, project: str | None = None) -> tuple[str, str] | None:
     """D12: самый свежий отчёт в AI_OUT_DIR, созданный после `since`.
 
-    Возвращает (project, filename) для ссылки «Открыть отчёт» после `run`,
-    либо None. Каталог cache/ пропускается — там не отчёты.
+    Возвращает (project, rel), где rel — имя плоского файла для legacy
+    отчёта `run` (`greet-<ts>.md`) или `<date>/<task>` для нового layout.
+    Каталог cache/ пропускается — там не отчёты.
 
     Сканируется именно AI_OUT_DIR панели (а не каталог, переданный в форме
     как `path`): маршрут `/reports/...` отдаёт файлы только оттуда, иначе
@@ -716,12 +772,20 @@ def _newest_report(since: float, project: str | None = None) -> tuple[str, str] 
             rel = path.relative_to(out_dir)
         except ValueError:
             continue
-        if len(rel.parts) != 2:  # ожидаем <project>/<file>.md
+        if len(rel.parts) == 2:
+            # legacy: <project>/<file>.md (плоский отчёт run)
+            rel_key = rel.parts[1]
+        elif (
+            len(rel.parts) == 4 and rel.parts[3] == "report.md" and _DATE_DIR_RE.match(rel.parts[1])
+        ):
+            # новый layout: <project>/<date>/<task>/report.md
+            rel_key = f"{rel.parts[1]}/{rel.parts[2]}"
+        else:
             continue
         if project and rel.parts[0] != project:
             continue
         if best is None or mtime > best[0]:
-            best = (mtime, rel.parts[0], rel.parts[1])
+            best = (mtime, rel.parts[0], rel_key)
     if best is None:
         return None
     return best[1], best[2]
@@ -860,6 +924,9 @@ async def flat_report_view(request: Request, project: str, filename: str) -> HTM
             "content": html,
             "project": project,
             "journal": filename,
+            # Для кнопки «Скопировать путь»: legacy run-отчёт лежит в папке проекта.
+            "report_dir": str(report_path.parent.resolve()),
+            "raw_url": f"/ai-out/{quote(project)}/{quote(filename)}",
         },
     )
 
@@ -893,5 +960,34 @@ async def report_view(request: Request, project: str, journal: str) -> HTMLRespo
             "content": html,
             "project": project,
             "journal": journal,
+            "report_dir": str(report_path.parent.resolve()),
+            "raw_url": f"/ai-out/{quote(project)}/{quote(journal)}/report.md",
+        },
+    )
+
+
+@app.get("/reports/{project}/{date}/{journal}", response_class=HTMLResponse)
+async def report_view_nested(
+    request: Request, project: str, date: str, journal: str
+) -> HTMLResponse:
+    """Рендер отчёта нового layout: `<project>/<date>/<task>/report.md`."""
+    report_path = _safe_report_path(project, date, journal)
+    if report_path is None:
+        return HTMLResponse("<h1>Отчёт не найден</h1>", status_code=404)
+    md_text = report_path.read_text(encoding="utf-8")
+    html = markdown.markdown(
+        md_text,
+        extensions=["fenced_code", "tables", "sane_lists"],
+    )
+    return templates.TemplateResponse(
+        request,
+        "report.html",
+        {
+            "content": html,
+            "project": project,
+            "journal": f"{date}/{journal}",
+            # Папка задачи — абсолютный путь для кнопки «Скопировать путь».
+            "report_dir": str(report_path.parent.resolve()),
+            "raw_url": (f"/ai-out/{quote(project)}/{quote(date)}/{quote(journal)}/report.md"),
         },
     )

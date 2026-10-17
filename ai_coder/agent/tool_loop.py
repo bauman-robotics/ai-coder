@@ -899,6 +899,7 @@ def run_tool_loop(
     spawn_depth: int = 0,
     max_spawns: int | None = None,
     usage_action_prefix: str = "agent",
+    report_subdir: str | None = None,  # NEW: <date>/<NN>_tool-loop_<slug>
 ) -> ToolLoopResult:
     """Tool loop: модель сама вызывает инструменты до завершения.
 
@@ -913,6 +914,8 @@ def run_tool_loop(
         ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
         if journal_subdir is not None:
             journal_dir = journal_subdir / f"tool-loop-{ts}"
+        elif report_subdir:
+            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
         else:
             journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
         journal_dir.mkdir(parents=True, exist_ok=True)

@@ -314,6 +314,7 @@ def run_agent_decompose(
     max_iterations: int | None = None,  # NEW: лимит tool loop на подзадачу
     verify_commands: list[str] | None = None,  # NEW: явный verify (fallback на cfg)
     decompose_reverse_check: bool | None = None,  # NEW: обратная проверка декомпозиции
+    report_subdir: str | None = None,  # NEW: <date>/<NN>_decompose_<slug>
 ) -> DecomposeResult:
     """
     Декомпозирует задачу и выполняет каждую подзадачу через run_tool_loop.
@@ -357,9 +358,12 @@ def run_agent_decompose(
     decompose_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     decompose_dir: Path | None = None
     if journal:
-        decompose_dir = (
-            project_root / cfg.output.dir / project_root.name / f"decompose-{decompose_ts}"
-        )
+        if report_subdir:
+            decompose_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+        else:
+            decompose_dir = (
+                project_root / cfg.output.dir / project_root.name / f"decompose-{decompose_ts}"
+            )
         decompose_dir.mkdir(parents=True, exist_ok=True)
         dec_result.journal_dir = decompose_dir
 
