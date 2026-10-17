@@ -331,6 +331,9 @@ def test_agent_issue_and_goal_conflict(tmp_path: Path):
         [
             "agent",
             "это-не-директория",
+            # path обязателен: без него project_root = cwd = реальный main,
+            # и history пишет мусор в issues/ и commands/.
+            str(tmp_path),
             "--issue",
             str(issue),
             "--tool-loop",
@@ -542,6 +545,8 @@ def test_chain_and_goal_conflict(tmp_path: Path):
         [
             "agent",
             "это-не-директория",
+            # path обязателен: иначе project_root = cwd = реальный main.
+            str(project),
             "--chain",
             str(issues),
             "--tool-loop",

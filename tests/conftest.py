@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -321,3 +322,47 @@ def git_repo(tmp_path: Path) -> Path:
     _run_git(["commit", "-m", "initial"], repo)
 
     return repo
+
+
+# ---------- guard: тесты не пишут в реальные issues/ и commands/ ----------
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _snapshot_real_history_dirs() -> dict[str, tuple[int, str]]:
+    """Снимок содержимого issues/ и commands/ в реальном репозитории."""
+    snap: dict[str, tuple[int, str]] = {}
+    for dirname in ("issues", "commands"):
+        root = _REPO_ROOT / dirname
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = str(path.relative_to(_REPO_ROOT))
+            snap[rel] = (path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest())
+    return snap
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_real_history_dirs() -> None:
+    """Ловит запись тестов в РЕАЛЬНЫЕ issues/ и commands/ (регрессия 10.79.1).
+
+    Тесты обязаны использовать tmp_path. Если тест вызвал CLI без path,
+    project_root = cwd = реальный main и save_history_entry создаёт там
+    мусор. Сравниваем снимок до/после всей сессии.
+    """
+    before = _snapshot_real_history_dirs()
+    yield
+    after = _snapshot_real_history_dirs()
+    if before == after:
+        return
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    changed = sorted(k for k in set(before) & set(after) if before[k] != after[k])
+    pytest.fail(
+        "Тесты изменили РЕАЛЬНЫЕ issues/ или commands/ (нужен tmp_path):\n"
+        f"  добавлено: {added or '—'}\n"
+        f"  удалено:   {removed or '—'}\n"
+        f"  изменено:  {changed or '—'}"
+    )
