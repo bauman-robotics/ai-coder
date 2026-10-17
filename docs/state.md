@@ -1,11 +1,11 @@
 # Текущее состояние проекта
 
-**Дата обновления:** 2026-10-16 (10.78 — D10.2+D11; D12 — находки D2 + GUI UX)
+**Дата обновления:** 2026-10-17 (10.79 — структура отчётов; инцидент: потеря старых логов)
 **Ветка:** main
-**Последний коммит:** `16c135b` (merge: D10.2 + D11 — run_shell зацикливание, findings #4-#7)
-**Тесты:** 605 passed (+51 spawn, +18 verify/делегирование, +10 D8/D10, +13 D11, +12 D12) | CI: pytest x3 + ruff + mypy — зелёный
+**Последний коммит:** `397a534` (merge: reports-structure — отчёты по дням и задачам)
+**Тесты:** 624 passed (605 + 19 reports-structure: 14 в 173c44e, +4 в af8246c, +1 в ac010e0) | CI: pytest x3 + ruff + mypy — зелёный
 **Статус:** рабочий инструмент; безопасность закрыта; автономность проверена (E9);
-цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.15.
+цепочка `--split-goals` → `--chain --plan` работает; веб-панель A.0–A.18.
 
 **Split-file (10.65):** `ai_coder/agent.py` (3614 строк) разбит на пакет
 `ai_coder/agent/` из 9 модулей — все ≤1021 строк:
@@ -25,6 +25,21 @@
 **Read_symbol (10.66):** `read_symbol` теперь работает не только с `.py`,
 но и с C/C++/JS/TS/Go через новый модуль `ai_coder/symbols.py` (154 строки,
 regex-парсер без зависимостей). Python-путь не изменён (регрессия E3).
+
+**Структура отчётов (10.79, 2026-10-17):** новые прогоны пишут отчёты
+в `.ai-out/<project>/<YYYY-MM-DD>/<NN>_<mode>_<slug>/`:
+- `goal.txt` — полная CLI-команда (копия `commands/<date>/<NN>_<slug>.txt`);
+- `report.md` — итоговый отчёт;
+- `step-N.md` / `subtask-N/` / `issues/*.md` / `attempt-N/` / `autofix/` —
+  по режиму.
+`<NN>` — общий для `commands/` и `.ai-out/` (связь по `<NN>_<slug>`).
+`run` теперь тоже пишет `commands/` + папку задачи. `split-goals` — без
+папки в `.ai-out`. Старые (legacy) отчёты читаются как раньше.
+GUI: кнопка «Скопировать путь».
+**Важно:** `ai-coder` (console script) из worktree импортирует
+**main**-код (editable `.pth`); для worktree — `PYTHONPATH` или
+`python -m ai_coder.cli`. См. `docs/incidents.md` (2026-10-17 — потеря
+старых логов `.ai-out`).
 
 ---
 
@@ -162,6 +177,12 @@ Python-проектов через DeepSeek API. Работает с git-про�
 - `style.css`: `.reports-table` (тёмная тема, `ok`/`fail`/`num`).
 - Живой прогон: **83 журнала** (67 tool-loop + 11 agent + 3 decompose
   + 2 autofix), `/reports/ai-coder/tool-loop-<ts>` → 200.
+- **A.7+ (10.79):** `_collect_journals()` читает **оба** layout:
+  legacy `<project>/<journal>/report.md` и новый
+  `<project>/<date>/<task>/report.md`; nested-роут
+  `GET /reports/{project}/{date}/{task}`; кнопка «Скопировать путь»
+  (`data-path` = абсолютный путь к папке задачи) на странице отчёта
+  и рядом с `#report-link` в форме.
 
 **A.8:** статистика расходов.
 - `app.py`: `GET /stats/data` — агрегаты из `usage.jsonl`
@@ -429,7 +450,8 @@ max_cost), родитель сделал работу сам.
   - `--interactive` — подтверждение каждого dangerous (y/n/a/s/d);
   - `--max-iterations` — лимит итераций;
   - бэкап перед первым изменением + `ai-coder rollback` совместим;
-  - журнал `tool-loop-<ts>/step-N.md` + `report.md`.
+  - журнал: `<project>/<date>/<NN>_tool-loop_<slug>/` + `step-N.md` +
+    `report.md` + `goal.txt`; legacy `tool-loop-<ts>/` только читается.
   - **Безопасность (10.15):**
     - blacklist в tool loop: `write_file`/`edit_file` не пишут
       в `.git/**`, `config/**`, `pyproject.toml`, `.env`
@@ -680,7 +702,8 @@ max_cost), родитель сделал работу сам.
   - CLI: `--tool-loop`, `--max-iterations`, `--dry-run`,
     `--interactive`;
   - бэкап + `ai-coder rollback` совместим;
-  - журнал `tool-loop-<ts>/`.
+  - журнал `tool-loop-<ts>/` (исторический legacy; с 10.79 новый —
+    `<date>/<NN>_tool-loop_<slug>/`).
 - **Tool loop — автономность (10.1–10.4):**
   - автокоммит после `finish(success)` (10.1);
   - `--resume <journal-dir>` (10.2);

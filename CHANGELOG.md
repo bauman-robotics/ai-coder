@@ -4,6 +4,52 @@
 
 ---
 
+## [2026-10-17] iteration 10.79 — структура отчётов по дням и задачам
+
+### Что сделано
+
+**Новая структура отчётов** (issue 01_reports-structure.md):
+`.ai-out/<project>/<YYYY-MM-DD>/<NN>_<mode>_<slug>/` вместо плоских
+файлов и `*-<ts>/` в корне. В папке задачи: `goal.txt` (копия
+`commands/<date>/<NN>_<slug>.txt`), `report.md`, `step-N.md` /
+`subtask-N/` / `issues/*.md` / `attempt-N/` / `autofix/`.
+`<NN>` — общий для `commands/` и `.ai-out/`. `run` теперь тоже пишет
+`commands/` + папку задачи. `split-goals` — без папки в `.ai-out`.
+Legacy читается как раньше. GUI: кнопка «Скопировать путь».
+
+### Баг и фикс
+
+- **`Path('.')` терял имя проекта** (`project_root.name == ''`) →
+  `.ai-out/2026-10-17/...` без `/reports-structure/`. Фикс:
+  `_output_base()` с `project_root.resolve()` (`tool_loop.py`,
+  `classic.py`, `decomposer.py`, `autofix.py`, `output.py`).
+  Коммит `af8246c`.
+- **Регрессия:** `ai-coder` (console script) из worktree импортирует
+  **main**-код (editable `.pth`). Для worktree — `PYTHONPATH` /
+  `python -m ai_coder.cli`. Тест `test_run_cli_subprocess_creates_commands_and_goal`.
+  Коммит `ac010e0`.
+
+### Инцидент
+
+**Потеряны старые логи `.ai-out`** (~10 дней, 09–14 окт). `.ai-out` —
+локальный (в `.gitignore`), не бэкапится. `dsh` не удалял (траектория
+чистая). Точный виновник неизвестен. См. `docs/incidents.md`.
+
+### Документация
+
+- `docs/incidents.md` — новый журнал инцидентов (2026-10-17 — потеря
+  старых логов `.ai-out`).
+- Обновлены `docs/state.md`, `docs/progress.md`, `next-chat/in-progress.md`
+  (структура отчётов, инцидент, следующая задача).
+
+### Проверка
+
+**624 passed** (+19 к 605: 14 в `173c44e`, +4 в `af8246c`, +1 в
+`ac010e0`; 649 строк в `test_reports_structure.py`),
+ruff/mypy — clean. Merge `397a534`.
+
+---
+
 ## [2026-10-16] iteration 10.78 — D10.2 + D11: баги A-D Router и findings #4-#7
 
 ### Баги Router (D9 → D10 → D10.1 → D10.2)

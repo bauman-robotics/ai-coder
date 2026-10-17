@@ -9,6 +9,57 @@
 > - `docs/experiments.md` — эксперименты (E19-E23).
 > - **`docs/progress.md`** (этот файл) — дневник: что делали.
 
+## 2026-10-17 — D13: структура отчётов + инцидент с логами
+
+**Задача:** отчёты в папки по дням/задачам
+(`.ai-out/<project>/<date>/<NN>_<mode>_<slug>/` + `goal.txt` +
+`report.md` + шаги). Старые не трогать (legacy).
+
+**Сделано (dsh, worktree `reports-structure`):**
+- `history.py`: `save_history_entry`, `report_subdir_for`,
+  `write_goal_txt`, `build_command`, `parse_nn_slug`. `commands/` —
+  для всех режимов.
+- `output.py`: `_output_base`, `resolve_task_dir`, `report_subdir` в
+  `_resolve_output_path`/`save_report`.
+- `tool_loop.py`, `classic.py`, `decomposer.py`, `autofix.py` — через
+  `_output_base`.
+- `cli.py`: `report_subdir` в `run`, `agent`, `chain`, `fix`;
+  `autofix/` — подпапка задачи.
+- GUI: `/reports` — оба layout; кнопка «Скопировать путь».
+
+**Баг:** `Path('.')` → `project_root.name == ''` → путь без
+`/reports-structure/`. Фикс `af8246c`.
+
+**Регрессия:** `ai-coder` (console script) из worktree импортирует
+main (editable `.pth`). Тест `ac010e0`. Для worktree — `PYTHONPATH` /
+`python -m ai_coder.cli`.
+
+**Инцидент:** потеряны старые логи `.ai-out` (~10 дней). `.ai-out` —
+локальный, не бэкапится. `dsh` не удалял. См. `docs/incidents.md`.
+
+**Цифры:** 624 passed (+19 к 605), ruff/mypy clean. Коммиты:
+`173c44e`, `af8246c`, `ac010e0`, merge `397a534`.
+
+**Документация:** `docs/incidents.md` (новый), обновлены
+`docs/state.md`, `docs/progress.md`, `next-chat/in-progress.md`.
+
+**Уроки:**
+1. E2E ловит то, что тесты не видят (`Path('.')` в моках — не
+   воспроизводил, реальный `run` — да).
+2. Console script ≠ `python -m` (editable `.pth` → main). Тестировать
+   worktree — `PYTHONPATH`.
+3. `.ai-out` — **не** в git, **не** бэкапится. **Backup** обязателен
+   (см. incidents).
+4. `git status` после merge — проверить `commands/demos/` (были
+   удалены, восстановлены `git checkout`).
+
+**На следующий раз:** backup `.ai-out` (скрипт + cron); этап 2 — GUI
+«Повторить задачу» + список `commands/`; `--reverse-check` в `--chain`.
+`run_reverse_check` → `usage.jsonl` **уже сделано** в `6b71dbd`
+(10.77, тесты `test_run_reverse_check_logs_usage`).
+
+---
+
 ## 2026-10-16 (ночь) — D9-D12: Router E2E + fixes + GUI UX
 
 **Длительность:** ~6 часов.
