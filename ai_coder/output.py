@@ -15,6 +15,13 @@ def _output_base(
     output_dir: str,
     per_project_subdir: bool,
 ) -> Path:
+    """База отчётов: <project>/<output_dir>[/<project name>].
+
+    project_root.resolve() обязателен: для Path(".") свойство .name — ""
+    (пустая строка), из-за чего подкаталог проекта терялся и отчёт уезжал
+    в .ai-out/<date>/... вместо .ai-out/<project>/<date>/....
+    """
+    project_root = project_root.resolve()
     base = project_root / output_dir
     if per_project_subdir:
         base = base / project_root.name

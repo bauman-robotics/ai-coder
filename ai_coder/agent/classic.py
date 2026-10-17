@@ -22,6 +22,7 @@ from ..apply import (
 )
 from ..config import WEB_ASSET_EXTENSIONS, AppConfig, PromptsConfig
 from ..llm import LLMClient, LLMResponse
+from ..output import _output_base
 from ..pricing import calculate_cost, get_rate, is_peak_now
 from ..prompts import render_prompt
 from ..scanner import scan_project
@@ -393,10 +394,16 @@ def run_agent(
     journal_dir: Path | None = None
     if journal:
         if report_subdir:
-            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / report_subdir
+            )
         else:
             ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
-            journal_dir = project_root / cfg.output.dir / project_root.name / f"agent-{ts}"
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / f"agent-{ts}"
+            )
         journal_dir.mkdir(parents=True, exist_ok=True)
 
     # --- NEW: phase1 — планировщик видит только дерево + метаданные ---

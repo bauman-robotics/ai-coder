@@ -185,6 +185,75 @@ def test_tool_loop_journal_in_date_task_dir(sample_project, minimal_cfg, prompts
     assert list(expected.glob("step-*.md"))
 
 
+def test_tool_loop_report_subdir_with_relative_project_root(
+    sample_project, minimal_cfg, prompts_cfg, monkeypatch
+):
+    """Регрессия: project_root=Path(".") не должен терять имя проекта.
+
+    Path(".").name == "", поэтому старый код писал в .ai-out/<date>/...,
+    а не в .ai-out/<project>/<date>/....
+    """
+    from ai_coder.agent import run_tool_loop
+
+    monkeypatch.chdir(sample_project)
+    subdir = f"{date.today().isoformat()}/99_tool-loop_test"
+    with (
+        patch("ai_coder.agent.tool_loop.LLMClient") as MockClient,
+        patch("ai_coder.agent.tool_loop.get_rate") as mock_rate,
+        patch("ai_coder.agent.tool_loop.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _finish_response()
+        result = run_tool_loop(
+            goal="test",
+            project_root=Path("."),
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            max_iterations=1,
+            report_subdir=subdir,
+        )
+
+    expected = sample_project / ".ai-out" / sample_project.name / subdir
+    assert result.journal_dir is not None
+    assert result.journal_dir.resolve() == expected.resolve()
+    assert (expected / "report.md").is_file()
+    assert not (sample_project / ".ai-out" / subdir).exists()
+
+
+def test_agent_tool_loop_report_in_new_layout_no_legacy(project, monkeypatch):
+    """Реальный run_tool_loop (fake LLM): report.md в новом layout, не tool-loop-*."""
+    monkeypatch.chdir(project["project"])
+    with (
+        patch("ai_coder.agent.tool_loop.LLMClient") as MockClient,
+        patch("ai_coder.agent.tool_loop.get_rate") as mock_rate,
+        patch("ai_coder.agent.tool_loop.append_usage"),
+    ):
+        mock_rate.return_value = Rate(value=12.5, source="config", fetched_at=0)
+        MockClient.return_value.chat.return_value = _finish_response()
+        result = _invoke(project, ["agent", "test goal", ".", "--tool-loop"])
+
+    assert result.exit_code == 0, result.stdout
+    task = _task_dirs(project["project"], "tool-loop_test-goal")[0]
+    assert (task / "goal.txt").is_file()
+    assert (task / "report.md").is_file()
+    assert list(task.glob("step-*.md"))
+    assert not list((project["project"] / ".ai-out" / project["project"].name).glob("tool-loop-*"))
+
+
+def test_run_report_with_relative_path(project, monkeypatch):
+    """`run greet .` (cwd=проект) пишет report.md в новую папку, не greet-<ts>.md."""
+    monkeypatch.chdir(project["project"])
+    with patch("ai_coder.cli.run_action", return_value=_fake_action_result(project["project"])):
+        result = _invoke(project, ["run", "greet", "."])
+    assert result.exit_code == 0, result.stdout
+
+    task = _task_dirs(project["project"], "run_greet")[0]
+    assert (task / "goal.txt").is_file()
+    assert (task / "report.md").is_file()
+    base = project["project"] / ".ai-out" / project["project"].name
+    assert not list(base.glob("greet-*.md"))
+
+
 # ---------- 3-4. goal.txt = полная CLI-команда ----------
 
 
@@ -349,6 +418,47 @@ def _prompts_from(env: dict):
     from ai_coder.config import load_prompts
 
     return load_prompts(env["prompts"])
+
+
+# ---------- 7b. decompose ----------
+
+
+def test_decompose_report_in_date_task_dir(sample_project, minimal_cfg, prompts_cfg, monkeypatch):
+    from ai_coder.agent import DecomposeResult, Subtask, ToolLoopResult, run_agent_decompose
+
+    dec = DecomposeResult(
+        explanation="one subtask",
+        subtasks=[Subtask(n=1, goal="do one", files=[])],
+    )
+    subdir = f"{date.today().isoformat()}/00_decompose_test-goal"
+
+    def fake_loop(**kwargs):
+        sub = kwargs.get("journal_subdir")
+        if sub is not None:
+            (sub / "tool-loop-ts").mkdir(parents=True, exist_ok=True)
+        return ToolLoopResult(success=True, summary="ok", iterations=1)
+
+    monkeypatch.chdir(sample_project)
+    with (
+        patch("ai_coder.agent.decomposer.run_planner_decompose", return_value=dec),
+        patch("ai_coder.agent.decomposer.run_tool_loop", fake_loop),
+        patch("ai_coder.agent.decomposer.append_usage"),
+    ):
+        result = run_agent_decompose(
+            goal="test goal",
+            project_root=Path("."),
+            cfg=minimal_cfg,
+            prompts_cfg=prompts_cfg,
+            journal=True,
+            report_subdir=subdir,
+        )
+
+    expected = sample_project / ".ai-out" / sample_project.name / subdir
+    assert result.journal_dir is not None
+    assert result.journal_dir.resolve() == expected.resolve()
+    assert (expected / "report.md").is_file()
+    assert (expected / "subtask-1").is_dir()
+    assert not (sample_project / ".ai-out" / subdir).exists()
 
 
 # ---------- 8. chain ----------

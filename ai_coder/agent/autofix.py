@@ -14,6 +14,7 @@ from rich.console import Console
 
 from ..apply import run_verify_commands
 from ..config import AppConfig, PromptsConfig
+from ..output import _output_base
 from .models import AutoFixResult
 from .tool_loop import run_tool_loop
 
@@ -55,10 +56,16 @@ def run_auto_fix(
     journal_dir: Path | None = None
     if journal:
         if report_subdir:
-            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / report_subdir
+            )
         else:
             ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
-            journal_dir = project_root / cfg.output.dir / project_root.name / f"autofix-{ts}"
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / f"autofix-{ts}"
+            )
         journal_dir.mkdir(parents=True, exist_ok=True)
         result.journal_dir = journal_dir
 

@@ -15,6 +15,7 @@ from rich.panel import Panel
 
 from ..config import AppConfig, PromptsConfig
 from ..llm import LLMClient
+from ..output import _output_base
 from ..pricing import calculate_cost, get_rate, is_peak_now
 from ..prompts import render_prompt
 from ..scanner import (
@@ -359,10 +360,14 @@ def run_agent_decompose(
     decompose_dir: Path | None = None
     if journal:
         if report_subdir:
-            decompose_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+            decompose_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / report_subdir
+            )
         else:
             decompose_dir = (
-                project_root / cfg.output.dir / project_root.name / f"decompose-{decompose_ts}"
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / f"decompose-{decompose_ts}"
             )
         decompose_dir.mkdir(parents=True, exist_ok=True)
         dec_result.journal_dir = decompose_dir

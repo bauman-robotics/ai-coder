@@ -26,6 +26,7 @@ from ..config import (
     SubagentConfig,
 )
 from ..llm import LLMClient, LLMResponse
+from ..output import _output_base
 from ..pricing import calculate_cost, get_rate, is_peak_now
 from ..prompts import render_prompt
 from ..scanner import (
@@ -915,9 +916,17 @@ def run_tool_loop(
         if journal_subdir is not None:
             journal_dir = journal_subdir / f"tool-loop-{ts}"
         elif report_subdir:
-            journal_dir = project_root / cfg.output.dir / project_root.name / report_subdir
+            # <project>/<output>/<date>/<NN>_<mode>_<slug>/; _output_base
+            # резолвит project_root (Path(".") → абсолютный путь).
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / report_subdir
+            )
         else:
-            journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / f"tool-loop-{ts}"
+            )
         journal_dir.mkdir(parents=True, exist_ok=True)
 
     # --- metadata-scan ---
