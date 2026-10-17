@@ -42,6 +42,14 @@ Legacy читается как раньше. GUI: кнопка «Скопиро�
 - Обновлены `docs/state.md`, `docs/progress.md`, `next-chat/in-progress.md`
   (структура отчётов, инцидент, следующая задача).
 
+### Тесты
+
+**Изоляция тестов** (`15fc6aa`): `test_cli_agent.py` — два теста
+(`agent --issue` / `--chain` без `path`) писали в реальные
+`issues/`/`commands/` (path=main). Фикс: `path=tmp_path` + session-guard
+`_guard_real_history_dirs` в `conftest.py` (валит suite, если тесты
+добавили/удалили/изменили файлы в реальных `issues/`/`commands/`).
+
 ### Проверка
 
 **624 passed** (+19 к 605: 14 в `173c44e`, +4 в `af8246c`, +1 в
