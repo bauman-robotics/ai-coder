@@ -28,7 +28,7 @@ from .git import (
     is_git_repo,
     status_porcelain,
 )
-from .output import save_report
+from .output import resolve_task_dir, save_report
 
 app = typer.Typer(
     name="ai-coder",
@@ -288,6 +288,39 @@ def run(
         )
         return
 
+    # ---------- история: commands/ + папка задачи (goal.txt) ----------
+    # run раньше не писал commands/. Теперь пишет ВСЕГДА, чтобы у отчёта
+    # был общий с commands/ ключ <NN>_<slug> (см. issue, п. 2).
+    report_subdir: str | None = None
+    try:
+        from .history import (
+            build_command,
+            parse_nn_slug,
+            report_subdir_for,
+            save_history_entry,
+            write_goal_txt,
+        )
+
+        cmd_str = build_command()
+        cmd_path, _ = save_history_entry(
+            project_root,
+            action,  # slug для run — имя действия (greet)
+            cmd_str,
+            write_issue=False,  # issues/ — только agent/tool-loop/decompose/chain
+        )
+        nn, slug = parse_nn_slug(cmd_path)
+        report_subdir = report_subdir_for(cmd_path.parent.name, nn, "run", slug)
+        task_dir = resolve_task_dir(
+            project_root,
+            cfg.output.dir,
+            cfg.output.per_project_subdir,
+            report_subdir,
+        )
+        write_goal_txt(task_dir, cmd_str)
+    except Exception as e:  # noqa: BLE001 — история не должна валить прогон
+        console.print(f"[yellow]История не сохранена: {e}[/yellow]")
+        report_subdir = None
+
     try:
         with console.status("[cyan]Сканирую проект и обращаюсь к DeepSeek..."):
             result = run_action(
@@ -486,6 +519,7 @@ def run(
         filename_pattern=cfg.output.filename_pattern,
         save_raw=cfg.output.save_raw_response,
         applied_info=applied_info,
+        report_subdir=report_subdir,
     )
 
     # ---------- сводка ----------
@@ -885,9 +919,17 @@ def _run_chain(
     run_tool_loop_fn,
     run_agent_decompose_fn,
     run_planner_decompose_fn,
+    command: str = "",
 ) -> dict:
     """Цикл по issues. Возвращает dict со сводкой."""
     from .agent import DecomposeResult, Subtask
+    from .history import (
+        build_command,
+        parse_nn_slug,
+        report_subdir_for,
+        save_history_entry,
+        write_goal_txt,
+    )
 
     # 1. Читаем все goals
     loaded: list[tuple[Path, str]] = []
@@ -984,8 +1026,33 @@ def _run_chain(
     failed = 0
     chain_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     chain_dir: Path | None = None
-    if journal:
+    chain_report_subdir: str | None = None
+    # Один chain = одна задача: history пишется ОДИН раз, <slug> = dirname
+    # каталога issues, goal.txt — полная CLI-команда.
+    try:
+        cmd_str = command or build_command()
+        cmd_path, _ = save_history_entry(
+            project_root,
+            issues[0].parent.name,
+            cmd_str,
+            slug=issues[0].parent.name,
+        )
+        nn, slug = parse_nn_slug(cmd_path)
+        chain_report_subdir = report_subdir_for(cmd_path.parent.name, nn, "chain", slug)
+        chain_dir = resolve_task_dir(
+            project_root,
+            cfg.output.dir,
+            cfg.output.per_project_subdir,
+            chain_report_subdir,
+        )
+        write_goal_txt(chain_dir, cmd_str)
+    except Exception as e:  # noqa: BLE001 — история не должна валить chain
+        console.print(f"[yellow]История chain не сохранена: {e}[/yellow]")
+
+    if chain_dir is None and journal:
+        # fallback legacy: history недоступна
         chain_dir = project_root / cfg.output.dir / project_root.name / f"chain-{chain_ts}"
+    if chain_dir is not None:
         chain_dir.mkdir(parents=True, exist_ok=True)
 
     report_path: Path | None = None
@@ -998,6 +1065,8 @@ def _run_chain(
             )
         )
         entry: dict = {"issue": issue.name, "goal": g}
+        # Журналы подзадач — внутри папки chain-задачи (issues/<stem>/).
+        issue_subdir = f"{chain_report_subdir}/issues/{issue.stem}" if chain_report_subdir else None
         try:
             if do_plan or do_decompose:
                 dec = run_agent_decompose_fn(
@@ -1018,6 +1087,7 @@ def _run_chain(
                     max_cost_rub=decompose_max_cost_rub or max_cost_rub,
                     allow_blacklist=allow_blacklist,
                     plan=pre_plans[i] if do_plan else None,
+                    report_subdir=issue_subdir,
                 )
                 ok = (
                     dec.parse_error is None
@@ -1043,6 +1113,7 @@ def _run_chain(
                     interactive=interactive,
                     auto_commit=auto_commit,
                     step_type="edit",
+                    report_subdir=issue_subdir,
                 )
                 ok = lr.success  # 10.31: run_tool_loop сам решает (edit/read)
                 cost = lr.total_cost_rub
@@ -1069,7 +1140,7 @@ def _run_chain(
                 console.print("[yellow]Остановка (--stop-on-fail).[/yellow]")
                 break
 
-    if chain_dir is not None:
+    if chain_dir is not None and journal:
         chain_result_for_report = {
             "results": results,
             "failed": failed,
@@ -1094,7 +1165,21 @@ def _save_chain_report(
     chain_result: dict,
     loaded: list[tuple[Path, str]],
 ) -> Path:
-    """Сохраняет report.md в chain_dir. Пишется всегда — даже при полном провале."""
+    """Сохраняет report.md в chain_dir. Пишется всегда — даже при полном провале.
+
+    В папку задачи кладём также копии входных issues/*.md — чтобы chain-прогон
+    был самодостаточным (issue 2026-10-17/01, п. 7).
+    """
+    import shutil
+
+    issues_out = chain_dir / "issues"
+    issues_out.mkdir(parents=True, exist_ok=True)
+    for issue_path, _goal in loaded:
+        try:
+            shutil.copy2(issue_path, issues_out / issue_path.name)
+        except OSError:
+            pass
+
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: list[str] = []
     lines.append("# Chain — отчёт")
@@ -1529,23 +1614,49 @@ def agent_cmd(
         raise typer.Exit(1)
 
     # --- История команд и целей (issue/command auto-save) ---
-    import sys as _sys
-
-    if goal and "pytest" not in _sys.modules:
+    # Один код для CLI и GUI: полная команда реконструируется из argv.
+    # <NN>_<slug> общий для commands/ и .ai-out/<project>/<date>/.
+    report_subdir: str | None = None
+    if goal:
         try:
-            import shlex as _shlex
+            from .history import (
+                build_command,
+                parse_nn_slug,
+                report_subdir_for,
+                save_history_entry,
+                write_goal_txt,
+            )
 
-            from .history import save_history_entry
-
-            _cmd_str = "ai-coder " + " ".join(_shlex.quote(a) for a in _sys.argv[1:])
-            save_history_entry(
+            cmd_str = build_command()
+            cmd_path, _issue_path = save_history_entry(
                 project_root,
                 goal,
-                _cmd_str,
+                cmd_str,
                 write_issue=not split_goals,
             )
-        except Exception as _e:
+            if not split_goals:
+                # split-goals: только issues/ + commands/, БЕЗ .ai-out/<date>/.
+                nn, slug = parse_nn_slug(cmd_path)
+                mode = (
+                    "plan"
+                    if plan
+                    else "decompose"
+                    if decompose
+                    else "tool-loop"
+                    if tool_loop
+                    else "plain"
+                )
+                report_subdir = report_subdir_for(cmd_path.parent.name, nn, mode, slug)
+                task_dir = resolve_task_dir(
+                    project_root,
+                    cfg.output.dir,
+                    cfg.output.per_project_subdir,
+                    report_subdir,
+                )
+                write_goal_txt(task_dir, cmd_str)
+        except Exception as _e:  # noqa: BLE001 — история не должна валить прогон
             console.print(f"[yellow]История не сохранена: {_e}[/yellow]")
+            report_subdir = None
 
     # --- NEW: --split-goals ---
     if split_goals:
@@ -1617,6 +1728,7 @@ def agent_cmd(
     # --- NEW: --chain ---
     if chain is not None:
         from .agent import run_agent_decompose, run_planner_decompose, run_tool_loop
+        from .history import build_command
 
         if not tool_loop:
             console.print("[red]--chain требует --tool-loop[/red]")
@@ -1681,6 +1793,7 @@ def agent_cmd(
                 run_tool_loop_fn=run_tool_loop,
                 run_agent_decompose_fn=run_agent_decompose,
                 run_planner_decompose_fn=run_planner_decompose,
+                command=build_command(),
             )
         except typer.Exit:
             raise
@@ -1767,6 +1880,7 @@ def agent_cmd(
                     plan=pre_plan,
                     max_iterations=max_iterations,
                     decompose_reverse_check=decompose_reverse_check,
+                    report_subdir=report_subdir,
                 )
         except typer.Exit:
             raise
@@ -1849,6 +1963,7 @@ def agent_cmd(
                     resume_from=resume,  # NEW
                     allow_blacklist=allow_blacklist,
                     reverse_check=rc_enabled,  # NEW (D7: по умолчанию в tool loop)
+                    report_subdir=report_subdir,
                 )
         except Exception as e:
             console.print(f"[red]Ошибка tool loop:[/red] {e}")
@@ -1866,6 +1981,8 @@ def agent_cmd(
             remaining_budget: float | None = None
             if max_cost_rub is not None:
                 remaining_budget = max(0.0, max_cost_rub - loop_result.total_cost_rub)
+            # autofix — ПОДПАПКА внутри папки задачи (не отдельный mode).
+            autofix_subdir = f"{report_subdir}/autofix" if report_subdir else None
             try:
                 fix_result = run_auto_fix(
                     project_root=project_root,
@@ -1880,6 +1997,7 @@ def agent_cmd(
                     interactive=interactive,
                     max_cost_rub=remaining_budget,
                     allow_blacklist=allow_blacklist,
+                    report_subdir=autofix_subdir,
                 )
             except Exception as e:
                 console.print(f"[red]Ошибка auto-fix:[/red] {e}")
@@ -2098,6 +2216,7 @@ def agent_cmd(
                 web_assets_override=web_override,
                 interactive=interactive,  # NEW
                 max_cost_rub=max_cost_rub,
+                report_subdir=report_subdir,
             )
     except Exception as e:
         console.print(f"[red]Ошибка агента:[/red] {e}")
@@ -2280,6 +2399,38 @@ def fix_cmd(
         console.print("[red]--interactive требует TTY[/red]")
         raise typer.Exit(1)
 
+    # --- история: commands/ + папка задачи <date>/<NN>_fix_<slug>/ ---
+    report_subdir: str | None = None
+    try:
+        from .history import (
+            build_command,
+            parse_nn_slug,
+            report_subdir_for,
+            save_history_entry,
+            write_goal_txt,
+        )
+
+        cmd_str = build_command()
+        fix_goal = "fix: " + "; ".join(cmds)
+        cmd_path, _ = save_history_entry(
+            project_root,
+            fix_goal,
+            cmd_str,
+            write_issue=False,  # issues/ — только agent/tool-loop/decompose/chain
+        )
+        nn, slug = parse_nn_slug(cmd_path)
+        report_subdir = report_subdir_for(cmd_path.parent.name, nn, "fix", slug)
+        task_dir = resolve_task_dir(
+            project_root,
+            cfg.output.dir,
+            cfg.output.per_project_subdir,
+            report_subdir,
+        )
+        write_goal_txt(task_dir, cmd_str)
+    except Exception as e:  # noqa: BLE001 — история не должна валить fix
+        console.print(f"[yellow]История не сохранена: {e}[/yellow]")
+        report_subdir = None
+
     budget_line = f"\n[bold]Лимит:[/bold] {max_cost_rub:.4f} RUB" if max_cost_rub else ""
     console.print(
         Panel.fit(
@@ -2305,6 +2456,7 @@ def fix_cmd(
             interactive=interactive,
             max_cost_rub=max_cost_rub,
             allow_blacklist=allow_blacklist,
+            report_subdir=report_subdir,
         )
     except Exception as e:
         console.print(f"[red]Ошибка:[/red] {e}")

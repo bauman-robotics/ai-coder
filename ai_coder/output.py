@@ -10,6 +10,34 @@ def _fmt_float(value: float, digits: int = 6) -> str:
     return f"{value:.{digits}f}"
 
 
+def _output_base(
+    project_root: Path,
+    output_dir: str,
+    per_project_subdir: bool,
+) -> Path:
+    """База отчётов: <project>/<output_dir>[/<project name>].
+
+    project_root.resolve() обязателен: для Path(".") свойство .name — ""
+    (пустая строка), из-за чего подкаталог проекта терялся и отчёт уезжал
+    в .ai-out/<date>/... вместо .ai-out/<project>/<date>/....
+    """
+    project_root = project_root.resolve()
+    base = project_root / output_dir
+    if per_project_subdir:
+        base = base / project_root.name
+    return base
+
+
+def resolve_task_dir(
+    project_root: Path,
+    output_dir: str,
+    per_project_subdir: bool,
+    report_subdir: str,
+) -> Path:
+    """Папка задачи `<output>/<project>/<report_subdir>` (goal.txt, report.md)."""
+    return _output_base(project_root, output_dir, per_project_subdir) / report_subdir
+
+
 def _resolve_output_path(
     project_root: Path,
     output_dir: str,
@@ -17,10 +45,12 @@ def _resolve_output_path(
     filename_pattern: str,
     action: str,
     timestamp: str,
+    report_subdir: str | None = None,
 ) -> Path:
-    base = project_root / output_dir
-    if per_project_subdir:
-        base = base / project_root.name
+    base = _output_base(project_root, output_dir, per_project_subdir)
+    if report_subdir:
+        # Новый layout: <project>/<date>/<NN>_<mode>_<slug>/report.md
+        return base / report_subdir / "report.md"
     filename = filename_pattern.format(action=action, timestamp=timestamp)
     return base / filename
 
@@ -230,6 +260,7 @@ def save_report(
     filename_pattern: str,
     save_raw: bool,
     applied_info: dict | None = None,
+    report_subdir: str | None = None,
 ) -> Path:
     timestamp = result.started_at.strftime("%Y-%m-%dT%H-%M-%S")
     path = _resolve_output_path(
@@ -239,6 +270,7 @@ def save_report(
         filename_pattern=filename_pattern,
         action=result.action,
         timestamp=timestamp,
+        report_subdir=report_subdir,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_report(result, applied_info=applied_info), encoding="utf-8")

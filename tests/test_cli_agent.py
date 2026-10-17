@@ -690,7 +690,7 @@ def test_chain_zero_ops_not_success(tmp_path: Path, monkeypatch):
     assert "провалено: 1" in result.stdout
 
     # 10.30: в отчёте stopped_reason должен быть "no_ops", не "completed"
-    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    chain_dirs = _chain_task_dirs(project)
     assert len(chain_dirs) == 1
     report = chain_dirs[0] / "report.md"
     assert report.exists()
@@ -947,6 +947,11 @@ def _chain_issues(tmp_path: Path) -> Path:
     return issues
 
 
+def _chain_task_dirs(project: Path) -> list[Path]:
+    """Новый layout: .ai-out/<project>/<date>/<NN>_chain_<dirname>/."""
+    return list((project / ".ai-out" / project.name).glob("*/*_chain_*"))
+
+
 def test_chain_saves_report_on_success(tmp_path: Path, monkeypatch):
     """--chain: обе ✅ → report.md есть, содержит ✅."""
     from typer.testing import CliRunner
@@ -969,7 +974,7 @@ def test_chain_saves_report_on_success(tmp_path: Path, monkeypatch):
     result = CliRunner().invoke(app, ["agent", str(project), "--chain", str(issues), "--tool-loop"])
     assert result.exit_code == 0, result.stdout
 
-    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    chain_dirs = _chain_task_dirs(project)
     assert len(chain_dirs) == 1, f"ожидалась 1 chain-папка, найдено {len(chain_dirs)}"
     report = chain_dirs[0] / "report.md"
     assert report.exists(), "report.md должен быть создан"
@@ -1018,7 +1023,7 @@ def test_chain_saves_report_on_all_fail(tmp_path: Path, monkeypatch):
     # exit_code=1 — ожидаемо (failed>0)
     assert result.exit_code == 1, result.stdout
 
-    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    chain_dirs = _chain_task_dirs(project)
     assert len(chain_dirs) == 1, f"ожидалась 1 chain-папка, найдено {len(chain_dirs)}"
     report = chain_dirs[0] / "report.md"
     assert report.exists(), "report.md должен быть создан ДАЖЕ при полном провале"
@@ -1072,7 +1077,7 @@ def test_chain_saves_report_on_partial_fail(tmp_path: Path, monkeypatch):
     )
     assert result.exit_code == 1, result.stdout
 
-    chain_dirs = list((project / ".ai-out" / "proj").glob("chain-*"))
+    chain_dirs = _chain_task_dirs(project)
     assert len(chain_dirs) == 1
     report = chain_dirs[0] / "report.md"
     assert report.exists()

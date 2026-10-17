@@ -26,6 +26,7 @@ from ..config import (
     SubagentConfig,
 )
 from ..llm import LLMClient, LLMResponse
+from ..output import _output_base
 from ..pricing import calculate_cost, get_rate, is_peak_now
 from ..prompts import render_prompt
 from ..scanner import (
@@ -899,6 +900,7 @@ def run_tool_loop(
     spawn_depth: int = 0,
     max_spawns: int | None = None,
     usage_action_prefix: str = "agent",
+    report_subdir: str | None = None,  # NEW: <date>/<NN>_tool-loop_<slug>
 ) -> ToolLoopResult:
     """Tool loop: модель сама вызывает инструменты до завершения.
 
@@ -913,8 +915,18 @@ def run_tool_loop(
         ts = started_at.strftime("%Y-%m-%dT%H-%M-%S")
         if journal_subdir is not None:
             journal_dir = journal_subdir / f"tool-loop-{ts}"
+        elif report_subdir:
+            # <project>/<output>/<date>/<NN>_<mode>_<slug>/; _output_base
+            # резолвит project_root (Path(".") → абсолютный путь).
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / report_subdir
+            )
         else:
-            journal_dir = project_root / cfg.output.dir / project_root.name / f"tool-loop-{ts}"
+            journal_dir = (
+                _output_base(project_root, cfg.output.dir, cfg.output.per_project_subdir)
+                / f"tool-loop-{ts}"
+            )
         journal_dir.mkdir(parents=True, exist_ok=True)
 
     # --- metadata-scan ---

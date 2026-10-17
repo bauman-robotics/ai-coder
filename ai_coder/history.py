@@ -1,4 +1,6 @@
 import re
+import shlex
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -6,7 +8,13 @@ from ai_coder.agent import _slug_for_issue
 
 
 def next_history_number(directory: Path, day: str) -> int:
-    """Return the next NN for date: max(existing)+1 else 0."""
+    """Return the next NN for date: max(existing)+1 else 0.
+
+    v1: гонка <NN> при ПАРАЛЛЕЛЬНЫХ прогонах не обрабатывается — чтение
+    commands/<date>/ и запись файла не атомарны, два одновременных запуска
+    могут получить один NN. Осознанно отложено, см. issue
+    2026-10-17/01_reports-structure.md («Гонку <NN> ... игнорируем (v1)»).
+    """
     pattern = re.compile(r"^(\d+)_.*\.(?:txt|md)$")
     max_nn = -1
     if directory.is_dir():
@@ -27,6 +35,41 @@ def make_slug(goal: str) -> str:
     return _slug_for_issue(goal)
 
 
+def build_command(argv: list[str] | None = None) -> str:
+    """Полная CLI-команда: `ai-coder ...` из argv (по умолчанию sys.argv[1:]).
+
+    Один источник для commands/<date>/<NN>_<slug>.txt и goal.txt: и CLI,
+    и GUI (через subprocess) в итоге проходят через реконструкцию argv
+    по shlex.quote, поэтому формат совпадает.
+    """
+    args = sys.argv[1:] if argv is None else argv
+    return "ai-coder " + " ".join(shlex.quote(a) for a in args)
+
+
+def parse_nn_slug(cmd_path: Path) -> tuple[int, str]:
+    """Разобрать `<NN>_<slug>.txt` (или .md) -> (int NN, slug).
+
+    Формат имён commands/ не меняем — только читаем его.
+    """
+    m = re.match(r"^(\d+)_(.+)\.(?:txt|md)$", cmd_path.name)
+    if m is None:
+        raise ValueError(f"Не удалось разобрать <NN>_<slug> из {cmd_path.name!r}")
+    return int(m.group(1)), m.group(2)
+
+
+def report_subdir_for(day: str, nn: int, mode: str, slug: str) -> str:
+    """Относительный путь папки задачи: `<date>/<NN>_<mode>_<slug>`."""
+    return f"{day}/{nn:02d}_{mode}_{slug}"
+
+
+def write_goal_txt(task_dir: Path, command: str) -> Path:
+    """Записать goal.txt рядом с report.md — ровно тот же текст, что в commands/."""
+    task_dir.mkdir(parents=True, exist_ok=True)
+    path = task_dir / "goal.txt"
+    path.write_text(command.rstrip("\n") + "\n", encoding="utf-8")
+    return path
+
+
 def save_history_entry(
     project_root: Path,
     goal: str,
@@ -34,12 +77,18 @@ def save_history_entry(
     *,
     today: date | None = None,
     write_issue: bool = True,
+    slug: str | None = None,
 ) -> tuple[Path, Path | None]:
-    """Write two files: command and issue, return their paths."""
+    """Write two files: command and issue, return their paths.
+
+    slug по умолчанию = make_slug(goal). Явный slug нужен chain: там
+    <slug> — dirname каталога issues, а не транслит общего goal.
+    """
     if today is None:
         today = date.today()
     day_str = today.isoformat()
-    slug = make_slug(goal)
+    if slug is None:
+        slug = make_slug(goal)
 
     commands_dir = project_root / "commands" / day_str
     commands_dir.mkdir(parents=True, exist_ok=True)

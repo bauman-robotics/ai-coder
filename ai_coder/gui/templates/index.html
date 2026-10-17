@@ -651,6 +651,54 @@
             var runOutput = document.getElementById("run-output");
             var currentAbort = null;
             var currentRunId = null;
+            var reportAbsPath = "";
+
+            // Ссылка «Открыть отчёт» + кнопка «Скопировать путь» (абсолютный
+            // путь к папке задачи приходит из SSE-маркера [отчёт-путь]).
+            function showReportLink(url) {
+                var box = document.getElementById("report-link");
+                if (!box || !url) { return; }
+                box.innerHTML = "";
+                var a = document.createElement("a");
+                a.href = url;
+                a.target = "_blank";
+                a.textContent = "Открыть отчёт";
+                box.appendChild(a);
+                if (reportAbsPath) {
+                    var btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "copy-path-btn";
+                    btn.setAttribute("data-path", reportAbsPath);
+                    btn.textContent = "Скопировать путь";
+                    btn.style.marginLeft = "8px";
+                    box.appendChild(btn);
+                }
+            }
+
+            var reportLinkBox = document.getElementById("report-link");
+            if (reportLinkBox) {
+                reportLinkBox.addEventListener("click", async function (evt) {
+                    var btn = evt.target && evt.target.closest
+                        ? evt.target.closest(".copy-path-btn")
+                        : null;
+                    if (!btn) { return; }
+                    var path = btn.getAttribute("data-path") || "";
+                    if (!path) { return; }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(path);
+                    } else {
+                        var ta = document.createElement("textarea");
+                        ta.value = path;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(ta);
+                    }
+                    var prev = btn.textContent;
+                    btn.textContent = "Скопировано";
+                    setTimeout(function () { btn.textContent = prev; }, 1200);
+                });
+            }
 
             var runStatus = document.getElementById("run-status");
             var runStartedAt = null;
@@ -686,6 +734,7 @@
                 runOutput.textContent = "";
                 document.getElementById("report-link").innerHTML = "";
                 currentRunId = null;
+                reportAbsPath = "";
                 setRunning(true);
 
                 var form = document.getElementById("build-form");
@@ -724,10 +773,15 @@
                                         currentRunId = match[1].trim();
                                         continue;
                                     }
+                                    var pmatch = text.match(/^\[отчёт-путь\]\s*(.+)$/);
+                                    if (pmatch) {
+                                        // абсолютный путь к папке задачи
+                                        reportAbsPath = pmatch[1].trim();
+                                        continue;
+                                    }
                                     var omatch = text.match(/^\[отчёт\]\s*(\S+)$/);
                                     if (omatch) {
-                                        document.getElementById("report-link").innerHTML =
-                                            '<a href="' + omatch[1] + '" target="_blank">Открыть отчёт</a>';
+                                        showReportLink(omatch[1]);
                                         continue;
                                     }
                                     var jmatch = text.match(/^Журнал:\s*(.+)$/);
@@ -737,9 +791,7 @@
                                             jpath = jpath.slice(".ai-out/".length);
                                         }
                                         // jpath = "<project>/<journal>"
-                                        var reportUrl = "/reports/" + jpath;
-                                        document.getElementById("report-link").innerHTML =
-                                            '<a href="' + reportUrl + '" target="_blank">Открыть отчёт</a>';
+                                        showReportLink("/reports/" + jpath);
                                     }
                                     runOutput.textContent += text + "\n";
                                     runOutput.scrollTop = runOutput.scrollHeight;
